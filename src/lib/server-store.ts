@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { head, put } from "@vercel/blob";
+import type { PutCommandOptions } from "@vercel/blob";
 import type { Branch, Store } from "./types";
 import { BRANCHES } from "./constants";
 import { env } from "./env";
@@ -51,13 +52,15 @@ async function readFromBlob(): Promise<Store | null> {
 }
 
 async function writeToBlob(store: Store) {
-  await put(BLOB_PATH, JSON.stringify(store, null, 2), {
+  const options: PutCommandOptions = {
     access: "private",
     addRandomSuffix: false,
     token: env.blobToken,
     contentType: "application/json",
     allowOverwrite: true,
-  });
+  };
+
+  await put(BLOB_PATH, JSON.stringify(store, null, 2), options);
 }
 
 export async function readStore(): Promise<Store> {
