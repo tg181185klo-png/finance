@@ -10,6 +10,12 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const BLOB_PATH = "fin-dashboard/store.json";
 
+function hasBlobStorage() {
+  return Boolean(
+    env.blobToken || process.env.VERCEL_OIDC_TOKEN || process.env.BLOB_STORE_ID,
+  );
+}
+
 export const DEFAULT_STORE: Store = {
   transactions: [],
   obligations: {},
@@ -42,7 +48,7 @@ async function writeToFile(store: Store) {
 
 async function readFromBlob(): Promise<Store | null> {
   try {
-    const meta = await head(BLOB_PATH, { token: env.blobToken });
+    const meta = await head(BLOB_PATH, env.blobToken ? { token: env.blobToken } : {});
     const res = await fetch(meta.url, { cache: "no-store" });
     if (!res.ok) return null;
     return mergeStore((await res.json()) as Partial<Store>);
@@ -55,16 +61,19 @@ async function writeToBlob(store: Store) {
   const options: PutCommandOptions = {
     access: "public",
     addRandomSuffix: false,
-    token: env.blobToken,
     contentType: "application/json",
     allowOverwrite: true,
   };
+
+  if (env.blobToken) {
+    options.token = env.blobToken;
+  }
 
   await put(BLOB_PATH, JSON.stringify(store, null, 2), options);
 }
 
 export async function readStore(): Promise<Store> {
-  if (env.blobToken) {
+  if (hasBlobStorage()) {
     const blob = await readFromBlob();
     if (blob) return blob;
     await writeToBlob(DEFAULT_STORE);
@@ -80,7 +89,7 @@ export async function readStore(): Promise<Store> {
 }
 
 export async function writeStore(store: Store) {
-  if (env.blobToken) {
+  if (hasBlobStorage()) {
     await writeToBlob(store);
     return;
   }
@@ -99,6 +108,6 @@ export function dateOnly(iso: string) {
 }
 
 export function storageMode() {
-  if (env.blobToken) return "vercel-blob";
+  if (hasBlobStorage()) return "vercel-blob";
   return "local-file";
 }
