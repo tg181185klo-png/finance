@@ -7,3 +7,4 @@ out
 .env*.local
 .vercel
 data/store.json
+.env*

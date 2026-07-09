@@ -53,7 +53,7 @@ async function readFromBlob(): Promise<Store | null> {
 
 async function writeToBlob(store: Store) {
   const options: PutCommandOptions = {
-    access: "private",
+    access: "public",
     addRandomSuffix: false,
     token: env.blobToken,
     contentType: "application/json",
