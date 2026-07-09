@@ -1,0 +1,17 @@
+---
+description: Push code changes to GitHub after every update
+alwaysApply: true
+---
+
+# GitHub Sync
+
+Repository: https://github.com/tg181185klo-png/finance
+
+After completing any code change in this project:
+1. Run `git add -A`
+2. Commit with a clear message describing what changed
+3. Run `git push origin main`
+
+Do not commit: `.env.local`, `node_modules`, `.next`, `data/store.json` (local business data).
+
+Environment variables for production are set in Vercel dashboard.

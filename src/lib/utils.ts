@@ -1,0 +1,181 @@
+import type { Branch, Expense, ExpenseBranch, Obligation, Transaction } from "./types";
+
+export function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("ka-GE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function formatMoney(n: number) {
+  return `${n.toLocaleString("ka-GE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₾`;
+}
+
+function matchBranch(branch: Branch | ExpenseBranch, filter: Branch | "ყველა") {
+  if (filter === "ყველა") return true;
+  return branch === filter || branch === "საერთო";
+}
+
+export function calcBalances(tx: Transaction[], branch: Branch | "ყველა") {
+  const b = { total: 0, cash: 0, card: 0, bank: 0, credit: 0, revenue: 0, expenses: 0 };
+
+  for (const t of tx) {
+    if (!matchBranch(t.branch, branch)) continue;
+    if (t.type === "sale") {
+      b.revenue += t.amount;
+      if (t.paymentStatus === "ბე (ავანსი)") b.credit += t.amount;
+      else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
+      else if (t.paymentMethod === "ბარათი") b.card += t.amount;
+      else b.bank += t.amount;
+    } else {
+      b.expenses += t.amount;
+      if (t.expensePaymentMethod === "ბარათი") b.card -= t.amount;
+      else b.cash -= t.amount;
+    }
+  }
+
+  b.total = b.revenue - b.expenses;
+  return b;
+}
+
+function obligationBranchMatch(ob: Obligation, branch: ExpenseBranch) {
+  return ob.branch === "ყველა" || ob.branch === branch || branch === "საერთო";
+}
+
+export function applyExpenseToObligations(
+  obligations: Record<string, Obligation[]>,
+  expense: Expense
+): Record<string, Obligation[]> {
+  const month = expense.date.slice(0, 7);
+  const list = obligations[month];
+  if (!list?.length) return obligations;
+
+  let remaining = expense.amount;
+  const next = { ...obligations, [month]: list.map((o) => ({ ...o })) };
+  const items = next[month];
+
+  for (const ob of items) {
+    if (remaining <= 0) break;
+    const left = ob.amount - ob.paid;
+    if (left <= 0) continue;
+    if (!obligationBranchMatch(ob, expense.branch)) continue;
+
+    const catMatch = ob.category === expense.category;
+    const nameMatch =
+      expense.comment.toLowerCase().includes(ob.name.toLowerCase()) ||
+      ob.name.toLowerCase().includes(expense.comment.toLowerCase());
+
+    if (!catMatch && !nameMatch) continue;
+
+    const pay = Math.min(remaining, left);
+    ob.paid += pay;
+    remaining -= pay;
+    expense.obligationId = ob.id;
+  }
+
+  return next;
+}
+
+export function obligationSummary(obligations: Record<string, Obligation[]>, month: string, branch: Branch | "ყველა") {
+  const list = obligations[month] ?? [];
+  const filtered = list.filter((o) => branch === "ყველა" || o.branch === "ყველა" || o.branch === branch);
+  const total = filtered.reduce((s, o) => s + o.amount, 0);
+  const paid = filtered.reduce((s, o) => s + o.paid, 0);
+  return { total, paid, remaining: total - paid, items: filtered };
+}
+
+export function buildPeriodReport(
+  tx: Transaction[],
+  obligations: Record<string, Obligation[]>,
+  from: string,
+  to: string,
+  branch: Branch | "ყველა"
+) {
+  const filtered = tx.filter((t) => {
+    const d = t.date.slice(0, 10);
+    if (d < from || d > to) return false;
+    return matchBranch(t.branch, branch);
+  });
+
+  let revenue = 0;
+  let expenses = 0;
+  const dayMap = new Map<string, { revenue: number; expenses: number }>();
+
+  for (const t of filtered) {
+    const d = t.date.slice(0, 10);
+    const row = dayMap.get(d) ?? { revenue: 0, expenses: 0 };
+    if (t.type === "sale") {
+      revenue += t.amount;
+      row.revenue += t.amount;
+    } else {
+      expenses += t.amount;
+      row.expenses += t.amount;
+    }
+    dayMap.set(d, row);
+  }
+
+  const days = [...dayMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({ date, revenue: v.revenue, expenses: v.expenses, net: v.revenue - v.expenses }));
+
+  const months = new Set<string>();
+  for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate() + 1)) {
+    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  let obligationTotal = 0;
+  let obligationPaid = 0;
+  for (const m of months) {
+    const s = obligationSummary(obligations, m, branch);
+    obligationTotal += s.total;
+    obligationPaid += s.paid;
+  }
+
+  return {
+    from,
+    to,
+    branch,
+    revenue,
+    expenses,
+    net: revenue - expenses,
+    days,
+    obligationTotal,
+    obligationPaid,
+    obligationRemaining: obligationTotal - obligationPaid,
+  };
+}
+
+export function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function monthStartEnd(month = currentMonth()) {
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
+}
+
+// Client migration from old localStorage
+const LEGACY_KEY = "fin-dashboard-tx";
+
+export function loadLegacyTransactions(): Transaction[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    return raw ? (JSON.parse(raw) as Transaction[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearLegacyTransactions() {
+  localStorage.removeItem(LEGACY_KEY);
+}

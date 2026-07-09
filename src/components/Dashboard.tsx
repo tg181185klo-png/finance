@@ -1,0 +1,715 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  Branch,
+  BranchDailyReport,
+  Expense,
+  ExpenseBranch,
+  ExpenseCategory,
+  Obligation,
+  PaymentMethod,
+  PaymentStatus,
+  PeriodReport,
+  Product,
+  Sale,
+  Store,
+  Transaction,
+} from "@/lib/types";
+import {
+  BRANCHES,
+  CATEGORIES,
+  EXPENSE_BRANCHES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+} from "@/lib/dashboard-data";
+import {
+  calcBalances,
+  clearLegacyTransactions,
+  currentMonth,
+  formatDate,
+  formatMoney,
+  loadLegacyTransactions,
+  obligationSummary,
+  uid,
+} from "@/lib/utils";
+import { PinModal, usePin } from "@/components/PinModal";
+import { ADMIN_PIN } from "@/lib/constants";
+import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
+import { env } from "@/lib/env";
+
+function branchLink(token: string) {
+  const base = env.appUrl || (typeof window !== "undefined" ? window.location.origin : "");
+  return `${base}/f/${token}`;
+}
+
+const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
+const labelCls = "mb-1 block text-xs text-zinc-400";
+const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
+const tabCls = (on: boolean) =>
+  `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
+
+type Tab = "main" | "obligations" | "reports" | "branches";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className={`mt-1 text-xl font-semibold ${accent ?? ""}`}>{value}</p>
+    </div>
+  );
+}
+
+async function apiTx(method: string, body?: object, qs = "") {
+  const res = await fetch(`/api/transactions${qs}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+export default function Dashboard() {
+  const pin = usePin();
+  const [unlocked, setUnlocked] = useState(false);
+  const [tab, setTab] = useState<Tab>("main");
+  const [store, setStore] = useState<Store | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productSource, setProductSource] = useState("");
+  const [productWarning, setProductWarning] = useState("");
+  const [productsUpdatedAt, setProductsUpdatedAt] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<Branch | "ყველა">("ყველა");
+  const [pinInput, setPinInput] = useState("");
+
+  // Sale form
+  const [sBranch, setSBranch] = useState<Branch>("ქუთაისი");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [qty, setQty] = useState(1);
+  const [price, setPrice] = useState(0);
+  const [payStatus, setPayStatus] = useState<PaymentStatus>("სრულად გადახდილი");
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
+  const [sComment, setSComment] = useState("");
+
+  // Expense form
+  const [eBranch, setEBranch] = useState<ExpenseBranch>("საერთო");
+  const [category, setCategory] = useState<ExpenseCategory>("საწვავი");
+  const [eAmount, setEAmount] = useState("");
+  const [eComment, setEComment] = useState("");
+
+  // Obligations
+  const [obMonth, setObMonth] = useState(currentMonth());
+  const [obName, setObName] = useState("");
+  const [obAmount, setObAmount] = useState("");
+  const [obBranch, setObBranch] = useState<ExpenseBranch | "ყველა">("ყველა");
+  const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
+
+  // Reports
+  const [report, setReport] = useState<PeriodReport | null>(null);
+  const [repFrom, setRepFrom] = useState("");
+  const [repTo, setRepTo] = useState("");
+  const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
+
+  const loadProducts = useCallback(async () => {
+    const res = await fetch("/api/products", { cache: "no-store" });
+    const d = await res.json();
+    if (d.error && !d.products?.length) setError(d.error);
+    if (d.warning) setProductWarning(d.warning);
+    else setProductWarning("");
+    setProductSource(d.source ?? "");
+    setProductsUpdatedAt(d.updatedAt ?? "");
+    const list = (d.products ?? []) as Product[];
+    setProducts(list);
+    setSelected((prev) => {
+      if (!prev) return prev;
+      const fresh = list.find((p) => p.code === prev.code);
+      if (fresh) {
+        setPrice(fresh.price);
+        setSearch(`${fresh.code} — ${fresh.name}`);
+        return fresh;
+      }
+      return prev;
+    });
+    return list;
+  }, []);
+
+  const loadStore = useCallback(async () => {
+    const res = await fetch("/api/store");
+    const data = (await res.json()) as Store;
+    setStore(data);
+    return data;
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const legacy = loadLegacyTransactions();
+      if (legacy.length) {
+        await apiTx("POST", { migrate: legacy });
+        clearLegacyTransactions();
+      }
+      await loadStore();
+      await loadProducts().catch(() => setError("პროდუქტების ჩატვირთვა ვერ მოხერხდა"));
+      setLoading(false);
+    })();
+  }, [loadStore, loadProducts]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadProducts().catch(() => {});
+    }, PRODUCTS_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [loadProducts]);
+
+  const tx = store?.transactions ?? [];
+
+  const filteredProducts = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return products.slice(0, 8);
+    return products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [products, search]);
+
+  const balances = useMemo(() => calcBalances(tx, filter), [tx, filter]);
+  const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && t.paymentStatus === "ბე (ავანსი)"), [tx]);
+  const history = useMemo(() => {
+    const list = filter === "ყველა" ? tx : tx.filter((t) => t.branch === filter || t.branch === "საერთო");
+    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+  }, [tx, filter]);
+
+  const obSummary = useMemo(
+    () => obligationSummary(store?.obligations ?? {}, obMonth, filter),
+    [store?.obligations, obMonth, filter]
+  );
+
+  const branchReports = store?.branchReports ?? [];
+
+  function pickProduct(p: Product) {
+    setSelected(p);
+    setSearch(`${p.code} — ${p.name}`);
+    setPrice(p.price);
+    setQty(1);
+  }
+
+  async function refresh() {
+    const data = await loadStore();
+    return data;
+  }
+
+  async function addSale(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected || qty <= 0 || price <= 0) return;
+    const sale: Sale = {
+      id: uid(),
+      type: "sale",
+      date: new Date().toISOString(),
+      branch: sBranch,
+      productCode: selected.code,
+      productName: selected.name,
+      quantity: qty,
+      unitPrice: price,
+      amount: qty * price,
+      paymentStatus: payStatus,
+      paymentMethod: payMethod,
+      comment: sComment.trim() || `${selected.name} × ${qty}`,
+      source: "admin",
+    };
+    await apiTx("POST", { transaction: sale });
+    await refresh();
+    setSearch("");
+    setSelected(null);
+    setQty(1);
+    setPrice(0);
+    setSComment("");
+  }
+
+  async function addExpense(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(eAmount);
+    if (!amount || amount <= 0) return;
+    const expense: Expense = {
+      id: uid(),
+      type: "expense",
+      date: new Date().toISOString(),
+      branch: eBranch,
+      category,
+      amount,
+      comment: eComment.trim() || category,
+      source: "admin",
+    };
+    await apiTx("POST", { transaction: expense });
+    await refresh();
+    setEAmount("");
+    setEComment("");
+  }
+
+  function deleteTx(id: string) {
+    pin.requestPin(async () => {
+      await apiTx("DELETE", undefined, `?id=${id}&pin=${ADMIN_PIN}`);
+      await refresh();
+    });
+  }
+
+  function deleteReport(reportId: string) {
+    pin.requestPin(async () => {
+      await fetch(`/api/branch?reportId=${reportId}&pin=${ADMIN_PIN}`, { method: "DELETE" });
+      await refresh();
+    });
+  }
+
+  async function addObligation(e: React.FormEvent) {
+    e.preventDefault();
+    const amount = parseFloat(obAmount);
+    if (!obName.trim() || !amount) return;
+    await fetch("/api/obligations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        obligation: { name: obName.trim(), amount, branch: obBranch, category: obCategory, month: obMonth },
+      }),
+    });
+    await refresh();
+    setObName("");
+    setObAmount("");
+  }
+
+  function deleteObligation(id: string) {
+    pin.requestPin(async () => {
+      await fetch(`/api/obligations?id=${id}&month=${obMonth}&pin=${ADMIN_PIN}`, { method: "DELETE" });
+      await refresh();
+    });
+  }
+
+  async function loadReport(mode: string, from?: string, to?: string) {
+    const b = repBranch === "ყველა" ? "ყველა" : repBranch;
+    let url = `/api/reports?mode=${mode}&branch=${encodeURIComponent(b)}`;
+    if (from && to) url += `&from=${from}&to=${to}`;
+    const res = await fetch(url);
+    setReport(await res.json());
+  }
+
+  function txLabel(t: Transaction) {
+    if (t.type === "sale") return `${t.productName} × ${t.quantity}`;
+    return t.category;
+  }
+
+  function txDetail(t: Transaction) {
+    if (t.type === "sale") return `${t.paymentStatus} · ${t.paymentMethod}`;
+    return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
+  }
+
+  function unlockAdmin(pinCode: string) {
+    if (pinCode === ADMIN_PIN) {
+      setUnlocked(true);
+      setPinInput("");
+      return true;
+    }
+    return false;
+  }
+
+  return (
+    <div className="mx-auto min-h-screen max-w-6xl px-4 py-6">
+      <PinModal open={pin.open} onConfirm={pin.confirm} onCancel={pin.cancel} />
+
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">ფინანსური Dashboard</h1>
+          <p className="text-sm text-zinc-500">
+            {loading
+              ? "იტვირთება..."
+              : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className={`${inputCls} w-auto`} value={filter} onChange={(e) => setFilter(e.target.value as Branch | "ყველა")}>
+            <option value="ყველა">ყველა ფილიალი</option>
+            {BRANCHES.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+      </header>
+
+      <nav className="mb-6 flex flex-wrap gap-2">
+        <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
+        <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
+        <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
+        {unlocked ? (
+          <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
+            ვალდებულებები
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              placeholder="კოდი"
+              className={`${inputCls} w-24`}
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && unlockAdmin(pinInput)}
+            />
+            <button type="button" className="text-xs text-zinc-500 hover:text-zinc-300" onClick={() => unlockAdmin(pinInput)}>
+              გახსნა
+            </button>
+          </div>
+        )}
+      </nav>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">{error}</div>
+      )}
+
+      {productWarning && (
+        <div className="mb-4 rounded-lg border border-amber-800 bg-amber-950/50 px-4 py-3 text-sm text-amber-200">
+          {productWarning}
+          <p className="mt-1 text-xs text-amber-400">
+            Google Sheets → გაზიარება → „ინტერნეტზე ყველას“ (მნახველი) ან ფაილი → გამოქვეყნება ვებზე
+          </p>
+        </div>
+      )}
+
+      {tab === "main" && (
+        <>
+          <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+            <Stat label="საერთო ბალანსი" value={formatMoney(balances.total)} accent={balances.total >= 0 ? "text-emerald-400" : "text-red-400"} />
+            <Stat label="შემოსავალი" value={formatMoney(balances.revenue)} accent="text-emerald-400" />
+            <Stat label="ხარჯები" value={formatMoney(balances.expenses)} accent="text-red-400" />
+            <Stat label="ქეში" value={formatMoney(balances.cash)} />
+            <Stat label="ბარათი" value={formatMoney(balances.card)} />
+            <Stat label="ანგარიში" value={formatMoney(balances.bank)} />
+            <Stat label="ბე (ავანსი)" value={formatMoney(balances.credit)} accent="text-amber-400" />
+          </section>
+
+          {unlocked && obSummary.total > 0 && (
+            <section className="mb-6 rounded-xl border border-violet-900/50 bg-violet-950/20 p-4">
+              <h3 className="mb-2 text-sm font-semibold text-violet-300">თვის ვალდებულებები ({obMonth})</h3>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span>სულ: {formatMoney(obSummary.total)}</span>
+                <span className="text-emerald-400">ფარული: {formatMoney(obSummary.paid)}</span>
+                <span className="text-amber-400">დარჩენილი: {formatMoney(obSummary.remaining)}</span>
+              </div>
+            </section>
+          )}
+
+          <div className="mb-6 grid gap-4 lg:grid-cols-2">
+            <form onSubmit={addSale} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <h2 className="mb-4 text-lg font-semibold text-emerald-400">გაყიდვა</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="ფილიალი">
+                  <select className={inputCls} value={sBranch} onChange={(e) => setSBranch(e.target.value as Branch)}>
+                    {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+                <Field label="გადახდის სტატუსი">
+                  <select className={inputCls} value={payStatus} onChange={(e) => setPayStatus(e.target.value as PaymentStatus)}>
+                    {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </Field>
+                <div className="relative sm:col-span-2">
+                  <Field label="პროდუქტი">
+                    <input className={inputCls} value={search} onChange={(e) => { setSearch(e.target.value); setSelected(null); }} placeholder="კოდი ან სახელი..." autoComplete="off" />
+                  </Field>
+                  {search && !selected && filteredProducts.length > 0 && (
+                    <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                      {filteredProducts.map((p) => (
+                        <li key={p.code}>
+                          <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800" onClick={() => pickProduct(p)}>
+                            <span className="text-emerald-400">{p.code}</span> — {p.name}
+                            <span className="float-right text-zinc-500">{formatMoney(p.price)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <Field label="რაოდენობა"><input className={inputCls} type="number" min={1} value={qty} onChange={(e) => setQty(+e.target.value)} /></Field>
+                <Field label="ფასი"><input className={inputCls} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(+e.target.value)} /></Field>
+                <Field label="გადახდის მეთოდი">
+                  <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)} disabled={payStatus === "ბე (ავანსი)"}>
+                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </Field>
+                <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
+                <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={sComment} onChange={(e) => setSComment(e.target.value)} /></Field></div>
+              </div>
+              <button type="submit" className={`${btnCls} mt-4`} disabled={!selected}>დაფიქსირება</button>
+            </form>
+
+            <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <h2 className="mb-4 text-lg font-semibold text-red-400">ხარჯი</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="ფილიალი">
+                  <select className={inputCls} value={eBranch} onChange={(e) => setEBranch(e.target.value as ExpenseBranch)}>
+                    {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+                <Field label="კატეგორია">
+                  <select className={inputCls} value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="თანხა (₾)"><input className={inputCls} type="number" min={0} step={0.01} value={eAmount} onChange={(e) => setEAmount(e.target.value)} required /></Field>
+                <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={eComment} onChange={(e) => setEComment(e.target.value)} placeholder="მაგ: ივანე ხელფასი, ელექტროენერგია..." /></Field></div>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">ხარჯი ავტომატურად ემთხვევა ვალდებულებას კატეგორიით ან სახელით</p>
+              <button type="submit" className={`${btnCls} mt-4 bg-red-600 hover:bg-red-500`}>დაფიქსირება</button>
+            </form>
+          </div>
+
+          {creditTx.length > 0 && (
+            <section className="mb-6 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-amber-400">ბე (ავანსი) — {creditTx.length}</h3>
+              {creditTx.slice(0, 5).map((t) => (
+                <div key={t.id} className="flex justify-between text-sm">
+                  <span>{t.branch} · {t.productName}</span>
+                  <span className="text-amber-400">{formatMoney(t.amount)}</span>
+                </div>
+              ))}
+            </section>
+          )}
+
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <h2 className="mb-4 text-lg font-semibold">ისტორია {unlocked && <span className="text-xs font-normal text-zinc-500">(წაშლა: კოდი 12345)</span>}</h2>
+            {history.length === 0 ? (
+              <p className="text-sm text-zinc-500">ცარიელია</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                      <th className="pb-2 pr-3">დრო</th>
+                      <th className="pb-2 pr-3">ტიპი</th>
+                      <th className="pb-2 pr-3">ფილიალი</th>
+                      <th className="pb-2 pr-3">აღწერა</th>
+                      <th className="pb-2 pr-3">კომენტარი</th>
+                      <th className="pb-2 pr-3 text-right">თანხა</th>
+                      {unlocked && <th className="pb-2" />}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((t) => (
+                      <tr key={t.id} className="border-b border-zinc-800/50">
+                        <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
+                        <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
+                          {t.type === "sale" ? "გაყიდვა" : "ხარჯი"}
+                          {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
+                        </td>
+                        <td className="py-2 pr-3">{t.branch}</td>
+                        <td className="py-2 pr-3">{txLabel(t)}</td>
+                        <td className="py-2 pr-3 text-zinc-500">{t.comment}</td>
+                        <td className={`py-2 pr-3 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
+                          {t.type === "sale" ? "+" : "-"}{formatMoney(t.amount)}
+                        </td>
+                        {unlocked && (
+                          <td className="py-2">
+                            <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => deleteTx(t.id)}>✕</button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {tab === "obligations" && unlocked && (
+        <section className="space-y-6">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="თვე">
+              <input type="month" className={inputCls} value={obMonth} onChange={(e) => setObMonth(e.target.value)} />
+            </Field>
+          </div>
+
+          <form onSubmit={addObligation} className="rounded-xl border border-violet-900/50 bg-violet-950/10 p-5">
+            <h2 className="mb-4 text-lg font-semibold text-violet-300">ახალი ვალდებულება</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="დასახელება"><input className={inputCls} value={obName} onChange={(e) => setObName(e.target.value)} placeholder="მაგ: გიორგი ხელფასი" required /></Field>
+              <Field label="თანხა"><input className={inputCls} type="number" min={0} step={0.01} value={obAmount} onChange={(e) => setObAmount(e.target.value)} required /></Field>
+              <Field label="ფილიალი">
+                <select className={inputCls} value={obBranch} onChange={(e) => setObBranch(e.target.value as ExpenseBranch | "ყველა")}>
+                  <option value="ყველა">ყველა</option>
+                  {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </Field>
+              <Field label="კატეგორია">
+                <select className={inputCls} value={obCategory} onChange={(e) => setObCategory(e.target.value as ExpenseCategory)}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+            </div>
+            <button type="submit" className={`${btnCls} mt-4`}>დამატება</button>
+          </form>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Stat label="თვის ვალდებულება" value={formatMoney(obSummary.total)} />
+            <Stat label="ფარული" value={formatMoney(obSummary.paid)} accent="text-emerald-400" />
+            <Stat label="დარჩენილი" value={formatMoney(obSummary.remaining)} accent="text-amber-400" />
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <h3 className="mb-4 font-semibold">სია</h3>
+            {obSummary.items.length === 0 ? (
+              <p className="text-sm text-zinc-500">ვალდებულებები არ არის დამატებული</p>
+            ) : (
+              <div className="space-y-3">
+                {obSummary.items.map((o: Obligation) => {
+                  const pct = o.amount ? Math.round((o.paid / o.amount) * 100) : 0;
+                  return (
+                    <div key={o.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                      <div className="mb-2 flex justify-between">
+                        <span className="font-medium">{o.name}</span>
+                        <button type="button" className="text-xs text-red-400" onClick={() => deleteObligation(o.id)}>წაშლა</button>
+                      </div>
+                      <div className="mb-1 flex justify-between text-sm text-zinc-400">
+                        <span>{o.branch} · {o.category}</span>
+                        <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                        <div className="h-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {tab === "reports" && (
+        <section className="space-y-6">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={btnCls} onClick={() => loadReport("today")}>დღევანდელი</button>
+            <button type="button" className={btnCls} onClick={() => loadReport("month")}>მიმდინარე თვე</button>
+          </div>
+          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-800 p-4">
+            <Field label="დან"><input type="date" className={inputCls} value={repFrom} onChange={(e) => setRepFrom(e.target.value)} /></Field>
+            <Field label="მდე"><input type="date" className={inputCls} value={repTo} onChange={(e) => setRepTo(e.target.value)} /></Field>
+            <Field label="ფილიალი">
+              <select className={inputCls} value={repBranch} onChange={(e) => setRepBranch(e.target.value as Branch | "ყველა")}>
+                <option value="ყველა">ყველა</option>
+                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </Field>
+            <button type="button" className={btnCls} disabled={!repFrom || !repTo} onClick={() => loadReport("period", repFrom, repTo)}>პერიოდი</button>
+          </div>
+
+          {report && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <h3 className="mb-4 font-semibold">
+                {report.from === report.to ? report.from : `${report.from} — ${report.to}`} · {report.branch}
+              </h3>
+              <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
+                <Stat label="ხარჯები" value={formatMoney(report.expenses)} accent="text-red-400" />
+                <Stat label="ნეტო" value={formatMoney(report.net)} accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"} />
+                <Stat label="ვალდ. ფარული" value={formatMoney(report.obligationPaid)} accent="text-violet-300" />
+                <Stat label="ვალდ. დარჩენილი" value={formatMoney(report.obligationRemaining)} accent="text-amber-400" />
+              </div>
+              {report.days.length > 0 && (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                      <th className="pb-2 pr-4">დღე</th>
+                      <th className="pb-2 pr-4 text-right">შემოსავალი</th>
+                      <th className="pb-2 pr-4 text-right">ხარჯი</th>
+                      <th className="pb-2 text-right">ნეტო</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.days.map((d) => (
+                      <tr key={d.date} className="border-b border-zinc-800/50">
+                        <td className="py-2 pr-4">{d.date}</td>
+                        <td className="py-2 pr-4 text-right text-emerald-400">{formatMoney(d.revenue)}</td>
+                        <td className="py-2 pr-4 text-right text-red-400">{formatMoney(d.expenses)}</td>
+                        <td className={`py-2 text-right ${d.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(d.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === "branches" && store && (
+        <section className="space-y-6">
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
+            <p className="mb-2 text-sm text-zinc-500">ადმინ პანელი: <code className="text-emerald-400">{env.appUrl || (typeof window !== "undefined" ? window.location.origin : "")}</code></p>
+            <p className="mb-4 text-sm text-zinc-500">გაუგზავნეთ თითოეულ ფილიალს თავისი ლინკი. დღის ბოლოს შეავსებენ ანგარიშს.</p>
+            {BRANCHES.map((b) => {
+              const link = branchLink(store.branchTokens[b]);
+              return (
+              <div key={b} className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <p className="font-medium">{b}</p>
+                  <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => navigator.clipboard.writeText(link)}>კოპირება</button>
+                </div>
+                <code className="block break-all text-xs text-emerald-400">{link}</code>
+              </div>
+            );})}
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <h2 className="mb-4 font-semibold">ფილიალის ანგარიშები {unlocked && <span className="text-xs text-zinc-500">(წაშლა კოდით)</span>}</h2>
+            {branchReports.length === 0 ? (
+              <p className="text-sm text-zinc-500">ჯერ არ არის მიღებული</p>
+            ) : (
+              <div className="space-y-3">
+                {branchReports.map((r: BranchDailyReport) => (
+                  <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
+                    <div className="mb-2 flex justify-between">
+                      <span className="font-medium">{r.branch} · {r.date}</span>
+                      <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
+                    </div>
+                    {r.sales?.length ? (
+                      <div className="mb-2 space-y-1">
+                        {r.sales.map((s, i) => (
+                          <p key={i} className="text-emerald-400">
+                            +{formatMoney(s.amount)} — {s.productName} ×{s.quantity} · {s.paymentMethod}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-emerald-400">+{formatMoney(r.salesTotal)} — {r.salesNote}</p>
+                    )}
+                    {r.expenses?.length ? (
+                      <div className="space-y-1">
+                        {r.expenses.map((ex, i) => (
+                          <p key={i} className="text-red-400">
+                            -{formatMoney(ex.amount)} — {ex.category}: {ex.comment} · {ex.paymentMethod}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-red-400">-{formatMoney(r.expensesTotal)} — {r.expensesNote}</p>
+                    )}
+                    {unlocked && (
+                      <button type="button" className="mt-2 text-xs text-red-400 hover:text-red-300" onClick={() => deleteReport(r.id)}>
+                        წაშლა (ხელახლა შეავსონ)
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
