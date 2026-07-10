@@ -3,10 +3,12 @@ import type {
   Branch,
   BranchCash,
   BranchInventory,
+  CreditPayment,
   Expense,
   ExpenseBranch,
   Obligation,
   ObligationPayment,
+  PaymentMethod,
   RecurringObligation,
   Sale,
   Store,
@@ -95,8 +97,11 @@ export function calcBalances(
     if (!matchBranch(t.branch, branch)) continue;
     if (t.type === "sale") {
       b.revenue += t.amount;
-      if (t.paymentStatus === "ბე (ავანსი)") b.credit += t.amount;
-      else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
+      if (t.paymentStatus === "ბე (ავანსი)") {
+        const paid = t.creditPaid ?? 0;
+        const left = Math.max(0, t.amount - paid);
+        if (!t.creditCompletedAt) b.credit += left;
+      } else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
       else if (t.paymentMethod === "ბარათი") b.card += t.amount;
       else b.bank += t.amount;
     } else {
@@ -142,6 +147,68 @@ export function paymentsForObligation(store: Store, obligationId: string) {
   return (store.obligationPayments ?? [])
     .filter((p) => p.obligationId === obligationId)
     .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+}
+
+export function paymentsForSale(store: Store, saleId: string) {
+  return (store.creditPayments ?? [])
+    .filter((p) => p.saleId === saleId)
+    .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+}
+
+export function saleCreditPaid(sale: Sale) {
+  return sale.creditPaid ?? 0;
+}
+
+export function saleCreditRemaining(sale: Sale) {
+  return Math.max(0, sale.amount - saleCreditPaid(sale));
+}
+
+export function isSaleCreditOpen(sale: Sale) {
+  return sale.paymentStatus === "ბე (ავანსი)" && !sale.creditCompletedAt && saleCreditRemaining(sale) > 0;
+}
+
+export function isSaleCreditComplete(sale: Sale) {
+  return Boolean(sale.creditCompletedAt) || saleCreditRemaining(sale) <= 0;
+}
+
+export function applyCreditPayment(
+  store: Store,
+  saleId: string,
+  amount: number,
+  note?: string,
+  paymentMethod?: PaymentMethod
+) {
+  if (!store.creditPayments) store.creditPayments = [];
+  const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
+  if (!sale) throw new Error("შეკვეთა ვერ მოიძებნა");
+  if (sale.paymentStatus !== "ბე (ავანსი)") throw new Error("ეს არ არის ბე შეკვეთა");
+
+  const remaining = saleCreditRemaining(sale);
+  const pay = Math.min(amount, remaining);
+  if (pay <= 0) throw new Error("შეკვეთა უკვე სრულადაა გადახდილი");
+
+  sale.creditPaid = saleCreditPaid(sale) + pay;
+  const payment: CreditPayment = {
+    id: uid(),
+    saleId,
+    amount: pay,
+    paidAt: new Date().toISOString(),
+    note,
+    paymentMethod,
+  };
+  store.creditPayments.push(payment);
+
+  if (saleCreditRemaining(sale) <= 0) {
+    sale.creditCompletedAt = payment.paidAt;
+    sale.paymentStatus = "სრულად გადახდილი";
+  }
+
+  return payment;
+}
+
+export function reverseCreditPayments(store: Store, saleId: string) {
+  if (!store.creditPayments) return;
+  store.creditPayments = store.creditPayments.filter((p) => p.saleId !== saleId);
 }
 
 export function applyExpenseToObligations(

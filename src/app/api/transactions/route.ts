@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, uid } from "@/lib/utils";
+import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditPayments, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
-import type { Expense, Sale, Transaction } from "@/lib/types";
+import type { CreditPayment, Expense, Sale, Transaction } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +22,24 @@ export async function POST(req: NextRequest) {
       if (t.type === "expense") {
         applyExpenseToStore(s, t as Expense);
       } else {
-        s.inventory = applySaleToStock(s.inventory, t as Sale, -1);
+        const sale = t as Sale;
+        s.inventory = applySaleToStock(s.inventory, sale, -1);
+        if (sale.paymentStatus === "ბე (ავანსი)" && (sale.creditPaid ?? 0) > 0) {
+          if (!s.creditPayments) s.creditPayments = [];
+          const initial: CreditPayment = {
+            id: uid(),
+            saleId: sale.id,
+            amount: sale.creditPaid!,
+            paidAt: sale.date,
+            note: sale.buyerName ? `ავანსი — ${sale.buyerName}` : "საწყისი ავანსი",
+            paymentMethod: sale.paymentMethod,
+          };
+          s.creditPayments.push(initial);
+          if (sale.creditPaid! >= sale.amount) {
+            sale.creditCompletedAt = sale.date;
+            sale.paymentStatus = "სრულად გადახდილი";
+          }
+        }
       }
 
       s.transactions = [t, ...s.transactions];
@@ -56,8 +73,10 @@ export async function DELETE(req: NextRequest) {
       if (reportId) {
         const removed = s.transactions.filter((t) => t.reportId === reportId);
         for (const t of removed) {
-          if (t.type === "sale") s.inventory = applySaleToStock(s.inventory, t, 1);
-          else reverseExpenseObligation(s, t);
+          if (t.type === "sale") {
+            s.inventory = applySaleToStock(s.inventory, t, 1);
+            reverseCreditPayments(s, t.id);
+          } else reverseExpenseObligation(s, t);
         }
         s.transactions = s.transactions.filter((t) => t.reportId !== reportId);
         s.branchReports = s.branchReports.filter((r) => r.id !== reportId);
@@ -71,6 +90,7 @@ export async function DELETE(req: NextRequest) {
 
       if (removed?.type === "sale") {
         s.inventory = applySaleToStock(s.inventory, removed, 1);
+        reverseCreditPayments(s, removed.id);
       }
 
       if (removed?.type === "expense") {

@@ -29,6 +29,22 @@ export interface Sale {
   comment: string;
   source?: TxSource;
   reportId?: string;
+  /** მყიდველი / კომპანია (ბე შეკვეთისას) */
+  buyerName?: string;
+  /** უკვე გადახდილი თანხა (ავანსი + ნაწილობრივი გადახდები) */
+  creditPaid?: number;
+  /** სრულად გადახდის დრო */
+  creditCompletedAt?: string;
+}
+
+/** ბე შეკვეთის გადახდის ისტორია */
+export interface CreditPayment {
+  id: string;
+  saleId: string;
+  amount: number;
+  paidAt: string;
+  note?: string;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface Expense {
@@ -125,6 +141,7 @@ export interface Store {
   branchCash: Record<Branch, BranchCash>;
   recurringObligations: RecurringObligation[];
   obligationPayments: ObligationPayment[];
+  creditPayments: CreditPayment[];
 }
 
 export interface Balances {

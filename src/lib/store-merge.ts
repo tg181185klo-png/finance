@@ -41,6 +41,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     branchCash: mergeBranchCash(data.branchCash),
     recurringObligations: data.recurringObligations ?? [],
     obligationPayments: data.obligationPayments ?? [],
+    creditPayments: data.creditPayments ?? [],
   };
 }
 

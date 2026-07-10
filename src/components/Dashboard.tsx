@@ -34,7 +34,12 @@ import {
   getStock,
   loadLegacyTransactions,
   paymentsForObligation,
+  paymentsForSale,
   obligationSummary,
+  saleCreditPaid,
+  saleCreditRemaining,
+  isSaleCreditComplete,
+  isSaleCreditOpen,
   uid,
 } from "@/lib/utils";
 import { PinModal, usePin } from "@/components/PinModal";
@@ -129,6 +134,9 @@ export default function Dashboard() {
   const [payStatus, setPayStatus] = useState<PaymentStatus>("სრულად გადახდილი");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
   const [sComment, setSComment] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [creditAdvance, setCreditAdvance] = useState("");
+  const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
 
   // Expense form
   const [eBranch, setEBranch] = useState<ExpenseBranch>("საერთო");
@@ -279,7 +287,9 @@ export default function Dashboard() {
     () => calcBalances(tx, filter, activeStore.branchCash),
     [tx, filter, activeStore.branchCash]
   );
-  const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && t.paymentStatus === "ბე (ავანსი)"), [tx]);
+  const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && (t.paymentStatus === "ბე (ავანსი)" || (t.creditPaid ?? 0) > 0 || Boolean(t.creditCompletedAt))), [tx]);
+  const openCreditOrders = useMemo(() => creditTx.filter((t) => isSaleCreditOpen(t)), [creditTx]);
+  const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
   const history = useMemo(() => {
     const list = filter === "ყველა" ? tx : tx.filter((t) => t.branch === filter || t.branch === "საერთო");
     return [...list].sort((a, b) => b.date.localeCompare(a.date));
@@ -457,6 +467,8 @@ export default function Dashboard() {
   async function addSale(e: React.FormEvent) {
     e.preventDefault();
     if (!selected || qty <= 0 || price <= 0) return;
+    const total = qty * price;
+    const advance = payStatus === "ბე (ავანსი)" ? parseFloat(creditAdvance) || 0 : 0;
     const sale: Sale = {
       id: uid(),
       type: "sale",
@@ -466,11 +478,13 @@ export default function Dashboard() {
       productName: selected.name,
       quantity: qty,
       unitPrice: price,
-      amount: qty * price,
+      amount: total,
       paymentStatus: payStatus,
       paymentMethod: payMethod,
       comment: sComment.trim() || `${selected.name} × ${qty}`,
       source: "admin",
+      buyerName: payStatus === "ბე (ავანსი)" ? buyerName.trim() || undefined : undefined,
+      creditPaid: payStatus === "ბე (ავანსი)" ? advance : undefined,
     };
     try {
       const data = await apiTx("POST", { transaction: sale });
@@ -489,6 +503,8 @@ export default function Dashboard() {
       setQty(1);
       setPrice(0);
       setSComment("");
+      setBuyerName("");
+      setCreditAdvance("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "გაყიდვა ვერ შეინახა");
     }
@@ -525,6 +541,36 @@ export default function Dashboard() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "ხარჯი ვერ შეინახა");
     }
+  }
+
+  function addCreditPayment(saleId: string) {
+    const amount = parseFloat(creditPayInputs[saleId] ?? "");
+    if (!amount || amount <= 0) return;
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/credit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: pinCode, saleId, amount }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) =>
+          prev
+            ? {
+                ...prev,
+                transactions: d.transactions ?? prev.transactions,
+                creditPayments: d.creditPayments ?? prev.creditPayments,
+              }
+            : prev
+        );
+        setCreditPayInputs((m) => ({ ...m, [saleId]: "" }));
+        setSaveMsg(isSaleCreditComplete(d.sale) ? "შეკვეთა სრულად გადახდილია ✓" : "გადახდა დაფიქსირდა ✓");
+        setError("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
   }
 
   function deleteTx(id: string) {
@@ -621,7 +667,13 @@ export default function Dashboard() {
   }
 
   function txDetail(t: Transaction) {
-    if (t.type === "sale") return `${t.paymentStatus} · ${t.paymentMethod}`;
+    if (t.type === "sale") {
+      if (t.paymentStatus === "ბე (ავანსი)" || (t.creditPaid ?? 0) > 0) {
+        const left = saleCreditRemaining(t);
+        return left > 0 ? `ბე · დარჩენილი ${formatMoney(left)}` : "ბე · დასრულებული ✓";
+      }
+      return `${t.paymentStatus} · ${t.paymentMethod}`;
+    }
     return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
   }
 
@@ -723,7 +775,7 @@ export default function Dashboard() {
             <Stat label="ქეში" value={formatMoney(balances.cash)} />
             <Stat label="ბარათი" value={formatMoney(balances.card)} />
             <Stat label="ანგარიში" value={formatMoney(balances.bank)} />
-            <Stat label="ბე (ავანსი)" value={formatMoney(balances.credit)} accent="text-amber-400" />
+            <Stat label="ბე (დარჩენილი)" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
 
           {unlocked && obSummary.total > 0 && (
@@ -784,6 +836,19 @@ export default function Dashboard() {
                   </select>
                 </Field>
                 <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
+                {payStatus === "ბე (ავანსი)" && (
+                  <>
+                    <Field label="მყიდველი / კომპანია">
+                      <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="მაგ: კომპანიის სახელი" />
+                    </Field>
+                    <Field label="ავანსი / ბე (₾)">
+                      <input className={inputCls} type="number" min={0} step={0.01} value={creditAdvance} onChange={(e) => setCreditAdvance(e.target.value)} placeholder="მაგ: 15975" />
+                    </Field>
+                    <div className="sm:col-span-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                      შეკვეთის ჯამი: {formatMoney(qty * price)} · ავანსი: {formatMoney(parseFloat(creditAdvance) || 0)} · დარჩენილი: {formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))}
+                    </div>
+                  </>
+                )}
                 <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={sComment} onChange={(e) => setSComment(e.target.value)} /></Field></div>
               </div>
               <button type="submit" className={`${btnCls} mt-4`} disabled={!selected}>დაფიქსირება</button>
@@ -811,14 +876,76 @@ export default function Dashboard() {
           </div>
 
           {creditTx.length > 0 && (
-            <section className="mb-6 rounded-xl border border-amber-900/50 bg-amber-950/20 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-amber-400">ბე (ავანსი) — {creditTx.length}</h3>
-              {creditTx.slice(0, 5).map((t) => (
-                <div key={t.id} className="flex justify-between text-sm">
-                  <span>{t.branch} · {t.productName}</span>
-                  <span className="text-amber-400">{formatMoney(t.amount)}</span>
-                </div>
-              ))}
+            <section className="mb-6 space-y-3">
+              <h3 className="text-sm font-semibold text-amber-400">
+                ბე შეკვეთები — {openCreditOrders.length} აქტიური · დარჩენილი {formatMoney(creditRemainingTotal)}
+              </h3>
+              {creditTx.map((sale) => {
+                const paid = saleCreditPaid(sale);
+                const left = saleCreditRemaining(sale);
+                const done = isSaleCreditComplete(sale);
+                const pct = sale.amount ? Math.min(100, Math.round((paid / sale.amount) * 100)) : 0;
+                const payments = activeStore.creditPayments ? paymentsForSale(activeStore, sale.id) : [];
+                return (
+                  <div
+                    key={sale.id}
+                    className={`rounded-xl border p-4 ${done ? "border-emerald-700/60 bg-emerald-950/30" : "border-amber-900/50 bg-amber-950/20"}`}
+                  >
+                    <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-medium ${done ? "text-emerald-300" : "text-amber-200"}`}>
+                          {sale.buyerName || sale.comment}
+                          {done && <span className="ml-2 text-xs text-emerald-400">✓ შეკვეთა დასრულდა</span>}
+                        </p>
+                        <p className="text-sm text-zinc-400">
+                          {sale.branch} · {sale.productName} × {sale.quantity} · {formatMoney(sale.unitPrice)}/ც
+                        </p>
+                      </div>
+                      <div className="text-right text-sm">
+                        <p className={done ? "text-emerald-400" : "text-amber-400"}>{formatMoney(paid)} / {formatMoney(sale.amount)}</p>
+                        {!done && <p className="text-xs text-zinc-500">დარჩენილი: {formatMoney(left)}</p>}
+                      </div>
+                    </div>
+                    <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className={`h-full transition-all ${done ? "bg-emerald-500" : "bg-amber-500"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    {payments.length > 0 && (
+                      <div className="mb-2 border-t border-zinc-800/80 pt-2">
+                        <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
+                        {payments.map((p) => (
+                          <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
+                            <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
+                            <span>+{formatMoney(p.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!done && unlocked && (
+                      <div className="flex flex-wrap items-end gap-2 border-t border-zinc-800/80 pt-3">
+                        <div className="min-w-[140px] flex-1">
+                          <label className={labelCls}>ჩარიცხვა (₾)</label>
+                          <input
+                            className={inputCls}
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            max={left}
+                            value={creditPayInputs[sale.id] ?? ""}
+                            onChange={(e) => setCreditPayInputs((m) => ({ ...m, [sale.id]: e.target.value }))}
+                            placeholder={`მაქს ${left}`}
+                          />
+                        </div>
+                        <button type="button" className={btnCls} onClick={() => addCreditPayment(sale.id)}>
+                          დამატება
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </section>
           )}
 
