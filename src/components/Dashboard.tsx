@@ -93,21 +93,9 @@ async function verifyPin(pin: string) {
   return res.ok && data.ok;
 }
 
-async function saveInventory(body: object) {
-  const pin = getSessionPin();
-  if (!pin) throw new Error("გახსენით ადმინი PIN კოდით");
-  const res = await fetch("/api/inventory", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, pin }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "შენახვა ვერ მოხერხდა");
-  return data as { inventory?: Store["inventory"]; branchCash?: Store["branchCash"] };
-}
-
 export default function Dashboard() {
   const pin = usePin();
+  const adminPinRef = useRef("");
   const [unlocked, setUnlocked] = useState(false);
   const [tab, setTab] = useState<Tab>("main");
   const [store, setStore] = useState<Store | null>(null);
@@ -161,6 +149,38 @@ export default function Dashboard() {
   const [cashForm, setCashForm] = useState<BranchCash>({ cash: 0, card: 0, bank: 0 });
   const [invFilter, setInvFilter] = useState<Branch | "ყველა">("ყველა");
 
+  function getAdminPin() {
+    return adminPinRef.current || getSessionPin();
+  }
+
+  function rememberPin(pinCode: string) {
+    adminPinRef.current = pinCode;
+    setSessionPin(pinCode);
+    setUnlocked(true);
+  }
+
+  function runWithPin(action: (pinCode: string) => void | Promise<void>) {
+    const saved = getAdminPin();
+    if (unlocked && saved) {
+      void action(saved);
+      return;
+    }
+    pin.requestPin(action);
+  }
+
+  const saveInventory = useCallback(async (body: object) => {
+    const pinCode = getAdminPin();
+    if (!pinCode) throw new Error("გახსენით ადმინი PIN კოდით");
+    const res = await fetch("/api/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, pin: pinCode }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "შენახვა ვერ მოხერხდა");
+    return data as { inventory?: Store["inventory"]; branchCash?: Store["branchCash"] };
+  }, []);
+
   const loadProducts = useCallback(async () => {
     const res = await fetch("/api/products", { cache: "no-store" });
     const d = await res.json();
@@ -201,7 +221,7 @@ export default function Dashboard() {
       await loadStore();
       await loadProducts().catch(() => setError("პროდუქტების ჩატვირთვა ვერ მოხერხდა"));
       const savedPin = getSessionPin();
-      if (savedPin && (await verifyPin(savedPin))) setUnlocked(true);
+      if (savedPin && (await verifyPin(savedPin))) rememberPin(savedPin);
       else clearSessionPin();
       setLoading(false);
     })();
@@ -277,7 +297,7 @@ export default function Dashboard() {
   }, [store?.branchCash, invBranch]);
 
   useEffect(() => {
-    if (!unlocked) return;
+    if (!unlocked || !getAdminPin()) return;
     if (skipCashAutoSave.current) {
       skipCashAutoSave.current = false;
       return;
@@ -301,7 +321,7 @@ export default function Dashboard() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [cashForm, invBranch, unlocked]);
+  }, [cashForm, invBranch, unlocked, saveInventory]);
 
   useEffect(() => {
     if (!unlocked || !invSelected) return;
@@ -329,7 +349,7 @@ export default function Dashboard() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [invQty, invBranch, invSelected, unlocked]);
+  }, [invQty, invBranch, invSelected, unlocked, saveInventory]);
 
   async function setStock(e: React.FormEvent) {
     e.preventDefault();
@@ -467,7 +487,7 @@ export default function Dashboard() {
   }
 
   function deleteTx(id: string) {
-    pin.requestPin(async (pinCode) => {
+    runWithPin(async (pinCode) => {
       try {
         await apiTx("DELETE", undefined, `?id=${id}&pin=${encodeURIComponent(pinCode)}`);
         await refresh();
@@ -479,7 +499,7 @@ export default function Dashboard() {
   }
 
   function deleteReport(reportId: string) {
-    pin.requestPin(async (pinCode) => {
+    runWithPin(async (pinCode) => {
       try {
         const res = await fetch(`/api/branch?reportId=${reportId}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
         const d = await res.json();
@@ -517,7 +537,7 @@ export default function Dashboard() {
   }
 
   function deleteRecurring(recurringId: string) {
-    pin.requestPin(async (pinCode) => {
+    runWithPin(async (pinCode) => {
       try {
         const res = await fetch(
           `/api/obligations?recurringId=${recurringId}&pin=${encodeURIComponent(pinCode)}`,
@@ -534,7 +554,7 @@ export default function Dashboard() {
   }
 
   function deleteObligation(id: string) {
-    pin.requestPin(async (pinCode) => {
+    runWithPin(async (pinCode) => {
       try {
         const res = await fetch(`/api/obligations?id=${id}&month=${obMonth}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
         const d = await res.json();
@@ -567,8 +587,7 @@ export default function Dashboard() {
   async function unlockAdmin(pinCode: string) {
     const ok = await verifyPin(pinCode);
     if (ok) {
-      setSessionPin(pinCode);
-      setUnlocked(true);
+      rememberPin(pinCode);
       setPinInput("");
       return true;
     }
@@ -577,8 +596,10 @@ export default function Dashboard() {
 
   async function handlePinConfirm(pinCode: string) {
     const ok = await verifyPin(pinCode);
-    if (ok) setSessionPin(pinCode);
-    return ok;
+    if (!ok) return false;
+    rememberPin(pinCode);
+    await pin.flushPending(pinCode);
+    return true;
   }
 
   return (
@@ -757,7 +778,7 @@ export default function Dashboard() {
           )}
 
           <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-            <h2 className="mb-4 text-lg font-semibold">ისტორია {unlocked && <span className="text-xs font-normal text-zinc-500">(წაშლა: კოდი 12345)</span>}</h2>
+            <h2 className="mb-4 text-lg font-semibold">ისტორია {unlocked && <span className="text-xs font-normal text-zinc-500">(წაშლა ერთი PIN-ით სესიაში)</span>}</h2>
             {history.length === 0 ? (
               <p className="text-sm text-zinc-500">ცარიელია</p>
             ) : (

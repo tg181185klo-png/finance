@@ -1,33 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 
+type PinAction = (pin: string) => void | Promise<void>;
+
 export function usePin() {
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<((pin: string) => void) | null>(null);
+  const pendingRef = useRef<PinAction | null>(null);
 
-  function requestPin(onOk: (pin: string) => void) {
-    setPending(() => onOk);
+  const requestPin = useCallback((onOk: PinAction) => {
+    pendingRef.current = onOk;
     setOpen(true);
-  }
+  }, []);
 
-  async function confirm(pin: string, verify: (pin: string) => Promise<boolean>) {
-    const ok = await verify(pin);
-    if (!ok) return false;
-    pending?.(pin);
+  const flushPending = useCallback(async (pin: string) => {
+    const action = pendingRef.current;
+    pendingRef.current = null;
     setOpen(false);
-    setPending(null);
-    return true;
-  }
+    if (action) await action(pin);
+  }, []);
 
-  function cancel() {
+  const cancel = useCallback(() => {
+    pendingRef.current = null;
     setOpen(false);
-    setPending(null);
-  }
+  }, []);
 
-  return { open, requestPin, confirm, cancel };
+  return { open, requestPin, flushPending, cancel };
 }
 
 export function PinModal({
@@ -50,8 +50,12 @@ export function PinModal({
     setErr(false);
     const ok = await onConfirm(pin);
     setBusy(false);
-    if (ok) setPin("");
-    else setErr(true);
+    if (ok) {
+      setPin("");
+      setErr(false);
+    } else {
+      setErr(true);
+    }
   }
 
   return (
