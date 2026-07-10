@@ -2,11 +2,14 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { head, put } from "@vercel/blob";
 import type { PutCommandOptions } from "@vercel/blob";
-import type { Branch, BranchCash, BranchInventory, Store } from "./types";
+import type { Branch, Store } from "./types";
 import { BRANCHES } from "./constants";
-import { emptyBranchCash, emptyInventory, ensureMonthObligations, currentMonth } from "./utils";
+import { ensureMonthObligations, currentMonth } from "./utils";
 import { env } from "./env";
 import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
+import { mergeStore } from "./store-merge";
+
+export { mergeStore } from "./store-merge";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
@@ -18,55 +21,7 @@ function hasBlobStorage() {
   );
 }
 
-export const DEFAULT_STORE: Store = {
-  transactions: [],
-  obligations: {},
-  branchTokens: {
-    ქუთაისი: "kut-a8f3",
-    ლილო: "lil-b2c9",
-    დიღომი: "dig-c5e1",
-  },
-  branchReports: [],
-  inventory: emptyInventory(),
-  branchCash: {
-    ქუთაისი: emptyBranchCash(),
-    ლილო: emptyBranchCash(),
-    დიღომი: emptyBranchCash(),
-  },
-  recurringObligations: [],
-  obligationPayments: [],
-};
-
-function mergeBranchCash(data?: Partial<Record<Branch, BranchCash>>): Record<Branch, BranchCash> {
-  const base = DEFAULT_STORE.branchCash;
-  const out = { ...base };
-  for (const b of BRANCHES) {
-    out[b] = { ...base[b], ...data?.[b] };
-  }
-  return out;
-}
-
-function mergeInventory(data?: Partial<Record<Branch, BranchInventory>>): Record<Branch, BranchInventory> {
-  const base = emptyInventory();
-  const out = { ...base };
-  for (const b of BRANCHES) {
-    out[b] = { ...base[b], ...data?.[b] };
-  }
-  return out;
-}
-
-function mergeStore(data: Partial<Store>): Store {
-  return {
-    ...DEFAULT_STORE,
-    ...data,
-    branchTokens: { ...DEFAULT_STORE.branchTokens, ...data.branchTokens },
-    branchReports: data.branchReports ?? [],
-    inventory: mergeInventory(data.inventory),
-    branchCash: mergeBranchCash(data.branchCash),
-    recurringObligations: data.recurringObligations ?? [],
-    obligationPayments: data.obligationPayments ?? [],
-  };
-}
+export const DEFAULT_STORE: Store = mergeStore({});
 
 async function loadStoreRaw(): Promise<Store | null> {
   if (hasPostgres()) {
@@ -89,8 +44,12 @@ async function loadStoreRaw(): Promise<Store | null> {
 
 async function persistStore(store: Store) {
   if (hasPostgres()) {
-    await writeToPostgres(store);
-    return;
+    try {
+      await writeToPostgres(store);
+      return;
+    } catch {
+      if (!hasBlobStorage()) throw new Error("Postgres write failed and Blob is not configured");
+    }
   }
   if (hasBlobStorage()) {
     await writeToBlob(store);
@@ -166,10 +125,20 @@ export async function readStore(): Promise<Store> {
   }
 
   if (!loaded) {
-    await persistStore(store);
+    try {
+      await persistStore(store);
+    } catch {
+      // Storage may be read-only or misconfigured — still return defaults for UI
+    }
     return store;
   }
-  if (changed) await persistStore(store);
+  if (changed) {
+    try {
+      await persistStore(store);
+    } catch {
+      // Obligation sync failed to persist — return in-memory store anyway
+    }
+  }
   return store;
 }
 

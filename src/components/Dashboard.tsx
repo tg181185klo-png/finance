@@ -39,6 +39,7 @@ import {
 } from "@/lib/utils";
 import { PinModal, usePin } from "@/components/PinModal";
 import { clearSessionPin, getSessionPin, setSessionPin } from "@/lib/pin-session";
+import { mergeStore, isStorePayload } from "@/lib/store-merge";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
@@ -106,6 +107,7 @@ export default function Dashboard() {
   const [unlocked, setUnlocked] = useState(false);
   const [tab, setTab] = useState<Tab>("main");
   const [store, setStore] = useState<Store | null>(null);
+  const [storeWarning, setStoreWarning] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [productSource, setProductSource] = useState("");
   const [productWarning, setProductWarning] = useState("");
@@ -213,10 +215,24 @@ export default function Dashboard() {
   }, []);
 
   const loadStore = useCallback(async () => {
-    const res = await fetch("/api/store", { cache: "no-store" });
-    const data = (await res.json()) as Store;
-    setStore(data);
-    return data;
+    try {
+      const res = await fetch("/api/store", { cache: "no-store" });
+      const raw = await res.json();
+      const warning = typeof raw._loadWarning === "string" ? raw._loadWarning : "";
+      const { _loadWarning: _, ...payload } = raw;
+      if (!res.ok && !isStorePayload(payload)) {
+        throw new Error(raw.error || "მონაცემების ჩატვირთვა ვერ მოხერხდა");
+      }
+      const data = mergeStore(isStorePayload(payload) ? payload : {});
+      setStore(data);
+      setStoreWarning(warning);
+      return data;
+    } catch (e) {
+      const fallback = mergeStore({});
+      setStore(fallback);
+      setStoreWarning(e instanceof Error ? e.message : "მონაცემების ჩატვირთვა ვერ მოხერხდა");
+      return fallback;
+    }
   }, []);
 
   useEffect(() => {
@@ -242,7 +258,16 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [loadProducts]);
 
-  const tx = store?.transactions ?? [];
+  useEffect(() => {
+    if (tab !== "inventory" && tab !== "branches") return;
+    const id = setInterval(() => {
+      loadStore().catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [tab, loadStore]);
+
+  const activeStore = store ?? mergeStore({});
+  const tx = activeStore.transactions;
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -251,8 +276,8 @@ export default function Dashboard() {
   }, [products, search]);
 
   const balances = useMemo(
-    () => calcBalances(tx, filter, store?.branchCash),
-    [tx, filter, store?.branchCash]
+    () => calcBalances(tx, filter, activeStore.branchCash),
+    [tx, filter, activeStore.branchCash]
   );
   const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && t.paymentStatus === "ბე (ავანსი)"), [tx]);
   const history = useMemo(() => {
@@ -261,18 +286,18 @@ export default function Dashboard() {
   }, [tx, filter]);
 
   const obSummary = useMemo(
-    () => obligationSummary(store?.obligations ?? {}, obMonth, filter),
-    [store?.obligations, obMonth, filter]
+    () => obligationSummary(activeStore.obligations, obMonth, filter),
+    [activeStore.obligations, obMonth, filter]
   );
 
-  const recurringList = store?.recurringObligations ?? [];
+  const recurringList = activeStore.recurringObligations;
 
   useEffect(() => {
     if (unlocked && tab === "obligations") refresh();
   }, [obMonth, unlocked, tab]);
 
-  const branchReports = store?.branchReports ?? [];
-  const inventory = store?.inventory ?? { ქუთაისი: {}, ლილო: {}, დიღომი: {} };
+  const branchReports = activeStore.branchReports;
+  const inventory = activeStore.inventory;
 
   const inventoryRows = useMemo(() => {
     const codes = new Set<string>();
@@ -298,11 +323,11 @@ export default function Dashboard() {
   }, [products, invSearch]);
 
   useEffect(() => {
-    if (store?.branchCash) {
-      setCashForm(store.branchCash[invBranch] ?? emptyBranchCash());
+    if (activeStore.branchCash) {
+      setCashForm(activeStore.branchCash[invBranch] ?? emptyBranchCash());
       skipCashAutoSave.current = true;
     }
-  }, [store?.branchCash, invBranch]);
+  }, [activeStore.branchCash, invBranch]);
 
   useEffect(() => {
     if (!unlocked || !getAdminPin()) return;
@@ -674,6 +699,12 @@ export default function Dashboard() {
         <div className="mb-4 rounded-lg border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">{error}</div>
       )}
 
+      {storeWarning && (
+        <div className="mb-4 rounded-lg border border-amber-800 bg-amber-950/50 px-4 py-3 text-sm text-amber-200">
+          მონაცემების გაფრთხილება: {storeWarning}
+        </div>
+      )}
+
       {productWarning && (
         <div className="mb-4 rounded-lg border border-amber-800 bg-amber-950/50 px-4 py-3 text-sm text-amber-200">
           {productWarning}
@@ -904,7 +935,7 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {obSummary.items.map((o: Obligation) => {
                   const pct = o.amount ? Math.round((o.paid / o.amount) * 100) : 0;
-                  const payments = store ? paymentsForObligation(store, o.id) : [];
+                  const payments = paymentsForObligation(activeStore, o.id);
                   return (
                     <div key={o.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
                       <div className="mb-2 flex justify-between">
@@ -1000,14 +1031,15 @@ export default function Dashboard() {
         </section>
       )}
 
-      {tab === "inventory" && store && (
-        !unlocked ? (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-            <h2 className="mb-2 text-lg font-semibold">მარაგი და ნაშთები</h2>
-            <p className="mb-4 text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ, რომ მარაგის და ნაშთების რედაქტირება გახსნათ.</p>
-          </section>
-        ) : (
+      {tab === "inventory" && !loading && (
         <section className="space-y-6">
+          {!unlocked && (
+            <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
+              ნახვა ხელმისაწვდომია. რედაქტირებისთვის შეიყვანეთ ადმინ კოდი ზემოთ.
+            </div>
+          )}
+
+          {unlocked && (
           <div className="grid gap-4 lg:grid-cols-2">
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
@@ -1035,7 +1067,7 @@ export default function Dashboard() {
 
             <form onSubmit={setStock} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-emerald-400">მარაგის დაყენება</h2>
-              <p className="mb-3 text-xs text-zinc-500">რაოდენობის შეცვლა ავტომატურად ინახება</p>
+              <p className="mb-3 text-xs text-zinc-500">აირჩიეთ პროდუქტი სიიდან · რაოდენობა ავტომატურად ინახება</p>
               <div className="grid gap-3">
                 <Field label="ფილიალი">
                   <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
@@ -1066,12 +1098,29 @@ export default function Dashboard() {
               <button type="submit" className={`${btnCls} mt-4`} disabled={!invSelected}>ახლავე შენახვა</button>
             </form>
           </div>
+          )}
 
           <div>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">საწყისი ნაშთები (ფილიალის ბალანსი)</h3>
+            <div className="mb-6 grid gap-3 sm:grid-cols-3">
+              {BRANCHES.map((b) => {
+                const opening = activeStore.branchCash[b] ?? emptyBranchCash();
+                return (
+                  <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    <h3 className="mb-2 font-semibold">{b}</h3>
+                    <div className="space-y-1 text-sm">
+                      <p>ქეში: <span className="text-emerald-400">{formatMoney(opening.cash)}</span></p>
+                      <p>ბარათი: <span className="text-sky-400">{formatMoney(opening.card)}</span></p>
+                      <p>ანგარიში: <span className="text-violet-400">{formatMoney(opening.bank)}</span></p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <h3 className="mb-3 text-sm font-medium text-zinc-400">მიმდინარე ბალანსი (საწყისი + ტრანზაქციები)</h3>
             <div className="grid gap-3 sm:grid-cols-3">
             {BRANCHES.map((b) => {
-              const cash = calcBalances(tx, b, store.branchCash);
+              const cash = calcBalances(tx, b, activeStore.branchCash);
               return (
                 <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
                   <h3 className="mb-2 font-semibold">{b}</h3>
@@ -1094,8 +1143,10 @@ export default function Dashboard() {
                 {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
-            {inventoryRows.length === 0 ? (
-              <p className="text-sm text-zinc-500">მარაგი ცარიელია — დაამატეთ პროდუქტები ზემოთ</p>
+            {products.length === 0 ? (
+              <p className="text-sm text-zinc-500">პროდუქტები ჯერ არ არის ჩატვირთული — შეამოწმეთ Google Sheets გაზიარება</p>
+            ) : inventoryRows.length === 0 ? (
+              <p className="text-sm text-zinc-500">მარაგი ცარიელია — დაამატეთ პროდუქტები ზემოთ (PIN-ით)</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1127,21 +1178,21 @@ export default function Dashboard() {
               </div>
             )}
             <p className="mt-3 text-xs text-zinc-500">
-              გაყიდვისას მარაგი ავტომატურად მცირდება. ტრანზაქციის წაშლისას — ბრუნდება.
+              გაყიდვისას მარაგი ავტომატურად მცირდება. ფილიალის ანგარიშიც ცვლის მარაგს და ბალანსს.
             </p>
           </div>
         </section>
-        )
       )}
 
-      {tab === "branches" && store && (
+      {tab === "branches" && !loading && (
         <section className="space-y-6">
           <div className="rounded-xl border border-zinc-800 p-5">
             <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
             <p className="mb-2 text-sm text-zinc-500">ადმინ პანელი: <code className="text-emerald-400">{env.appUrl || (typeof window !== "undefined" ? window.location.origin : "")}</code></p>
             <p className="mb-4 text-sm text-zinc-500">გაუგზავნეთ თითოეულ ფილიალს თავისი ლინკი. დღის ბოლოს შეავსებენ ანგარიშს.</p>
             {BRANCHES.map((b) => {
-              const link = branchLink(store.branchTokens[b]);
+              const token = activeStore.branchTokens[b];
+              const link = branchLink(token);
               return (
               <div key={b} className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
                 <div className="mb-1 flex items-center justify-between">
