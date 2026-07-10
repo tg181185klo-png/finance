@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ExpenseCategory, ExpensePaymentMethod, PaymentMethod, Product } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatMoney, uid } from "@/lib/utils";
+import type { BranchInventory } from "@/lib/types";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const btnCls = "w-full rounded-lg bg-emerald-600 py-3 font-medium hover:bg-emerald-500 disabled:opacity-40";
@@ -42,6 +43,7 @@ export default function BranchPortal({ token }: { token: string }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [inventory, setInventory] = useState<BranchInventory>({});
   const [sales, setSales] = useState<SaleRow[]>([emptySale()]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([emptyExpense()]);
 
@@ -52,7 +54,10 @@ export default function BranchPortal({ token }: { token: string }) {
     ])
       .then(([branchData, prodData]) => {
         if (branchData.error) setErr(branchData.error);
-        else setBranch(branchData.branch);
+        else {
+          setBranch(branchData.branch);
+          setInventory(branchData.inventory ?? {});
+        }
         setProducts(prodData.products ?? []);
       })
       .catch(() => setErr("კავშირის შეცდომა"))
@@ -177,7 +182,9 @@ export default function BranchPortal({ token }: { token: string }) {
                         <li key={p.code}>
                           <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800" onClick={() => pickProduct(row.id, p)}>
                             <span className="text-emerald-400">{p.code}</span> {p.name}
-                            <span className="float-right text-zinc-500">{formatMoney(p.price)}</span>
+                            <span className="float-right text-zinc-500">
+                              {formatMoney(p.price)} · მარაგი: {inventory[p.code] ?? 0}
+                            </span>
                           </button>
                         </li>
                       ))}
@@ -188,6 +195,11 @@ export default function BranchPortal({ token }: { token: string }) {
                   <div>
                     <label className="mb-1 block text-xs text-zinc-400">რაოდენობა</label>
                     <input type="number" min={1} className={inputCls} value={row.quantity} onChange={(e) => updateSale(row.id, { quantity: +e.target.value })} />
+                    {row.product && (
+                      <p className={`mt-1 text-xs ${(inventory[row.product.code] ?? 0) < row.quantity ? "text-amber-400" : "text-zinc-500"}`}>
+                        მარაგი: {inventory[row.product.code] ?? 0}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs text-zinc-400">ფასი (₾)</label>

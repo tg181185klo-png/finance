@@ -86,11 +86,22 @@ export interface BranchDailyReport {
   expenses?: BranchExpenseLine[];
 }
 
+export interface BranchCash {
+  cash: number;
+  card: number;
+  bank: number;
+}
+
+/** productCode → quantity per branch */
+export type BranchInventory = Record<string, number>;
+
 export interface Store {
   transactions: Transaction[];
   obligations: Record<string, Obligation[]>;
   branchTokens: Record<Branch, string>;
   branchReports: BranchDailyReport[];
+  inventory: Record<Branch, BranchInventory>;
+  branchCash: Record<Branch, BranchCash>;
 }
 
 export interface Balances {

@@ -1,4 +1,5 @@
-import type { Branch, Expense, ExpenseBranch, Obligation, Transaction } from "./types";
+import { BRANCHES } from "./constants";
+import type { Branch, BranchCash, BranchInventory, Expense, ExpenseBranch, Obligation, Sale, Transaction } from "./types";
 
 export function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -23,8 +24,60 @@ function matchBranch(branch: Branch | ExpenseBranch, filter: Branch | "ყვე
   return branch === filter || branch === "საერთო";
 }
 
-export function calcBalances(tx: Transaction[], branch: Branch | "ყველა") {
+export function emptyBranchCash(): BranchCash {
+  return { cash: 0, card: 0, bank: 0 };
+}
+
+export function emptyInventory(): Record<Branch, BranchInventory> {
+  return { ქუთაისი: {}, ლილო: {}, დიღომი: {} };
+}
+
+export function getStock(inventory: Record<Branch, BranchInventory>, branch: Branch, productCode: string) {
+  return inventory[branch]?.[productCode] ?? 0;
+}
+
+export function saleAffectsStock(sale: Pick<Sale, "productCode">) {
+  return Boolean(sale.productCode && sale.productCode !== "—");
+}
+
+export function adjustStock(
+  inventory: Record<Branch, BranchInventory>,
+  branch: Branch,
+  productCode: string,
+  delta: number
+) {
+  if (!productCode || productCode === "—" || !delta) return inventory;
+  const next = { ...inventory, [branch]: { ...inventory[branch] } };
+  const cur = next[branch][productCode] ?? 0;
+  next[branch][productCode] = cur + delta;
+  return next;
+}
+
+export function applySaleToStock(
+  inventory: Record<Branch, BranchInventory>,
+  sale: Sale,
+  direction: 1 | -1
+) {
+  if (!saleAffectsStock(sale)) return inventory;
+  return adjustStock(inventory, sale.branch, sale.productCode, direction * sale.quantity);
+}
+
+export function calcBalances(
+  tx: Transaction[],
+  branch: Branch | "ყველა",
+  branchCash?: Record<Branch, BranchCash>
+) {
   const b = { total: 0, cash: 0, card: 0, bank: 0, credit: 0, revenue: 0, expenses: 0 };
+
+  if (branchCash) {
+    const branches = branch === "ყველა" ? BRANCHES : [branch];
+    for (const br of branches) {
+      const o = branchCash[br] ?? emptyBranchCash();
+      b.cash += o.cash;
+      b.card += o.card;
+      b.bank += o.bank;
+    }
+  }
 
   for (const t of tx) {
     if (!matchBranch(t.branch, branch)) continue;

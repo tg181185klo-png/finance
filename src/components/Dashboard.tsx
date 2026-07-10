@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Branch,
+  BranchCash,
   BranchDailyReport,
   Expense,
   ExpenseBranch,
@@ -29,6 +30,7 @@ import {
   currentMonth,
   formatDate,
   formatMoney,
+  getStock,
   loadLegacyTransactions,
   obligationSummary,
   uid,
@@ -49,7 +51,7 @@ const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg
 const tabCls = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
 
-type Tab = "main" | "obligations" | "reports" | "branches";
+type Tab = "main" | "obligations" | "reports" | "branches" | "inventory";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -121,6 +123,14 @@ export default function Dashboard() {
   const [repTo, setRepTo] = useState("");
   const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
 
+  // Inventory
+  const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
+  const [invSearch, setInvSearch] = useState("");
+  const [invSelected, setInvSelected] = useState<Product | null>(null);
+  const [invQty, setInvQty] = useState("");
+  const [cashForm, setCashForm] = useState<BranchCash>({ cash: 0, card: 0, bank: 0 });
+  const [invFilter, setInvFilter] = useState<Branch | "ყველა">("ყველა");
+
   const loadProducts = useCallback(async () => {
     const res = await fetch("/api/products", { cache: "no-store" });
     const d = await res.json();
@@ -179,7 +189,10 @@ export default function Dashboard() {
     return products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [products, search]);
 
-  const balances = useMemo(() => calcBalances(tx, filter), [tx, filter]);
+  const balances = useMemo(
+    () => calcBalances(tx, filter, store?.branchCash),
+    [tx, filter, store?.branchCash]
+  );
   const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && t.paymentStatus === "ბე (ავანსი)"), [tx]);
   const history = useMemo(() => {
     const list = filter === "ყველა" ? tx : tx.filter((t) => t.branch === filter || t.branch === "საერთო");
@@ -192,6 +205,80 @@ export default function Dashboard() {
   );
 
   const branchReports = store?.branchReports ?? [];
+  const inventory = store?.inventory ?? { ქუთაისი: {}, ლილო: {}, დიღომი: {} };
+
+  const inventoryRows = useMemo(() => {
+    const codes = new Set<string>();
+    for (const b of BRANCHES) {
+      for (const code of Object.keys(inventory[b] ?? {})) codes.add(code);
+    }
+    for (const p of products) codes.add(p.code);
+    const rows = [...codes].map((code) => {
+      const product = products.find((p) => p.code === code);
+      const perBranch = BRANCHES.map((b) => inventory[b]?.[code] ?? 0);
+      const total = perBranch.reduce((s, n) => s + n, 0);
+      return { code, name: product?.name ?? code, perBranch, total };
+    });
+    return rows
+      .filter((r) => invFilter === "ყველა" || r.perBranch[BRANCHES.indexOf(invFilter)] > 0 || r.total > 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [inventory, products, invFilter]);
+
+  const filteredInvProducts = useMemo(() => {
+    const q = invSearch.toLowerCase().trim();
+    if (!q) return products.slice(0, 8);
+    return products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [products, invSearch]);
+
+  useEffect(() => {
+    if (store?.branchCash) setCashForm(store.branchCash[invBranch]);
+  }, [store?.branchCash, invBranch]);
+
+  async function setStock(e: React.FormEvent) {
+    e.preventDefault();
+    if (!invSelected) return;
+    const quantity = parseFloat(invQty);
+    if (Number.isNaN(quantity) || quantity < 0) return;
+    await fetch("/api/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pin: ADMIN_PIN,
+        action: "setStock",
+        branch: invBranch,
+        productCode: invSelected.code,
+        quantity,
+      }),
+    });
+    await refresh();
+    setInvSearch("");
+    setInvSelected(null);
+    setInvQty("");
+  }
+
+  async function saveBranchCash(e: React.FormEvent) {
+    e.preventDefault();
+    await fetch("/api/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pin: ADMIN_PIN,
+        action: "setCash",
+        branch: invBranch,
+        cash: cashForm.cash,
+        card: cashForm.card,
+        bank: cashForm.bank,
+      }),
+    });
+    await refresh();
+  }
+
+  function pickInvProduct(p: Product) {
+    setInvSelected(p);
+    setInvSearch(`${p.code} — ${p.name}`);
+    const cur = getStock(inventory, invBranch, p.code);
+    setInvQty(String(cur));
+  }
 
   function pickProduct(p: Product) {
     setSelected(p);
@@ -199,6 +286,8 @@ export default function Dashboard() {
     setPrice(p.price);
     setQty(1);
   }
+
+  const selectedStock = selected ? getStock(inventory, sBranch, selected.code) : 0;
 
   async function refresh() {
     const data = await loadStore();
@@ -344,9 +433,14 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
         {unlocked ? (
-          <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
-            ვალდებულებები
-          </button>
+          <>
+            <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
+              ვალდებულებები
+            </button>
+            <button type="button" className={tabCls(tab === "inventory")} onClick={() => setTab("inventory")}>
+              მარაგი და ნაშთები
+            </button>
+          </>
         ) : (
           <div className="flex items-center gap-2">
             <input
@@ -431,7 +525,15 @@ export default function Dashboard() {
                     </ul>
                   )}
                 </div>
-                <Field label="რაოდენობა"><input className={inputCls} type="number" min={1} value={qty} onChange={(e) => setQty(+e.target.value)} /></Field>
+                <Field label="რაოდენობა">
+                  <input className={inputCls} type="number" min={1} value={qty} onChange={(e) => setQty(+e.target.value)} />
+                  {selected && (
+                    <p className={`mt-1 text-xs ${selectedStock < qty ? "text-amber-400" : "text-zinc-500"}`}>
+                      მარაგი ({sBranch}): {selectedStock}
+                      {selectedStock < qty && " — არასაკმარისი!"}
+                    </p>
+                  )}
+                </Field>
                 <Field label="ფასი"><input className={inputCls} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(+e.target.value)} /></Field>
                 <Field label="გადახდის მეთოდი">
                   <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)} disabled={payStatus === "ბე (ავანსი)"}>
@@ -642,6 +744,129 @@ export default function Dashboard() {
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {tab === "inventory" && unlocked && store && (
+        <section className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
+              <p className="mb-3 text-xs text-zinc-500">საწყისი თანხები, რომლებიც ემატება ტრანზაქციებიდან გამოთვლილ ნაშთებს</p>
+              <div className="mb-3">
+                <Field label="ფილიალი">
+                  <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
+                    {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="ქეში">
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.cash} onChange={(e) => setCashForm((c) => ({ ...c, cash: +e.target.value }))} />
+                </Field>
+                <Field label="ბარათი">
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.card} onChange={(e) => setCashForm((c) => ({ ...c, card: +e.target.value }))} />
+                </Field>
+                <Field label="ანგარიში">
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: +e.target.value }))} />
+                </Field>
+              </div>
+              <button type="submit" className={`${btnCls} mt-4`}>შენახვა</button>
+            </form>
+
+            <form onSubmit={setStock} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <h2 className="mb-4 text-lg font-semibold text-emerald-400">მარაგის დაყენება</h2>
+              <div className="grid gap-3">
+                <Field label="ფილიალი">
+                  <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
+                    {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </Field>
+                <div className="relative">
+                  <Field label="პროდუქტი">
+                    <input className={inputCls} value={invSearch} onChange={(e) => { setInvSearch(e.target.value); setInvSelected(null); }} placeholder="კოდი ან სახელი..." autoComplete="off" />
+                  </Field>
+                  {invSearch && !invSelected && filteredInvProducts.length > 0 && (
+                    <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                      {filteredInvProducts.map((p) => (
+                        <li key={p.code}>
+                          <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800" onClick={() => pickInvProduct(p)}>
+                            <span className="text-emerald-400">{p.code}</span> — {p.name}
+                            <span className="float-right text-zinc-500">მარაგი: {getStock(inventory, invBranch, p.code)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <Field label="რაოდენობა (მთლიანი)">
+                  <input className={inputCls} type="number" min={0} value={invQty} onChange={(e) => setInvQty(e.target.value)} required />
+                </Field>
+              </div>
+              <button type="submit" className={`${btnCls} mt-4`} disabled={!invSelected}>შენახვა</button>
+            </form>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {BRANCHES.map((b) => {
+              const cash = calcBalances(tx, b, store.branchCash);
+              return (
+                <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+                  <h3 className="mb-2 font-semibold">{b}</h3>
+                  <div className="space-y-1 text-sm">
+                    <p>ქეში: <span className="text-emerald-400">{formatMoney(cash.cash)}</span></p>
+                    <p>ბარათი: <span className="text-sky-400">{formatMoney(cash.card)}</span></p>
+                    <p>ანგარიში: <span className="text-violet-400">{formatMoney(cash.bank)}</span></p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">პროდუქციის მარაგი</h2>
+              <select className={`${inputCls} w-auto`} value={invFilter} onChange={(e) => setInvFilter(e.target.value as Branch | "ყველა")}>
+                <option value="ყველა">ყველა ფილიალი</option>
+                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            {inventoryRows.length === 0 ? (
+              <p className="text-sm text-zinc-500">მარაგი ცარიელია — დაამატეთ პროდუქტები ზემოთ</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                      <th className="pb-2 pr-3">კოდი</th>
+                      <th className="pb-2 pr-3">სახელი</th>
+                      {BRANCHES.map((b) => (
+                        <th key={b} className="pb-2 pr-3 text-right">{b}</th>
+                      ))}
+                      <th className="pb-2 text-right">სულ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventoryRows.map((r) => (
+                      <tr key={r.code} className="border-b border-zinc-800/50">
+                        <td className="py-2 pr-3 text-emerald-400">{r.code}</td>
+                        <td className="py-2 pr-3">{r.name}</td>
+                        {r.perBranch.map((q, i) => (
+                          <td key={i} className={`py-2 pr-3 text-right ${q <= 0 ? "text-zinc-600" : q < 5 ? "text-amber-400" : ""}`}>
+                            {q}
+                          </td>
+                        ))}
+                        <td className="py-2 text-right font-medium">{r.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="mt-3 text-xs text-zinc-500">
+              გაყიდვისას მარაგი ავტომატურად მცირდება. ტრანზაქციის წაშლისას — ბრუნდება.
+            </p>
+          </div>
         </section>
       )}
 

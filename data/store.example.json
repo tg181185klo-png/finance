@@ -6,5 +6,15 @@
     "ლილო": "lil-b2c9",
     "დიღომი": "dig-c5e1"
   },
-  "branchReports": []
+  "branchReports": [],
+  "inventory": {
+    "ქუთაისი": {},
+    "ლილო": {},
+    "დიღომი": {}
+  },
+  "branchCash": {
+    "ქუთაისი": { "cash": 0, "card": 0, "bank": 0 },
+    "ლილო": { "cash": 0, "card": 0, "bank": 0 },
+    "დიღომი": { "cash": 0, "card": 0, "bank": 0 }
+  }
 }

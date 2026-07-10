@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { applyExpenseToObligations, uid } from "@/lib/utils";
+import { applyExpenseToObligations, applySaleToStock, uid } from "@/lib/utils";
 import { readStore, writeStore } from "@/lib/server-store";
 import type { Expense, Sale, Transaction } from "@/lib/types";
 
@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
 
   if (t.type === "expense") {
     store.obligations = applyExpenseToObligations(store.obligations, t as Expense);
+  } else {
+    store.inventory = applySaleToStock(store.inventory, t as Sale, -1);
   }
 
   store.transactions = [t, ...store.transactions];
@@ -39,6 +41,10 @@ export async function DELETE(req: NextRequest) {
   const store = await readStore();
 
   if (reportId) {
+    const removed = store.transactions.filter((t) => t.reportId === reportId);
+    for (const t of removed) {
+      if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
+    }
     store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
     store.branchReports = store.branchReports.filter((r) => r.id !== reportId);
     await writeStore(store);
@@ -49,6 +55,10 @@ export async function DELETE(req: NextRequest) {
 
   const removed = store.transactions.find((t) => t.id === id);
   store.transactions = store.transactions.filter((t) => t.id !== id);
+
+  if (removed?.type === "sale") {
+    store.inventory = applySaleToStock(store.inventory, removed, 1);
+  }
 
   if (removed?.type === "expense" && removed.obligationId) {
     const month = removed.date.slice(0, 7);

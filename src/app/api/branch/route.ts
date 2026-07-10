@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid, applyExpenseToObligations } from "@/lib/utils";
+import { uid, applyExpenseToObligations, applySaleToStock } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, writeStore } from "@/lib/server-store";
 import type { BranchDailyReport, BranchExpenseLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
 
@@ -12,7 +12,11 @@ export async function GET(req: NextRequest) {
   const branch = branchByToken(store, token);
   if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
 
-  return NextResponse.json({ branch, token });
+  return NextResponse.json({
+    branch,
+    token,
+    inventory: store.inventory[branch] ?? {},
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -65,7 +69,7 @@ export async function POST(req: NextRequest) {
   const txDate = `${day}T20:00:00.000Z`;
 
   for (const s of sales) {
-    txs.push({
+    const sale: Sale = {
       id: uid(),
       type: "sale",
       date: txDate,
@@ -80,7 +84,9 @@ export async function POST(req: NextRequest) {
       comment: `${s.productName} × ${s.quantity}`,
       source: "branch",
       reportId,
-    });
+    };
+    store.inventory = applySaleToStock(store.inventory, sale, -1);
+    txs.push(sale);
   }
 
   if (!sales.length && salesTotal > 0) {
@@ -152,6 +158,10 @@ export async function DELETE(req: NextRequest) {
   }
 
   const store = await readStore();
+  const removed = store.transactions.filter((t) => t.reportId === reportId);
+  for (const t of removed) {
+    if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
+  }
   store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
   store.branchReports = store.branchReports.filter((r) => r.id !== reportId);
   await writeStore(store);

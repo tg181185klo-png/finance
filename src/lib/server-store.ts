@@ -2,8 +2,9 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { head, put } from "@vercel/blob";
 import type { PutCommandOptions } from "@vercel/blob";
-import type { Branch, Store } from "./types";
+import type { Branch, BranchCash, BranchInventory, Store } from "./types";
 import { BRANCHES } from "./constants";
+import { emptyBranchCash, emptyInventory } from "./utils";
 import { env } from "./env";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -25,7 +26,31 @@ export const DEFAULT_STORE: Store = {
     დიღომი: "dig-c5e1",
   },
   branchReports: [],
+  inventory: emptyInventory(),
+  branchCash: {
+    ქუთაისი: emptyBranchCash(),
+    ლილო: emptyBranchCash(),
+    დიღომი: emptyBranchCash(),
+  },
 };
+
+function mergeBranchCash(data?: Partial<Record<Branch, BranchCash>>): Record<Branch, BranchCash> {
+  const base = DEFAULT_STORE.branchCash;
+  const out = { ...base };
+  for (const b of BRANCHES) {
+    out[b] = { ...base[b], ...data?.[b] };
+  }
+  return out;
+}
+
+function mergeInventory(data?: Partial<Record<Branch, BranchInventory>>): Record<Branch, BranchInventory> {
+  const base = emptyInventory();
+  const out = { ...base };
+  for (const b of BRANCHES) {
+    out[b] = { ...base[b], ...data?.[b] };
+  }
+  return out;
+}
 
 function mergeStore(data: Partial<Store>): Store {
   return {
@@ -33,6 +58,8 @@ function mergeStore(data: Partial<Store>): Store {
     ...data,
     branchTokens: { ...DEFAULT_STORE.branchTokens, ...data.branchTokens },
     branchReports: data.branchReports ?? [],
+    inventory: mergeInventory(data.inventory),
+    branchCash: mergeBranchCash(data.branchCash),
   };
 }
 
