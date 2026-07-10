@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { uid, applyExpenseToObligations, applySaleToStock } from "@/lib/utils";
-import { branchByToken, dateOnly, readStore, writeStore } from "@/lib/server-store";
+import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type { BranchDailyReport, BranchExpenseLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -20,132 +20,140 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as {
-    token: string;
-    date: string;
-    sales?: BranchSaleLine[];
-    expenses?: BranchExpenseLine[];
-    salesTotal?: number;
-    expensesTotal?: number;
-    salesNote?: string;
-    expensesNote?: string;
-  };
-
-  const store = await readStore();
-  const branch = branchByToken(store, body.token);
-  if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
-
-  const reportId = uid();
-  const day = dateOnly(body.date || new Date().toISOString());
-  const now = new Date().toISOString();
-  const sales = body.sales ?? [];
-  const expenses = body.expenses ?? [];
-
-  const salesTotal = sales.length ? sales.reduce((s, x) => s + x.amount, 0) : (body.salesTotal || 0);
-  const expensesTotal = expenses.length ? expenses.reduce((s, x) => s + x.amount, 0) : (body.expensesTotal || 0);
-
-  const salesNote = sales.length
-    ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
-    : body.salesNote?.trim() || `დღის გაყიდვა — ${branch}`;
-
-  const expensesNote = expenses.length
-    ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
-    : body.expensesNote?.trim() || `დღის ხარჯი — ${branch}`;
-
-  const report: BranchDailyReport = {
-    id: reportId,
-    branch,
-    date: day,
-    salesTotal,
-    salesNote,
-    expensesTotal,
-    expensesNote,
-    submittedAt: now,
-    sales,
-    expenses,
-  };
-
-  const txs: (Sale | Expense)[] = [];
-  const txDate = `${day}T20:00:00.000Z`;
-
-  for (const s of sales) {
-    const sale: Sale = {
-      id: uid(),
-      type: "sale",
-      date: txDate,
-      branch,
-      productCode: s.productCode,
-      productName: s.productName,
-      quantity: s.quantity,
-      unitPrice: s.unitPrice,
-      amount: s.amount,
-      paymentStatus: "სრულად გადახდილი",
-      paymentMethod: s.paymentMethod,
-      comment: `${s.productName} × ${s.quantity}`,
-      source: "branch",
-      reportId,
+  try {
+    const body = (await req.json()) as {
+      token: string;
+      date: string;
+      sales?: BranchSaleLine[];
+      expenses?: BranchExpenseLine[];
+      salesTotal?: number;
+      expensesTotal?: number;
+      salesNote?: string;
+      expensesNote?: string;
     };
-    store.inventory = applySaleToStock(store.inventory, sale, -1);
-    txs.push(sale);
-  }
 
-  if (!sales.length && salesTotal > 0) {
-    txs.push({
-      id: uid(),
-      type: "sale",
-      date: txDate,
+    const preview = await readStore();
+    const branch = branchByToken(preview, body.token);
+    if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
+
+    const reportId = uid();
+    const day = dateOnly(body.date || new Date().toISOString());
+    const now = new Date().toISOString();
+    const sales = body.sales ?? [];
+    const expenses = body.expenses ?? [];
+
+    const salesTotal = sales.length ? sales.reduce((s, x) => s + x.amount, 0) : (body.salesTotal || 0);
+    const expensesTotal = expenses.length ? expenses.reduce((s, x) => s + x.amount, 0) : (body.expensesTotal || 0);
+
+    const salesNote = sales.length
+      ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
+      : body.salesNote?.trim() || `დღის გაყიდვა — ${branch}`;
+
+    const expensesNote = expenses.length
+      ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
+      : body.expensesNote?.trim() || `დღის ხარჯი — ${branch}`;
+
+    const report: BranchDailyReport = {
+      id: reportId,
       branch,
-      productCode: "—",
-      productName: "დღის გაყიდვები",
-      quantity: 1,
-      unitPrice: salesTotal,
-      amount: salesTotal,
-      paymentStatus: "სრულად გადახდილი",
-      paymentMethod: "ქეში (ნაღდი)",
-      comment: salesNote,
-      source: "branch",
-      reportId,
+      date: day,
+      salesTotal,
+      salesNote,
+      expensesTotal,
+      expensesNote,
+      submittedAt: now,
+      sales,
+      expenses,
+    };
+
+    const txs: (Sale | Expense)[] = [];
+    const txDate = `${day}T20:00:00.000Z`;
+
+    for (const s of sales) {
+      const sale: Sale = {
+        id: uid(),
+        type: "sale",
+        date: txDate,
+        branch,
+        productCode: s.productCode,
+        productName: s.productName,
+        quantity: s.quantity,
+        unitPrice: s.unitPrice,
+        amount: s.amount,
+        paymentStatus: "სრულად გადახდილი",
+        paymentMethod: s.paymentMethod,
+        comment: `${s.productName} × ${s.quantity}`,
+        source: "branch",
+        reportId,
+      };
+      txs.push(sale);
+    }
+
+    if (!sales.length && salesTotal > 0) {
+      txs.push({
+        id: uid(),
+        type: "sale",
+        date: txDate,
+        branch,
+        productCode: "—",
+        productName: "დღის გაყიდვები",
+        quantity: 1,
+        unitPrice: salesTotal,
+        amount: salesTotal,
+        paymentStatus: "სრულად გადახდილი",
+        paymentMethod: "ქეში (ნაღდი)",
+        comment: salesNote,
+        source: "branch",
+        reportId,
+      });
+    }
+
+    for (const e of expenses) {
+      txs.push({
+        id: uid(),
+        type: "expense",
+        date: txDate,
+        branch,
+        category: e.category,
+        amount: e.amount,
+        comment: e.comment,
+        expensePaymentMethod: e.paymentMethod,
+        source: "branch",
+        reportId,
+      });
+    }
+
+    if (!expenses.length && expensesTotal > 0) {
+      txs.push({
+        id: uid(),
+        type: "expense",
+        date: txDate,
+        branch,
+        category: "სხვა",
+        amount: expensesTotal,
+        comment: expensesNote,
+        source: "branch",
+        reportId,
+      });
+    }
+
+    await updateStore((store) => {
+      for (const t of txs) {
+        if (t.type === "sale") {
+          store.inventory = applySaleToStock(store.inventory, t, -1);
+        } else {
+          store.obligations = applyExpenseToObligations(store.obligations, t);
+        }
+      }
+      store.branchReports = [report, ...store.branchReports];
+      store.transactions = [...txs, ...store.transactions];
     });
+
+    return NextResponse.json({ ok: true, report });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "შეცდომა";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  for (const e of expenses) {
-    const exp: Expense = {
-      id: uid(),
-      type: "expense",
-      date: txDate,
-      branch,
-      category: e.category,
-      amount: e.amount,
-      comment: e.comment,
-      expensePaymentMethod: e.paymentMethod,
-      source: "branch",
-      reportId,
-    };
-    store.obligations = applyExpenseToObligations(store.obligations, exp);
-    txs.push(exp);
-  }
-
-  if (!expenses.length && expensesTotal > 0) {
-    const exp: Expense = {
-      id: uid(),
-      type: "expense",
-      date: txDate,
-      branch,
-      category: "სხვა",
-      amount: expensesTotal,
-      comment: expensesNote,
-      source: "branch",
-      reportId,
-    };
-    store.obligations = applyExpenseToObligations(store.obligations, exp);
-    txs.push(exp);
-  }
-
-  store.branchReports = [report, ...store.branchReports];
-  store.transactions = [...txs, ...store.transactions];
-  await writeStore(store);
-
-  return NextResponse.json({ ok: true, report });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -157,13 +165,18 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
   }
 
-  const store = await readStore();
-  const removed = store.transactions.filter((t) => t.reportId === reportId);
-  for (const t of removed) {
-    if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
+  try {
+    await updateStore((store) => {
+      const removed = store.transactions.filter((t) => t.reportId === reportId);
+      for (const t of removed) {
+        if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
+      }
+      store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
+      store.branchReports = store.branchReports.filter((r) => r.id !== reportId);
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "შეცდომა";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-  store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
-  store.branchReports = store.branchReports.filter((r) => r.id !== reportId);
-  await writeStore(store);
-  return NextResponse.json({ ok: true });
 }

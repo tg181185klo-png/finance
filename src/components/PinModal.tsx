@@ -1,22 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { ADMIN_PIN } from "@/lib/constants";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 
 export function usePin() {
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<(() => void) | null>(null);
+  const [pending, setPending] = useState<((pin: string) => void) | null>(null);
 
-  function requestPin(onOk: () => void) {
+  function requestPin(onOk: (pin: string) => void) {
     setPending(() => onOk);
     setOpen(true);
   }
 
-  function confirm(pin: string) {
-    if (pin !== ADMIN_PIN) return false;
-    pending?.();
+  async function confirm(pin: string, verify: (pin: string) => Promise<boolean>) {
+    const ok = await verify(pin);
+    if (!ok) return false;
+    pending?.(pin);
     setOpen(false);
     setPending(null);
     return true;
@@ -36,13 +36,23 @@ export function PinModal({
   onCancel,
 }: {
   open: boolean;
-  onConfirm: (pin: string) => boolean;
+  onConfirm: (pin: string) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [pin, setPin] = useState("");
   const [err, setErr] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   if (!open) return null;
+
+  async function submit() {
+    setBusy(true);
+    setErr(false);
+    const ok = await onConfirm(pin);
+    setBusy(false);
+    if (ok) setPin("");
+    else setErr(true);
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -53,27 +63,21 @@ export function PinModal({
           className={inputCls}
           value={pin}
           onChange={(e) => { setPin(e.target.value); setErr(false); }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              if (onConfirm(pin)) setPin("");
-              else setErr(true);
-            }
-          }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !busy) submit(); }}
           autoFocus
+          disabled={busy}
         />
         {err && <p className="mt-2 text-xs text-red-400">არასწორი კოდი</p>}
         <div className="mt-4 flex gap-2">
           <button
             type="button"
-            className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm hover:bg-emerald-500"
-            onClick={() => {
-              if (onConfirm(pin)) setPin("");
-              else setErr(true);
-            }}
+            className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm hover:bg-emerald-500 disabled:opacity-40"
+            onClick={submit}
+            disabled={busy}
           >
-            დადასტურება
+            {busy ? "..." : "დადასტურება"}
           </button>
-          <button type="button" className="rounded-lg border border-zinc-600 px-4 py-2 text-sm" onClick={onCancel}>
+          <button type="button" className="rounded-lg border border-zinc-600 px-4 py-2 text-sm" onClick={onCancel} disabled={busy}>
             გაუქმება
           </button>
         </div>

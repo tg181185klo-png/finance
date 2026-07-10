@@ -74,14 +74,17 @@ async function writeToFile(store: Store) {
 }
 
 async function readFromBlob(): Promise<Store | null> {
-  try {
-    const meta = await head(BLOB_PATH, env.blobToken ? { token: env.blobToken } : {});
-    const res = await fetch(meta.url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return mergeStore((await res.json()) as Partial<Store>);
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const meta = await head(BLOB_PATH, env.blobToken ? { token: env.blobToken } : {});
+      const res = await fetch(`${meta.url}?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) continue;
+      return mergeStore((await res.json()) as Partial<Store>);
+    } catch {
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
   }
+  return null;
 }
 
 async function writeToBlob(store: Store) {
@@ -96,22 +99,33 @@ async function writeToBlob(store: Store) {
     options.token = env.blobToken;
   }
 
-  await put(BLOB_PATH, JSON.stringify(store, null, 2), options);
+  try {
+    await put(BLOB_PATH, JSON.stringify(store, null, 2), options);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "blob write failed";
+    throw new Error(`მონაცემების შენახვა ვერ მოხერხდა: ${msg}`);
+  }
 }
 
 export async function readStore(): Promise<Store> {
   if (hasBlobStorage()) {
     const blob = await readFromBlob();
     if (blob) return blob;
-    await writeToBlob(DEFAULT_STORE);
-    return DEFAULT_STORE;
+    const fresh = { ...DEFAULT_STORE };
+    try {
+      await writeToBlob(fresh);
+    } catch {
+      // another instance may have created the blob
+    }
+    return (await readFromBlob()) ?? fresh;
   }
 
   try {
     return await readFromFile();
   } catch {
-    await writeToFile(DEFAULT_STORE);
-    return DEFAULT_STORE;
+    const fresh = { ...DEFAULT_STORE };
+    await writeToFile(fresh);
+    return fresh;
   }
 }
 
@@ -121,6 +135,27 @@ export async function writeStore(store: Store) {
     return;
   }
   await writeToFile(store);
+}
+
+export async function updateStore(
+  mutator: (store: Store) => void,
+  retries = 4
+): Promise<Store> {
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const store = await readStore();
+      mutator(store);
+      await writeStore(store);
+      return store;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+    }
+  }
+
+  throw lastError ?? new Error("მონაცემების შენახვა ვერ მოხერხდა");
 }
 
 export function branchByToken(store: Store, token: string): Branch | null {

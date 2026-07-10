@@ -1,53 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { readStore, writeStore } from "@/lib/server-store";
+import { updateStore } from "@/lib/server-store";
 import type { Branch } from "@/lib/types";
 
+function checkPin(pin?: string) {
+  return pin === ADMIN_PIN;
+}
+
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as {
-    pin: string;
-    action: "setStock" | "adjustStock" | "setCash";
-    branch: Branch;
-    productCode?: string;
-    quantity?: number;
-    delta?: number;
-    cash?: number;
-    card?: number;
-    bank?: number;
-  };
-
-  if (body.pin !== ADMIN_PIN) {
-    return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-  }
-
-  const store = await readStore();
-  const branch = body.branch;
-
-  if (body.action === "setCash") {
-    store.branchCash[branch] = {
-      cash: body.cash ?? store.branchCash[branch].cash,
-      card: body.card ?? store.branchCash[branch].card,
-      bank: body.bank ?? store.branchCash[branch].bank,
+  try {
+    const body = (await req.json()) as {
+      pin: string;
+      action: "setStock" | "adjustStock" | "setCash";
+      branch: Branch;
+      productCode?: string;
+      quantity?: number;
+      delta?: number;
+      cash?: number;
+      card?: number;
+      bank?: number;
     };
-    await writeStore(store);
-    return NextResponse.json({ ok: true, branchCash: store.branchCash });
+
+    if (!checkPin(body.pin)) {
+      return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
+    }
+
+    const branch = body.branch;
+
+    const store = await updateStore((s) => {
+      if (body.action === "setCash") {
+        s.branchCash[branch] = {
+          cash: body.cash ?? s.branchCash[branch].cash,
+          card: body.card ?? s.branchCash[branch].card,
+          bank: body.bank ?? s.branchCash[branch].bank,
+        };
+        return;
+      }
+
+      const code = body.productCode?.trim();
+      if (!code) throw new Error("productCode საჭიროა");
+
+      if (body.action === "setStock") {
+        const qty = body.quantity ?? 0;
+        if (qty === 0) delete s.inventory[branch][code];
+        else s.inventory[branch][code] = qty;
+      } else if (body.action === "adjustStock") {
+        const delta = body.delta ?? 0;
+        const cur = s.inventory[branch][code] ?? 0;
+        const next = cur + delta;
+        if (next === 0) delete s.inventory[branch][code];
+        else s.inventory[branch][code] = next;
+      }
+    });
+
+    return NextResponse.json({
+      ok: true,
+      inventory: store.inventory,
+      branchCash: store.branchCash,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "შეცდომა";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  const code = body.productCode?.trim();
-  if (!code) return NextResponse.json({ error: "productCode საჭიროა" }, { status: 400 });
-
-  if (body.action === "setStock") {
-    const qty = body.quantity ?? 0;
-    store.inventory[branch][code] = qty;
-    if (qty === 0) delete store.inventory[branch][code];
-  } else if (body.action === "adjustStock") {
-    const delta = body.delta ?? 0;
-    const cur = store.inventory[branch][code] ?? 0;
-    const next = cur + delta;
-    if (next === 0) delete store.inventory[branch][code];
-    else store.inventory[branch][code] = next;
-  }
-
-  await writeStore(store);
-  return NextResponse.json({ ok: true, inventory: store.inventory });
 }

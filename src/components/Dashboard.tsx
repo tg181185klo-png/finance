@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Branch,
   BranchCash,
@@ -36,7 +36,7 @@ import {
   uid,
 } from "@/lib/utils";
 import { PinModal, usePin } from "@/components/PinModal";
-import { ADMIN_PIN } from "@/lib/constants";
+import { clearSessionPin, getSessionPin, setSessionPin } from "@/lib/pin-session";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
@@ -77,7 +77,32 @@ async function apiTx(method: string, body?: object, qs = "") {
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "შეცდომა");
+  return data;
+}
+
+async function verifyPin(pin: string) {
+  const res = await fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  });
+  const data = await res.json();
+  return res.ok && data.ok;
+}
+
+async function saveInventory(body: object) {
+  const pin = getSessionPin();
+  if (!pin) throw new Error("გახსენით ადმინი PIN კოდით");
+  const res = await fetch("/api/inventory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, pin }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "შენახვა ვერ მოხერხდა");
+  return data as { inventory?: Store["inventory"]; branchCash?: Store["branchCash"] };
 }
 
 export default function Dashboard() {
@@ -93,6 +118,9 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Branch | "ყველა">("ყველა");
   const [pinInput, setPinInput] = useState("");
+  const [saveMsg, setSaveMsg] = useState("");
+  const skipCashAutoSave = useRef(true);
+  const skipStockAutoSave = useRef(true);
 
   // Sale form
   const [sBranch, setSBranch] = useState<Branch>("ქუთაისი");
@@ -170,6 +198,9 @@ export default function Dashboard() {
       }
       await loadStore();
       await loadProducts().catch(() => setError("პროდუქტების ჩატვირთვა ვერ მოხერხდა"));
+      const savedPin = getSessionPin();
+      if (savedPin && (await verifyPin(savedPin))) setUnlocked(true);
+      else clearSessionPin();
       setLoading(false);
     })();
   }, [loadStore, loadProducts]);
@@ -231,46 +262,105 @@ export default function Dashboard() {
   }, [products, invSearch]);
 
   useEffect(() => {
-    if (store?.branchCash) setCashForm(store.branchCash[invBranch]);
+    if (store?.branchCash) {
+      setCashForm(store.branchCash[invBranch]);
+      skipCashAutoSave.current = true;
+    }
   }, [store?.branchCash, invBranch]);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    if (skipCashAutoSave.current) {
+      skipCashAutoSave.current = false;
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setSaveMsg("ინახება...");
+        const data = await saveInventory({
+          action: "setCash",
+          branch: invBranch,
+          cash: cashForm.cash,
+          card: cashForm.card,
+          bank: cashForm.bank,
+        });
+        setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+        setSaveMsg("შენახულია ✓");
+        setTimeout(() => setSaveMsg(""), 2000);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შენახვა ვერ მოხერხდა");
+        setSaveMsg("");
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [cashForm, invBranch, unlocked]);
+
+  useEffect(() => {
+    if (!unlocked || !invSelected) return;
+    const quantity = parseFloat(invQty);
+    if (Number.isNaN(quantity) || quantity < 0) return;
+    if (skipStockAutoSave.current) {
+      skipStockAutoSave.current = false;
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setSaveMsg("მარაგი ინახება...");
+        const data = await saveInventory({
+          action: "setStock",
+          branch: invBranch,
+          productCode: invSelected.code,
+          quantity,
+        });
+        setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+        setSaveMsg("მარაგი შენახულია ✓");
+        setTimeout(() => setSaveMsg(""), 2000);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "მარაგის შენახვა ვერ მოხერხდა");
+        setSaveMsg("");
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [invQty, invBranch, invSelected, unlocked]);
 
   async function setStock(e: React.FormEvent) {
     e.preventDefault();
     if (!invSelected) return;
     const quantity = parseFloat(invQty);
     if (Number.isNaN(quantity) || quantity < 0) return;
-    await fetch("/api/inventory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pin: ADMIN_PIN,
+    try {
+      const data = await saveInventory({
         action: "setStock",
         branch: invBranch,
         productCode: invSelected.code,
         quantity,
-      }),
-    });
-    await refresh();
-    setInvSearch("");
-    setInvSelected(null);
-    setInvQty("");
+      });
+      setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+      setSaveMsg("მარაგი შენახულია ✓");
+      setInvSearch("");
+      setInvSelected(null);
+      setInvQty("");
+      skipStockAutoSave.current = true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+    }
   }
 
   async function saveBranchCash(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/inventory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pin: ADMIN_PIN,
+    try {
+      const data = await saveInventory({
         action: "setCash",
         branch: invBranch,
         cash: cashForm.cash,
         card: cashForm.card,
         bank: cashForm.bank,
-      }),
-    });
-    await refresh();
+      });
+      setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+      setSaveMsg("შენახულია ✓");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+    }
   }
 
   function pickInvProduct(p: Product) {
@@ -278,6 +368,7 @@ export default function Dashboard() {
     setInvSearch(`${p.code} — ${p.name}`);
     const cur = getStock(inventory, invBranch, p.code);
     setInvQty(String(cur));
+    skipStockAutoSave.current = true;
   }
 
   function pickProduct(p: Product) {
@@ -312,13 +403,26 @@ export default function Dashboard() {
       comment: sComment.trim() || `${selected.name} × ${qty}`,
       source: "admin",
     };
-    await apiTx("POST", { transaction: sale });
-    await refresh();
-    setSearch("");
-    setSelected(null);
-    setQty(1);
-    setPrice(0);
-    setSComment("");
+    try {
+      const data = await apiTx("POST", { transaction: sale });
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: data.transactions ?? [sale, ...prev.transactions],
+              inventory: data.inventory ?? prev.inventory,
+            }
+          : prev
+      );
+      setSaveMsg("გაყიდვა შენახულია ✓");
+      setSearch("");
+      setSelected(null);
+      setQty(1);
+      setPrice(0);
+      setSComment("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "გაყიდვა ვერ შეინახა");
+    }
   }
 
   async function addExpense(e: React.FormEvent) {
@@ -335,23 +439,48 @@ export default function Dashboard() {
       comment: eComment.trim() || category,
       source: "admin",
     };
-    await apiTx("POST", { transaction: expense });
-    await refresh();
-    setEAmount("");
-    setEComment("");
+    try {
+      const data = await apiTx("POST", { transaction: expense });
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: data.transactions ?? [expense, ...prev.transactions],
+              obligations: data.obligations ?? prev.obligations,
+            }
+          : prev
+      );
+      setSaveMsg("ხარჯი შენახულია ✓");
+      setEAmount("");
+      setEComment("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ხარჯი ვერ შეინახა");
+    }
   }
 
   function deleteTx(id: string) {
-    pin.requestPin(async () => {
-      await apiTx("DELETE", undefined, `?id=${id}&pin=${ADMIN_PIN}`);
-      await refresh();
+    pin.requestPin(async (pinCode) => {
+      try {
+        await apiTx("DELETE", undefined, `?id=${id}&pin=${encodeURIComponent(pinCode)}`);
+        await refresh();
+        setSaveMsg("წაშლილია");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
+      }
     });
   }
 
   function deleteReport(reportId: string) {
-    pin.requestPin(async () => {
-      await fetch(`/api/branch?reportId=${reportId}&pin=${ADMIN_PIN}`, { method: "DELETE" });
-      await refresh();
+    pin.requestPin(async (pinCode) => {
+      try {
+        const res = await fetch(`/api/branch?reportId=${reportId}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        await refresh();
+        setSaveMsg("ანგარიში წაშლილია");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
+      }
     });
   }
 
@@ -372,9 +501,15 @@ export default function Dashboard() {
   }
 
   function deleteObligation(id: string) {
-    pin.requestPin(async () => {
-      await fetch(`/api/obligations?id=${id}&month=${obMonth}&pin=${ADMIN_PIN}`, { method: "DELETE" });
-      await refresh();
+    pin.requestPin(async (pinCode) => {
+      try {
+        const res = await fetch(`/api/obligations?id=${id}&month=${obMonth}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
+      }
     });
   }
 
@@ -396,8 +531,10 @@ export default function Dashboard() {
     return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
   }
 
-  function unlockAdmin(pinCode: string) {
-    if (pinCode === ADMIN_PIN) {
+  async function unlockAdmin(pinCode: string) {
+    const ok = await verifyPin(pinCode);
+    if (ok) {
+      setSessionPin(pinCode);
       setUnlocked(true);
       setPinInput("");
       return true;
@@ -405,9 +542,15 @@ export default function Dashboard() {
     return false;
   }
 
+  async function handlePinConfirm(pinCode: string) {
+    const ok = await verifyPin(pinCode);
+    if (ok) setSessionPin(pinCode);
+    return ok;
+  }
+
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-4 py-6">
-      <PinModal open={pin.open} onConfirm={pin.confirm} onCancel={pin.cancel} />
+      <PinModal open={pin.open} onConfirm={handlePinConfirm} onCancel={pin.cancel} />
 
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -416,6 +559,7 @@ export default function Dashboard() {
             {loading
               ? "იტვირთება..."
               : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
+            {saveMsg && <span className="ml-2 text-emerald-400">{saveMsg}</span>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -752,7 +896,7 @@ export default function Dashboard() {
           <div className="grid gap-4 lg:grid-cols-2">
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
-              <p className="mb-3 text-xs text-zinc-500">საწყისი თანხები, რომლებიც ემატება ტრანზაქციებიდან გამოთვლილ ნაშთებს</p>
+              <p className="mb-3 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება (0.6 წმ შემდეგ)</p>
               <div className="mb-3">
                 <Field label="ფილიალი">
                   <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
@@ -771,11 +915,12 @@ export default function Dashboard() {
                   <input className={inputCls} type="number" step={0.01} value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: +e.target.value }))} />
                 </Field>
               </div>
-              <button type="submit" className={`${btnCls} mt-4`}>შენახვა</button>
+              <button type="submit" className={`${btnCls} mt-4`}>ახლავე შენახვა</button>
             </form>
 
             <form onSubmit={setStock} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-emerald-400">მარაგის დაყენება</h2>
+              <p className="mb-3 text-xs text-zinc-500">რაოდენობის შეცვლა ავტომატურად ინახება</p>
               <div className="grid gap-3">
                 <Field label="ფილიალი">
                   <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
@@ -803,7 +948,7 @@ export default function Dashboard() {
                   <input className={inputCls} type="number" min={0} value={invQty} onChange={(e) => setInvQty(e.target.value)} required />
                 </Field>
               </div>
-              <button type="submit" className={`${btnCls} mt-4`} disabled={!invSelected}>შენახვა</button>
+              <button type="submit" className={`${btnCls} mt-4`} disabled={!invSelected}>ახლავე შენახვა</button>
             </form>
           </div>
 
