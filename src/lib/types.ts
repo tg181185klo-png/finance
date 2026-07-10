@@ -55,6 +55,27 @@ export interface Obligation {
   branch: ExpenseBranch | "ყველა";
   category: ExpenseCategory;
   month: string;
+  recurringId?: string;
+}
+
+/** ყოველთვიური ფიქსირებული ვალდებულების შაბლონი */
+export interface RecurringObligation {
+  id: string;
+  name: string;
+  amount: number;
+  branch: ExpenseBranch | "ყველა";
+  category: ExpenseCategory;
+  createdAt: string;
+}
+
+/** ვალდებულების გადახდის ისტორია */
+export interface ObligationPayment {
+  id: string;
+  obligationId: string;
+  expenseId: string;
+  amount: number;
+  paidAt: string;
+  note?: string;
 }
 
 export interface BranchSaleLine {
@@ -102,6 +123,8 @@ export interface Store {
   branchReports: BranchDailyReport[];
   inventory: Record<Branch, BranchInventory>;
   branchCash: Record<Branch, BranchCash>;
+  recurringObligations: RecurringObligation[];
+  obligationPayments: ObligationPayment[];
 }
 
 export interface Balances {

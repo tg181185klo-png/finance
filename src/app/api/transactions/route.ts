@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { applyExpenseToObligations, applySaleToStock, uid } from "@/lib/utils";
+import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { Expense, Sale, Transaction } from "@/lib/types";
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       savedTx = t;
 
       if (t.type === "expense") {
-        s.obligations = applyExpenseToObligations(s.obligations, t as Expense);
+        applyExpenseToStore(s, t as Expense);
       } else {
         s.inventory = applySaleToStock(s.inventory, t as Sale, -1);
       }
@@ -57,6 +57,7 @@ export async function DELETE(req: NextRequest) {
         const removed = s.transactions.filter((t) => t.reportId === reportId);
         for (const t of removed) {
           if (t.type === "sale") s.inventory = applySaleToStock(s.inventory, t, 1);
+          else reverseExpenseObligation(s, t);
         }
         s.transactions = s.transactions.filter((t) => t.reportId !== reportId);
         s.branchReports = s.branchReports.filter((r) => r.id !== reportId);
@@ -72,13 +73,8 @@ export async function DELETE(req: NextRequest) {
         s.inventory = applySaleToStock(s.inventory, removed, 1);
       }
 
-      if (removed?.type === "expense" && removed.obligationId) {
-        const month = removed.date.slice(0, 7);
-        const list = s.obligations[month];
-        if (list) {
-          const ob = list.find((o) => o.id === removed.obligationId);
-          if (ob) ob.paid = Math.max(0, ob.paid - removed.amount);
-        }
+      if (removed?.type === "expense") {
+        reverseExpenseObligation(s, removed);
       }
     });
 

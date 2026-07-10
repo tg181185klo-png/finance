@@ -4,8 +4,9 @@ import { head, put } from "@vercel/blob";
 import type { PutCommandOptions } from "@vercel/blob";
 import type { Branch, BranchCash, BranchInventory, Store } from "./types";
 import { BRANCHES } from "./constants";
-import { emptyBranchCash, emptyInventory } from "./utils";
+import { emptyBranchCash, emptyInventory, ensureMonthObligations, currentMonth } from "./utils";
 import { env } from "./env";
+import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
@@ -32,6 +33,8 @@ export const DEFAULT_STORE: Store = {
     ლილო: emptyBranchCash(),
     დიღომი: emptyBranchCash(),
   },
+  recurringObligations: [],
+  obligationPayments: [],
 };
 
 function mergeBranchCash(data?: Partial<Record<Branch, BranchCash>>): Record<Branch, BranchCash> {
@@ -60,7 +63,53 @@ function mergeStore(data: Partial<Store>): Store {
     branchReports: data.branchReports ?? [],
     inventory: mergeInventory(data.inventory),
     branchCash: mergeBranchCash(data.branchCash),
+    recurringObligations: data.recurringObligations ?? [],
+    obligationPayments: data.obligationPayments ?? [],
   };
+}
+
+async function loadStoreRaw(): Promise<Store | null> {
+  if (hasPostgres()) {
+    try {
+      const pg = await readFromPostgres();
+      if (pg) return mergeStore(pg);
+    } catch {
+      // fall through to blob
+    }
+  }
+  if (hasBlobStorage()) {
+    return await readFromBlob();
+  }
+  try {
+    return await readFromFile();
+  } catch {
+    return null;
+  }
+}
+
+async function persistStore(store: Store) {
+  if (hasPostgres()) {
+    try {
+      await writeToPostgres(store);
+      return;
+    } catch {
+      // fall through
+    }
+  }
+  if (hasBlobStorage()) {
+    await writeToBlob(store);
+    return;
+  }
+  await writeToFile(store);
+}
+
+async function migrateBlobToPostgresIfNeeded() {
+  if (!hasPostgres()) return;
+  const existing = await readFromPostgres();
+  if (existing) return;
+  const blob = hasBlobStorage() ? await readFromBlob() : null;
+  const file = blob ?? (await readFromFile().catch(() => null));
+  if (file) await writeToPostgres(mergeStore(file));
 }
 
 async function readFromFile(): Promise<Store> {
@@ -108,33 +157,28 @@ async function writeToBlob(store: Store) {
 }
 
 export async function readStore(): Promise<Store> {
-  if (hasBlobStorage()) {
-    const blob = await readFromBlob();
-    if (blob) return blob;
-    const fresh = { ...DEFAULT_STORE };
-    try {
-      await writeToBlob(fresh);
-    } catch {
-      // another instance may have created the blob
-    }
-    return (await readFromBlob()) ?? fresh;
+  await migrateBlobToPostgresIfNeeded();
+  const loaded = await loadStoreRaw();
+  const store = loaded ?? { ...DEFAULT_STORE };
+
+  const months = new Set([currentMonth()]);
+  for (const m of Object.keys(store.obligations)) months.add(m);
+
+  let changed = false;
+  for (const m of months) {
+    if (ensureMonthObligations(store, m)) changed = true;
   }
 
-  try {
-    return await readFromFile();
-  } catch {
-    const fresh = { ...DEFAULT_STORE };
-    await writeToFile(fresh);
-    return fresh;
+  if (!loaded) {
+    await persistStore(store);
+    return store;
   }
+  if (changed) await persistStore(store);
+  return store;
 }
 
 export async function writeStore(store: Store) {
-  if (hasBlobStorage()) {
-    await writeToBlob(store);
-    return;
-  }
-  await writeToFile(store);
+  await persistStore(store);
 }
 
 export async function updateStore(
@@ -170,6 +214,7 @@ export function dateOnly(iso: string) {
 }
 
 export function storageMode() {
+  if (hasPostgres()) return "vercel-postgres";
   if (hasBlobStorage()) return "vercel-blob";
   return "local-file";
 }

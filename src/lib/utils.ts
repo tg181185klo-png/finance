@@ -1,5 +1,17 @@
 import { BRANCHES } from "./constants";
-import type { Branch, BranchCash, BranchInventory, Expense, ExpenseBranch, Obligation, Sale, Transaction } from "./types";
+import type {
+  Branch,
+  BranchCash,
+  BranchInventory,
+  Expense,
+  ExpenseBranch,
+  Obligation,
+  ObligationPayment,
+  RecurringObligation,
+  Sale,
+  Store,
+  Transaction,
+} from "./types";
 
 export function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -102,9 +114,40 @@ function obligationBranchMatch(ob: Obligation, branch: ExpenseBranch) {
   return ob.branch === "ყველა" || ob.branch === branch || branch === "საერთო";
 }
 
+export function ensureMonthObligations(store: Store, month: string) {
+  const recurring = store.recurringObligations ?? [];
+  if (!recurring.length) return false;
+  if (!store.obligations[month]) store.obligations[month] = [];
+  let changed = false;
+  for (const rec of recurring) {
+    const exists = store.obligations[month].some((o) => o.recurringId === rec.id);
+    if (!exists) {
+      store.obligations[month].push({
+        id: uid(),
+        name: rec.name,
+        amount: rec.amount,
+        paid: 0,
+        branch: rec.branch,
+        category: rec.category,
+        month,
+        recurringId: rec.id,
+      });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+export function paymentsForObligation(store: Store, obligationId: string) {
+  return (store.obligationPayments ?? [])
+    .filter((p) => p.obligationId === obligationId)
+    .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+}
+
 export function applyExpenseToObligations(
   obligations: Record<string, Obligation[]>,
-  expense: Expense
+  expense: Expense,
+  payments?: ObligationPayment[]
 ): Record<string, Obligation[]> {
   const month = expense.date.slice(0, 7);
   const list = obligations[month];
@@ -131,9 +174,78 @@ export function applyExpenseToObligations(
     ob.paid += pay;
     remaining -= pay;
     expense.obligationId = ob.id;
+
+    if (payments) {
+      payments.push({
+        id: uid(),
+        obligationId: ob.id,
+        expenseId: expense.id,
+        amount: pay,
+        paidAt: expense.date,
+        note: expense.comment,
+      });
+    }
   }
 
   return next;
+}
+
+export function applyExpenseToStore(store: Store, expense: Expense) {
+  const month = expense.date.slice(0, 7);
+  ensureMonthObligations(store, month);
+  if (!store.obligationPayments) store.obligationPayments = [];
+  store.obligations = applyExpenseToObligations(
+    store.obligations,
+    expense,
+    store.obligationPayments
+  );
+}
+
+export function reverseExpenseObligation(store: Store, expense: Expense) {
+  if (!store.obligationPayments) store.obligationPayments = [];
+  const related = store.obligationPayments.filter((p) => p.expenseId === expense.id);
+  if (related.length) {
+    for (const p of related) {
+      const month = expense.date.slice(0, 7);
+      const list = store.obligations[month];
+      const ob = list?.find((o) => o.id === p.obligationId);
+      if (ob) ob.paid = Math.max(0, ob.paid - p.amount);
+    }
+    store.obligationPayments = store.obligationPayments.filter((p) => p.expenseId !== expense.id);
+    return;
+  }
+  if (expense.obligationId) {
+    const month = expense.date.slice(0, 7);
+    const list = store.obligations[month];
+    const ob = list?.find((o) => o.id === expense.obligationId);
+    if (ob) ob.paid = Math.max(0, ob.paid - expense.amount);
+  }
+}
+
+export function addRecurringObligation(
+  store: Store,
+  data: Omit<RecurringObligation, "id" | "createdAt">,
+  month: string
+) {
+  if (!store.recurringObligations) store.recurringObligations = [];
+  const rec: RecurringObligation = {
+    ...data,
+    id: uid(),
+    createdAt: new Date().toISOString(),
+  };
+  store.recurringObligations.push(rec);
+  if (!store.obligations[month]) store.obligations[month] = [];
+  store.obligations[month].push({
+    id: uid(),
+    name: rec.name,
+    amount: rec.amount,
+    paid: 0,
+    branch: rec.branch,
+    category: rec.category,
+    month,
+    recurringId: rec.id,
+  });
+  return rec;
 }
 
 export function obligationSummary(obligations: Record<string, Obligation[]>, month: string, branch: Branch | "ყველა") {

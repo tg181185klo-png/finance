@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid, applyExpenseToObligations, applySaleToStock } from "@/lib/utils";
+import { uid, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type { BranchDailyReport, BranchExpenseLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
 
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
         if (t.type === "sale") {
           store.inventory = applySaleToStock(store.inventory, t, -1);
         } else {
-          store.obligations = applyExpenseToObligations(store.obligations, t);
+          applyExpenseToStore(store, t);
         }
       }
       store.branchReports = [report, ...store.branchReports];
@@ -170,6 +170,7 @@ export async function DELETE(req: NextRequest) {
       const removed = store.transactions.filter((t) => t.reportId === reportId);
       for (const t of removed) {
         if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
+        else reverseExpenseObligation(store, t);
       }
       store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
       store.branchReports = store.branchReports.filter((r) => r.id !== reportId);

@@ -16,5 +16,7 @@
     "ქუთაისი": { "cash": 0, "card": 0, "bank": 0 },
     "ლილო": { "cash": 0, "card": 0, "bank": 0 },
     "დიღომი": { "cash": 0, "card": 0, "bank": 0 }
-  }
+  },
+  "recurringObligations": [],
+  "obligationPayments": []
 }

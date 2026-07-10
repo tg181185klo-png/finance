@@ -32,6 +32,7 @@ import {
   formatMoney,
   getStock,
   loadLegacyTransactions,
+  paymentsForObligation,
   obligationSummary,
   uid,
 } from "@/lib/utils";
@@ -144,6 +145,7 @@ export default function Dashboard() {
   const [obAmount, setObAmount] = useState("");
   const [obBranch, setObBranch] = useState<ExpenseBranch | "ყველა">("ყველა");
   const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
+  const [obRecurring, setObRecurring] = useState(true);
 
   // Reports
   const [report, setReport] = useState<PeriodReport | null>(null);
@@ -234,6 +236,12 @@ export default function Dashboard() {
     () => obligationSummary(store?.obligations ?? {}, obMonth, filter),
     [store?.obligations, obMonth, filter]
   );
+
+  const recurringList = store?.recurringObligations ?? [];
+
+  useEffect(() => {
+    if (unlocked && tab === "obligations") refresh();
+  }, [obMonth, unlocked, tab]);
 
   const branchReports = store?.branchReports ?? [];
   const inventory = store?.inventory ?? { ქუთაისი: {}, ლილო: {}, დიღომი: {} };
@@ -488,16 +496,41 @@ export default function Dashboard() {
     e.preventDefault();
     const amount = parseFloat(obAmount);
     if (!obName.trim() || !amount) return;
-    await fetch("/api/obligations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        obligation: { name: obName.trim(), amount, branch: obBranch, category: obCategory, month: obMonth },
-      }),
+    try {
+      const res = await fetch("/api/obligations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          obligation: { name: obName.trim(), amount, branch: obBranch, category: obCategory, month: obMonth },
+          recurring: obRecurring,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      await refresh();
+      setSaveMsg(obRecurring ? "ყოველთვიური ვალდებულება დაემატა ✓" : "ვალდებულება დაემატა ✓");
+      setObName("");
+      setObAmount("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "შეცდომა");
+    }
+  }
+
+  function deleteRecurring(recurringId: string) {
+    pin.requestPin(async (pinCode) => {
+      try {
+        const res = await fetch(
+          `/api/obligations?recurringId=${recurringId}&pin=${encodeURIComponent(pinCode)}`,
+          { method: "DELETE" }
+        );
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        await refresh();
+        setSaveMsg("ყოველთვიური ვალდებულება წაიშალა");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
+      }
     });
-    await refresh();
-    setObName("");
-    setObAmount("");
   }
 
   function deleteObligation(id: string) {
@@ -795,8 +828,26 @@ export default function Dashboard() {
                 </select>
               </Field>
             </div>
-            <button type="submit" className={`${btnCls} mt-4`}>დამატება</button>
+            <label className="mt-3 flex items-center gap-2 text-sm text-violet-200">
+              <input type="checkbox" checked={obRecurring} onChange={(e) => setObRecurring(e.target.checked)} />
+              ყოველთვიური ფიქსირებული ხარჯი (ყოველ თვეში ავტომატურად გამოჩნდება)
+            </label>
+            <button type="submit" className={`${btnCls} mt-4`}>დამატება და შენახვა</button>
           </form>
+
+          {recurringList.length > 0 && (
+            <div className="rounded-xl border border-violet-900/40 bg-violet-950/10 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-violet-300">ყოველთვიური შაბლონები</h3>
+              <div className="space-y-2">
+                {recurringList.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between rounded-lg border border-violet-900/30 bg-zinc-900/40 px-3 py-2 text-sm">
+                    <span>{r.name} · {r.category} · {formatMoney(r.amount)}</span>
+                    <button type="button" className="text-xs text-red-400" onClick={() => deleteRecurring(r.id)}>წაშლა</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-3">
             <Stat label="თვის ვალდებულება" value={formatMoney(obSummary.total)} />
@@ -812,19 +863,35 @@ export default function Dashboard() {
               <div className="space-y-3">
                 {obSummary.items.map((o: Obligation) => {
                   const pct = o.amount ? Math.round((o.paid / o.amount) * 100) : 0;
+                  const payments = store ? paymentsForObligation(store, o.id) : [];
                   return (
                     <div key={o.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
                       <div className="mb-2 flex justify-between">
-                        <span className="font-medium">{o.name}</span>
+                        <span className="font-medium">
+                          {o.name}
+                          {o.recurringId && <span className="ml-2 text-xs text-violet-400">ყოველთვიური</span>}
+                        </span>
                         <button type="button" className="text-xs text-red-400" onClick={() => deleteObligation(o.id)}>წაშლა</button>
                       </div>
                       <div className="mb-1 flex justify-between text-sm text-zinc-400">
                         <span>{o.branch} · {o.category}</span>
                         <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
                       </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                      <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
                         <div className="h-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
                       </div>
+                      <p className="mb-1 text-xs text-amber-400">დარჩენილი: {formatMoney(o.amount - o.paid)}</p>
+                      {payments.length > 0 && (
+                        <div className="mt-2 border-t border-zinc-800 pt-2">
+                          <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
+                          {payments.map((p) => (
+                            <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
+                              <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
+                              <span>+{formatMoney(p.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
