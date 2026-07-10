@@ -28,6 +28,7 @@ import {
   calcBalances,
   clearLegacyTransactions,
   currentMonth,
+  emptyBranchCash,
   formatDate,
   formatMoney,
   getStock,
@@ -51,6 +52,12 @@ const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
 const tabCls = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
+
+function parseNum(raw: string): number {
+  if (!raw.trim()) return 0;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : 0;
+}
 
 type Tab = "main" | "obligations" | "reports" | "branches" | "inventory";
 
@@ -168,13 +175,14 @@ export default function Dashboard() {
     pin.requestPin(action);
   }
 
-  const saveInventory = useCallback(async (body: object) => {
-    const pinCode = getAdminPin();
-    if (!pinCode) throw new Error("გახსენით ადმინი PIN კოდით");
+  const saveInventory = useCallback(async (body: object, pinCode?: string) => {
+    const pin = pinCode || getAdminPin();
+    if (!pin) throw new Error("გახსენით ადმინი PIN კოდით");
     const res = await fetch("/api/inventory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, pin: pinCode }),
+      body: JSON.stringify({ ...body, pin }),
+      cache: "no-store",
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "შენახვა ვერ მოხერხდა");
@@ -205,7 +213,7 @@ export default function Dashboard() {
   }, []);
 
   const loadStore = useCallback(async () => {
-    const res = await fetch("/api/store");
+    const res = await fetch("/api/store", { cache: "no-store" });
     const data = (await res.json()) as Store;
     setStore(data);
     return data;
@@ -291,7 +299,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (store?.branchCash) {
-      setCashForm(store.branchCash[invBranch]);
+      setCashForm(store.branchCash[invBranch] ?? emptyBranchCash());
       skipCashAutoSave.current = true;
     }
   }, [store?.branchCash, invBranch]);
@@ -313,6 +321,7 @@ export default function Dashboard() {
           bank: cashForm.bank,
         });
         setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+        setError("");
         setSaveMsg("შენახულია ✓");
         setTimeout(() => setSaveMsg(""), 2000);
       } catch (e) {
@@ -324,7 +333,7 @@ export default function Dashboard() {
   }, [cashForm, invBranch, unlocked, saveInventory]);
 
   useEffect(() => {
-    if (!unlocked || !invSelected) return;
+    if (!unlocked || !getAdminPin() || !invSelected) return;
     const quantity = parseFloat(invQty);
     if (Number.isNaN(quantity) || quantity < 0) return;
     if (skipStockAutoSave.current) {
@@ -341,6 +350,7 @@ export default function Dashboard() {
           quantity,
         });
         setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+        setError("");
         setSaveMsg("მარაგი შენახულია ✓");
         setTimeout(() => setSaveMsg(""), 2000);
       } catch (e) {
@@ -351,44 +361,50 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [invQty, invBranch, invSelected, unlocked, saveInventory]);
 
-  async function setStock(e: React.FormEvent) {
+  function setStock(e: React.FormEvent) {
     e.preventDefault();
     if (!invSelected) return;
     const quantity = parseFloat(invQty);
     if (Number.isNaN(quantity) || quantity < 0) return;
-    try {
-      const data = await saveInventory({
-        action: "setStock",
-        branch: invBranch,
-        productCode: invSelected.code,
-        quantity,
-      });
-      setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
-      setSaveMsg("მარაგი შენახულია ✓");
-      setInvSearch("");
-      setInvSelected(null);
-      setInvQty("");
-      skipStockAutoSave.current = true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "შეცდომა");
-    }
+    runWithPin(async (pinCode) => {
+      try {
+        const data = await saveInventory({
+          action: "setStock",
+          branch: invBranch,
+          productCode: invSelected.code,
+          quantity,
+        }, pinCode);
+        setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+        setError("");
+        setSaveMsg("მარაგი შენახულია ✓");
+        setInvSearch("");
+        setInvSelected(null);
+        setInvQty("");
+        skipStockAutoSave.current = true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
   }
 
-  async function saveBranchCash(e: React.FormEvent) {
+  function saveBranchCash(e: React.FormEvent) {
     e.preventDefault();
-    try {
-      const data = await saveInventory({
-        action: "setCash",
-        branch: invBranch,
-        cash: cashForm.cash,
-        card: cashForm.card,
-        bank: cashForm.bank,
-      });
-      setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
-      setSaveMsg("შენახულია ✓");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "შეცდომა");
-    }
+    runWithPin(async (pinCode) => {
+      try {
+        const data = await saveInventory({
+          action: "setCash",
+          branch: invBranch,
+          cash: cashForm.cash,
+          card: cashForm.card,
+          bank: cashForm.bank,
+        }, pinCode);
+        setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+        setError("");
+        setSaveMsg("შენახულია ✓");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
   }
 
   function pickInvProduct(p: Product) {
@@ -589,6 +605,7 @@ export default function Dashboard() {
     if (ok) {
       rememberPin(pinCode);
       setPinInput("");
+      setError("");
       return true;
     }
     return false;
@@ -630,21 +647,18 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
-        {unlocked ? (
-          <>
-            <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
-              ვალდებულებები
-            </button>
-            <button type="button" className={tabCls(tab === "inventory")} onClick={() => setTab("inventory")}>
-              მარაგი და ნაშთები
-            </button>
-          </>
-        ) : (
+        <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
+          ვალდებულებები
+        </button>
+        <button type="button" className={tabCls(tab === "inventory")} onClick={() => setTab("inventory")}>
+          მარაგი და ნაშთები
+        </button>
+        {!unlocked && (
           <div className="flex items-center gap-2">
             <input
               type="password"
-              placeholder="კოდი"
-              className={`${inputCls} w-24`}
+              placeholder="ადმინ კოდი"
+              className={`${inputCls} w-28`}
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && unlockAdmin(pinInput)}
@@ -824,7 +838,13 @@ export default function Dashboard() {
         </>
       )}
 
-      {tab === "obligations" && unlocked && (
+      {tab === "obligations" && (
+        !unlocked ? (
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
+            <h2 className="mb-2 text-lg font-semibold">ვალდებულებები</h2>
+            <p className="text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ.</p>
+          </section>
+        ) : (
         <section className="space-y-6">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="თვე">
@@ -920,6 +940,7 @@ export default function Dashboard() {
             )}
           </div>
         </section>
+        )
       )}
 
       {tab === "reports" && (
@@ -979,7 +1000,13 @@ export default function Dashboard() {
         </section>
       )}
 
-      {tab === "inventory" && unlocked && store && (
+      {tab === "inventory" && store && (
+        !unlocked ? (
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
+            <h2 className="mb-2 text-lg font-semibold">მარაგი და ნაშთები</h2>
+            <p className="mb-4 text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ, რომ მარაგის და ნაშთების რედაქტირება გახსნათ.</p>
+          </section>
+        ) : (
         <section className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
@@ -994,13 +1021,13 @@ export default function Dashboard() {
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="ქეში">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.cash} onChange={(e) => setCashForm((c) => ({ ...c, cash: +e.target.value }))} />
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.cash} onChange={(e) => setCashForm((c) => ({ ...c, cash: parseNum(e.target.value) }))} />
                 </Field>
                 <Field label="ბარათი">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.card} onChange={(e) => setCashForm((c) => ({ ...c, card: +e.target.value }))} />
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.card} onChange={(e) => setCashForm((c) => ({ ...c, card: parseNum(e.target.value) }))} />
                 </Field>
                 <Field label="ანგარიში">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: +e.target.value }))} />
+                  <input className={inputCls} type="number" step={0.01} value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: parseNum(e.target.value) }))} />
                 </Field>
               </div>
               <button type="submit" className={`${btnCls} mt-4`}>ახლავე შენახვა</button>
@@ -1040,7 +1067,9 @@ export default function Dashboard() {
             </form>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">მიმდინარე ბალანსი (საწყისი + ტრანზაქციები)</h3>
+            <div className="grid gap-3 sm:grid-cols-3">
             {BRANCHES.map((b) => {
               const cash = calcBalances(tx, b, store.branchCash);
               return (
@@ -1054,6 +1083,7 @@ export default function Dashboard() {
                 </div>
               );
             })}
+            </div>
           </div>
 
           <div className="rounded-xl border border-zinc-800 p-5">
@@ -1101,6 +1131,7 @@ export default function Dashboard() {
             </p>
           </div>
         </section>
+        )
       )}
 
       {tab === "branches" && store && (

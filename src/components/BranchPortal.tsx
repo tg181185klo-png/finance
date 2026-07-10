@@ -46,10 +46,11 @@ export default function BranchPortal({ token }: { token: string }) {
   const [inventory, setInventory] = useState<BranchInventory>({});
   const [sales, setSales] = useState<SaleRow[]>([emptySale()]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([emptyExpense()]);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/branch?token=${token}`).then((r) => r.json()),
+      fetch(`/api/branch?token=${token}`, { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/products", { cache: "no-store" }).then((r) => r.json()),
     ])
       .then(([branchData, prodData]) => {
@@ -95,6 +96,7 @@ export default function BranchPortal({ token }: { token: string }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
     const validSales = sales
       .filter((r) => r.product && r.quantity > 0 && r.unitPrice > 0)
       .map((r) => ({
@@ -120,20 +122,33 @@ export default function BranchPortal({ token }: { token: string }) {
       return;
     }
 
-    const res = await fetch("/api/branch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, date, sales: validSales, expenses: validExpenses }),
-    });
-    const d = await res.json();
-    if (!res.ok) {
-      setErr(d.error || "შეცდომა");
-      return;
-    }
-    setOk(true);
+    setSubmitting(true);
     setErr("");
-    setSales([emptySale()]);
-    setExpenses([emptyExpense()]);
+    try {
+      const res = await fetch("/api/branch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, date, sales: validSales, expenses: validExpenses }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setErr(d.error || "შეცდომა");
+        return;
+      }
+      setOk(true);
+      setSales([emptySale()]);
+      setExpenses([emptyExpense()]);
+      fetch(`/api/branch?token=${token}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((branchData) => {
+          if (!branchData.error) setInventory(branchData.inventory ?? {});
+        })
+        .catch(() => {});
+    } catch {
+      setErr("კავშირის შეცდომა");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">იტვირთება...</div>;
@@ -265,7 +280,7 @@ export default function BranchPortal({ token }: { token: string }) {
           <p className="mt-3 text-right text-sm font-medium text-red-400">სულ ხარჯი: {formatMoney(expensesTotal)}</p>
         </section>
 
-        <button type="submit" className={btnCls}>გაგზავნა</button>
+        <button type="submit" className={btnCls} disabled={submitting}>{submitting ? "იგზავნება..." : "გაგზავნა"}</button>
       </form>
 
       <p className="mt-4 text-center text-sm text-zinc-500">

@@ -4,6 +4,8 @@ import { uid, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } 
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type { BranchDailyReport, BranchExpenseLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const token = new URL(req.url).searchParams.get("token");
   if (!token) return NextResponse.json({ error: "token საჭიროა" }, { status: 400 });
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
     branch,
     token,
     inventory: store.inventory[branch] ?? {},
-  });
+  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
 export async function POST(req: NextRequest) {

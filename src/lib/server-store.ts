@@ -89,12 +89,8 @@ async function loadStoreRaw(): Promise<Store | null> {
 
 async function persistStore(store: Store) {
   if (hasPostgres()) {
-    try {
-      await writeToPostgres(store);
-      return;
-    } catch {
-      // fall through
-    }
+    await writeToPostgres(store);
+    return;
   }
   if (hasBlobStorage()) {
     await writeToBlob(store);

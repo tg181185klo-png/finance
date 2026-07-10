@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { updateStore } from "@/lib/server-store";
-import type { Branch } from "@/lib/types";
+import { emptyBranchCash } from "@/lib/utils";
+import type { Branch, Store } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 function checkPin(pin?: string) {
   return pin === ADMIN_PIN;
+}
+
+function safeNum(value: unknown, fallback: number) {
+  const n = typeof value === "number" ? value : parseFloat(String(value ?? ""));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function ensureBranchBuckets(s: Store, branch: Branch) {
+  if (!s.branchCash[branch]) s.branchCash[branch] = emptyBranchCash();
+  if (!s.inventory[branch]) s.inventory[branch] = {};
 }
 
 export async function POST(req: NextRequest) {
@@ -28,11 +41,14 @@ export async function POST(req: NextRequest) {
     const branch = body.branch;
 
     const store = await updateStore((s) => {
+      ensureBranchBuckets(s, branch);
+
       if (body.action === "setCash") {
+        const cur = s.branchCash[branch];
         s.branchCash[branch] = {
-          cash: body.cash ?? s.branchCash[branch].cash,
-          card: body.card ?? s.branchCash[branch].card,
-          bank: body.bank ?? s.branchCash[branch].bank,
+          cash: body.cash !== undefined ? safeNum(body.cash, cur.cash) : cur.cash,
+          card: body.card !== undefined ? safeNum(body.card, cur.card) : cur.card,
+          bank: body.bank !== undefined ? safeNum(body.bank, cur.bank) : cur.bank,
         };
         return;
       }
@@ -41,23 +57,26 @@ export async function POST(req: NextRequest) {
       if (!code) throw new Error("productCode საჭიროა");
 
       if (body.action === "setStock") {
-        const qty = body.quantity ?? 0;
+        const qty = Math.max(0, safeNum(body.quantity, 0));
         if (qty === 0) delete s.inventory[branch][code];
         else s.inventory[branch][code] = qty;
       } else if (body.action === "adjustStock") {
-        const delta = body.delta ?? 0;
+        const delta = safeNum(body.delta, 0);
         const cur = s.inventory[branch][code] ?? 0;
-        const next = cur + delta;
+        const next = Math.max(0, cur + delta);
         if (next === 0) delete s.inventory[branch][code];
         else s.inventory[branch][code] = next;
       }
     });
 
-    return NextResponse.json({
-      ok: true,
-      inventory: store.inventory,
-      branchCash: store.branchCash,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        inventory: store.inventory,
+        branchCash: store.branchCash,
+      },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
     return NextResponse.json({ error: msg }, { status: 500 });
