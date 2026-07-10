@@ -7,6 +7,11 @@ import { BRANCHES } from "./constants";
 import { ensureMonthObligations, currentMonth } from "./utils";
 import { env } from "./env";
 import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
+import {
+  hasSupabaseStorage,
+  readFromSupabaseStorage,
+  writeToSupabaseStorage,
+} from "./supabase-store";
 import { mergeStore } from "./store-merge";
 
 export { mergeStore } from "./store-merge";
@@ -29,7 +34,15 @@ async function loadStoreRaw(): Promise<Store | null> {
       const pg = await readFromPostgres();
       if (pg) return mergeStore(pg);
     } catch {
-      // fall through to blob
+      // fall through to supabase storage / blob
+    }
+  }
+  if (hasSupabaseStorage()) {
+    try {
+      const sb = await readFromSupabaseStorage();
+      if (sb) return sb;
+    } catch {
+      // fall through
     }
   }
   if (hasBlobStorage()) {
@@ -43,28 +56,51 @@ async function loadStoreRaw(): Promise<Store | null> {
 }
 
 async function persistStore(store: Store) {
+  const errors: string[] = [];
+
   if (hasPostgres()) {
     try {
       await writeToPostgres(store);
       return;
-    } catch {
-      if (!hasBlobStorage()) throw new Error("Postgres write failed and Blob is not configured");
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  if (hasSupabaseStorage()) {
+    try {
+      await writeToSupabaseStorage(store);
+      return;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
     }
   }
   if (hasBlobStorage()) {
     await writeToBlob(store);
     return;
   }
-  await writeToFile(store);
+  try {
+    await writeToFile(store);
+    return;
+  } catch (err) {
+    errors.push(err instanceof Error ? err.message : String(err));
+  }
+  throw new Error(errors[0] ?? "მონაცემების შენახვა ვერ მოხერხდა");
 }
 
-async function migrateBlobToPostgresIfNeeded() {
+async function migrateToPostgresIfNeeded() {
   if (!hasPostgres()) return;
-  const existing = await readFromPostgres();
-  if (existing) return;
-  const blob = hasBlobStorage() ? await readFromBlob() : null;
-  const file = blob ?? (await readFromFile().catch(() => null));
-  if (file) await writeToPostgres(mergeStore(file));
+  try {
+    const existing = await readFromPostgres();
+    if (existing) return;
+    const blob = hasSupabaseStorage()
+      ? await readFromSupabaseStorage().catch(() => null)
+      : null;
+    const vercelBlob = hasBlobStorage() ? await readFromBlob() : null;
+    const file = blob ?? vercelBlob ?? (await readFromFile().catch(() => null));
+    if (file) await writeToPostgres(mergeStore(file));
+  } catch {
+    // Migration is best-effort
+  }
 }
 
 async function readFromFile(): Promise<Store> {
@@ -112,7 +148,7 @@ async function writeToBlob(store: Store) {
 }
 
 export async function readStore(): Promise<Store> {
-  await migrateBlobToPostgresIfNeeded();
+  await migrateToPostgresIfNeeded();
   const loaded = await loadStoreRaw();
   const store = loaded ?? { ...DEFAULT_STORE };
 
@@ -179,7 +215,19 @@ export function dateOnly(iso: string) {
 }
 
 export function storageMode() {
-  if (hasPostgres()) return "vercel-postgres";
+  if (hasPostgres()) return "supabase-postgres";
+  if (hasSupabaseStorage()) return "supabase-storage";
   if (hasBlobStorage()) return "vercel-blob";
   return "local-file";
+}
+
+export async function diagnoseStorage() {
+  const postgres = await import("./db").then((m) => m.testPostgres());
+  const supabase = await import("./supabase-store").then((m) => m.testSupabaseStorage());
+  return {
+    mode: storageMode(),
+    postgres,
+    supabase,
+    blob: hasBlobStorage(),
+  };
 }
