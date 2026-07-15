@@ -18,6 +18,10 @@ export async function GET(req: NextRequest) {
     branch,
     token,
     inventory: store.inventory[branch] ?? {},
+    employees: (store.employees ?? []).filter((e) => e.branch === branch && e.active),
+    attendance: (store.attendance ?? []).filter(
+      (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
+    ),
   }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
@@ -32,6 +36,7 @@ export async function POST(req: NextRequest) {
       expensesTotal?: number;
       salesNote?: string;
       expensesNote?: string;
+      submittedBy?: string;
     };
 
     const preview = await readStore();
@@ -64,6 +69,7 @@ export async function POST(req: NextRequest) {
       expensesTotal,
       expensesNote,
       submittedAt: now,
+      submittedBy: body.submittedBy,
       sales,
       expenses,
     };
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest) {
         comment: `${s.productName} × ${s.quantity}`,
         source: "branch",
         reportId,
+        employeeName: body.submittedBy,
       };
       txs.push(sale);
     }

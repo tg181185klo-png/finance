@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { addRecurringObligation, currentMonth, ensureMonthObligations, uid } from "@/lib/utils";
 import { readStore, updateStore } from "@/lib/server-store";
-import type { Obligation } from "@/lib/types";
+import type { Obligation, PaymentMethod, ExpenseBranch } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get("month") ?? currentMonth();
@@ -19,11 +19,62 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      obligation: Omit<Obligation, "id" | "paid">;
+      obligation?: Omit<Obligation, "id" | "paid">;
       recurring?: boolean;
+      action?: "pay";
+      pin?: string;
+      obligationId?: string;
+      month?: string;
+      amount?: number;
+      paymentMethod?: PaymentMethod;
+      branch?: ExpenseBranch;
+      note?: string;
     };
-    const month = body.obligation.month || currentMonth();
 
+    if (body.action === "pay") {
+      if (body.pin !== ADMIN_PIN) {
+        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
+      }
+      const month = body.month || currentMonth();
+      const amount = Number(body.amount);
+      if (!amount || amount <= 0 || !body.obligationId) {
+        return NextResponse.json({ error: "თანხა და ID საჭიროა" }, { status: 400 });
+      }
+
+      const store = await updateStore((s) => {
+        ensureMonthObligations(s, month);
+        const list = s.obligations[month];
+        const ob = list?.find((o) => o.id === body.obligationId);
+        if (!ob) throw new Error("ვალდებულება ვერ მოიძებნა");
+        const left = ob.amount - ob.paid;
+        const pay = Math.min(amount, left);
+        if (pay <= 0) throw new Error("უკვე სრულად გადახდილია");
+        ob.paid += pay;
+        if (!s.obligationPayments) s.obligationPayments = [];
+        s.obligationPayments.push({
+          id: uid(),
+          obligationId: ob.id,
+          expenseId: "",
+          amount: pay,
+          paidAt: new Date().toISOString(),
+          note: body.note || `${ob.name} — პირდაპირი გადახდა`,
+          paymentMethod: body.paymentMethod,
+          branch: body.branch,
+        });
+      });
+
+      return NextResponse.json({
+        ok: true,
+        obligations: store.obligations,
+        obligationPayments: store.obligationPayments,
+      });
+    }
+
+    if (!body.obligation) {
+      return NextResponse.json({ error: "obligation საჭიროა" }, { status: 400 });
+    }
+
+    const month = body.obligation.month || currentMonth();
     let saved: Obligation | undefined;
 
     await updateStore((store) => {
@@ -31,17 +82,17 @@ export async function POST(req: NextRequest) {
         addRecurringObligation(
           store,
           {
-            name: body.obligation.name,
-            amount: body.obligation.amount,
-            branch: body.obligation.branch,
-            category: body.obligation.category,
+            name: body.obligation!.name,
+            amount: body.obligation!.amount,
+            branch: body.obligation!.branch,
+            category: body.obligation!.category,
           },
           month
         );
         saved = store.obligations[month].at(-1);
       } else {
         saved = {
-          ...body.obligation,
+          ...body.obligation!,
           id: uid(),
           paid: 0,
           month,

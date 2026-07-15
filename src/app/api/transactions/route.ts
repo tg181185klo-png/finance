@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditPayments, uid } from "@/lib/utils";
+import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, Sale, Transaction } from "@/lib/types";
 
@@ -23,22 +23,22 @@ export async function POST(req: NextRequest) {
         applyExpenseToStore(s, t as Expense);
       } else {
         const sale = t as Sale;
-        s.inventory = applySaleToStock(s.inventory, sale, -1);
-        if (sale.paymentStatus === "ბე (ავანსი)" && (sale.creditPaid ?? 0) > 0) {
+        if (sale.paymentStatus === "ბე (ავანსი)") {
           if (!s.creditPayments) s.creditPayments = [];
-          const initial: CreditPayment = {
-            id: uid(),
-            saleId: sale.id,
-            amount: sale.creditPaid!,
-            paidAt: sale.date,
-            note: sale.buyerName ? `ავანსი — ${sale.buyerName}` : "საწყისი ავანსი",
-            paymentMethod: sale.paymentMethod,
-          };
-          s.creditPayments.push(initial);
-          if (sale.creditPaid! >= sale.amount) {
-            sale.creditCompletedAt = sale.date;
-            sale.paymentStatus = "სრულად გადახდილი";
+          if ((sale.creditPaid ?? 0) > 0) {
+            const initial: CreditPayment = {
+              id: uid(),
+              saleId: sale.id,
+              amount: sale.creditPaid!,
+              paidAt: sale.date,
+              note: sale.buyerName ? `ავანსი — ${sale.buyerName}` : "საწყისი ავანსი",
+              paymentMethod: sale.paymentMethod,
+            };
+            s.creditPayments.push(initial);
           }
+          markCreditOrderProgress(sale, sale.date);
+        } else {
+          s.inventory = applySaleToStock(s.inventory, sale, -1);
         }
       }
 
@@ -51,6 +51,8 @@ export async function POST(req: NextRequest) {
       obligations: store.obligations,
       inventory: store.inventory,
       transactions: store.transactions,
+      creditPayments: store.creditPayments,
+      creditDeliveries: store.creditDeliveries,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
@@ -75,7 +77,7 @@ export async function DELETE(req: NextRequest) {
         for (const t of removed) {
           if (t.type === "sale") {
             s.inventory = applySaleToStock(s.inventory, t, 1);
-            reverseCreditPayments(s, t.id);
+            reverseCreditOrderData(s, t.id);
           } else reverseExpenseObligation(s, t);
         }
         s.transactions = s.transactions.filter((t) => t.reportId !== reportId);
@@ -90,7 +92,7 @@ export async function DELETE(req: NextRequest) {
 
       if (removed?.type === "sale") {
         s.inventory = applySaleToStock(s.inventory, removed, 1);
-        reverseCreditPayments(s, removed.id);
+        reverseCreditOrderData(s, removed.id);
       }
 
       if (removed?.type === "expense") {

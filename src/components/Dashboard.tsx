@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AttendanceRecord,
   Branch,
   BranchCash,
   BranchDailyReport,
+  Employee,
   Expense,
   ExpenseBranch,
   ExpenseCategory,
@@ -35,11 +37,15 @@ import {
   loadLegacyTransactions,
   paymentsForObligation,
   paymentsForSale,
+  deliveriesForSale,
   obligationSummary,
   saleCreditPaid,
   saleCreditRemaining,
-  isSaleCreditComplete,
-  isSaleCreditOpen,
+  saleQuantityDelivered,
+  saleQuantityRemaining,
+  isCreditOrder,
+  isCreditOrderFullyComplete,
+  isCreditOrderActive,
   uid,
 } from "@/lib/utils";
 import { PinModal, usePin } from "@/components/PinModal";
@@ -65,7 +71,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "obligations" | "reports" | "branches" | "inventory";
+type Tab = "main" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -137,6 +143,8 @@ export default function Dashboard() {
   const [buyerName, setBuyerName] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
+  const [creditDeliverInputs, setCreditDeliverInputs] = useState<Record<string, string>>({});
+  const [creditPayMethods, setCreditPayMethods] = useState<Record<string, PaymentMethod>>({});
 
   // Expense form
   const [eBranch, setEBranch] = useState<ExpenseBranch>("საერთო");
@@ -151,6 +159,17 @@ export default function Dashboard() {
   const [obBranch, setObBranch] = useState<ExpenseBranch | "ყველა">("ყველა");
   const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
   const [obRecurring, setObRecurring] = useState(true);
+
+  // Obligation payment
+  const [obPayInputs, setObPayInputs] = useState<Record<string, string>>({});
+  const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
+  const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
+
+  // Employee form
+  const [empName, setEmpName] = useState("");
+  const [empBranch, setEmpBranch] = useState<Branch>("ქუთაისი");
+  const [empWage, setEmpWage] = useState("");
+  const [empMonthFilter, setEmpMonthFilter] = useState(currentMonth());
 
   // Reports
   const [report, setReport] = useState<PeriodReport | null>(null);
@@ -287,12 +306,70 @@ export default function Dashboard() {
     () => calcBalances(tx, filter, activeStore.branchCash),
     [tx, filter, activeStore.branchCash]
   );
-  const creditTx = useMemo(() => tx.filter((t): t is Sale => t.type === "sale" && (t.paymentStatus === "ბე (ავანსი)" || (t.creditPaid ?? 0) > 0 || Boolean(t.creditCompletedAt))), [tx]);
-  const openCreditOrders = useMemo(() => creditTx.filter((t) => isSaleCreditOpen(t)), [creditTx]);
+  const creditTx = useMemo(
+    () => tx.filter((t): t is Sale => t.type === "sale" && isCreditOrder(t)),
+    [tx]
+  );
+  const openCreditOrders = useMemo(() => creditTx.filter((t) => isCreditOrderActive(t)), [creditTx]);
   const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
+  const creditQtyRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleQuantityRemaining(t), 0), [openCreditOrders]);
+  const saleById = useMemo(() => {
+    const m = new Map<string, Sale>();
+    for (const t of tx) if (t.type === "sale") m.set(t.id, t);
+    return m;
+  }, [tx]);
+  const creditHistory = useMemo(() => {
+    type Row = {
+      id: string;
+      at: string;
+      kind: "pay" | "deliver";
+      saleId: string;
+      buyer: string;
+      branch: Branch;
+      productName: string;
+      amount?: number;
+      quantity?: number;
+      paymentMethod?: PaymentMethod;
+    };
+    const rows: Row[] = [];
+    for (const p of activeStore.creditPayments ?? []) {
+      const sale = saleById.get(p.saleId);
+      if (!sale) continue;
+      if (filter !== "ყველა" && sale.branch !== filter) continue;
+      rows.push({
+        id: p.id,
+        at: p.paidAt,
+        kind: "pay",
+        saleId: p.saleId,
+        buyer: sale.buyerName || sale.comment || sale.productName,
+        branch: sale.branch,
+        productName: sale.productName,
+        amount: p.amount,
+        paymentMethod: p.paymentMethod,
+      });
+    }
+    for (const d of activeStore.creditDeliveries ?? []) {
+      const sale = saleById.get(d.saleId);
+      if (!sale) continue;
+      if (filter !== "ყველა" && sale.branch !== filter) continue;
+      rows.push({
+        id: d.id,
+        at: d.deliveredAt,
+        kind: "deliver",
+        saleId: d.saleId,
+        buyer: sale.buyerName || sale.comment || sale.productName,
+        branch: sale.branch,
+        productName: sale.productName,
+        quantity: d.quantity,
+      });
+    }
+    return rows.sort((a, b) => b.at.localeCompare(a.at));
+  }, [activeStore.creditPayments, activeStore.creditDeliveries, saleById, filter]);
   const history = useMemo(() => {
     const list = filter === "ყველა" ? tx : tx.filter((t) => t.branch === filter || t.branch === "საერთო");
-    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+    return [...list]
+      .filter((t) => !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)))
+      .sort((a, b) => b.date.localeCompare(a.date));
   }, [tx, filter]);
 
   const obSummary = useMemo(
@@ -494,6 +571,8 @@ export default function Dashboard() {
               ...prev,
               transactions: data.transactions ?? [sale, ...prev.transactions],
               inventory: data.inventory ?? prev.inventory,
+              creditPayments: data.creditPayments ?? prev.creditPayments,
+              creditDeliveries: data.creditDeliveries ?? prev.creditDeliveries,
             }
           : prev
       );
@@ -551,7 +630,13 @@ export default function Dashboard() {
         const res = await fetch("/api/credit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pin: pinCode, saleId, amount }),
+          body: JSON.stringify({
+            pin: pinCode,
+            action: "pay",
+            saleId,
+            amount,
+            paymentMethod: creditPayMethods[saleId] ?? "ქეში (ნაღდი)",
+          }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -561,11 +646,45 @@ export default function Dashboard() {
                 ...prev,
                 transactions: d.transactions ?? prev.transactions,
                 creditPayments: d.creditPayments ?? prev.creditPayments,
+                creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+                inventory: d.inventory ?? prev.inventory,
               }
             : prev
         );
         setCreditPayInputs((m) => ({ ...m, [saleId]: "" }));
-        setSaveMsg(isSaleCreditComplete(d.sale) ? "შეკვეთა სრულად გადახდილია ✓" : "გადახდა დაფიქსირდა ✓");
+        setSaveMsg(d.sale?.orderCompletedAt ? "შეკვეთა სრულად დასრულდა ✓" : "გადახდა დაფიქსირდა ✓");
+        setError("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  function addCreditDelivery(saleId: string) {
+    const quantity = parseFloat(creditDeliverInputs[saleId] ?? "");
+    if (!quantity || quantity <= 0) return;
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/credit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: pinCode, action: "deliver", saleId, quantity }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) =>
+          prev
+            ? {
+                ...prev,
+                transactions: d.transactions ?? prev.transactions,
+                creditPayments: d.creditPayments ?? prev.creditPayments,
+                creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+                inventory: d.inventory ?? prev.inventory,
+              }
+            : prev
+        );
+        setCreditDeliverInputs((m) => ({ ...m, [saleId]: "" }));
+        setSaveMsg(d.sale?.orderCompletedAt ? "შეკვეთა სრულად დასრულდა ✓" : "მიწოდება დაფიქსირდა ✓");
         setError("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "შეცდომა");
@@ -653,6 +772,84 @@ export default function Dashboard() {
     });
   }
 
+  function payObligation(obId: string) {
+    const amount = parseFloat(obPayInputs[obId] ?? "");
+    if (!amount || amount <= 0) return;
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/obligations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "pay",
+            pin: pinCode,
+            obligationId: obId,
+            month: obMonth,
+            amount,
+            paymentMethod: obPayMethods[obId] ?? "ქეში (ნაღდი)",
+            branch: obPayBranches[obId] ?? "საერთო",
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) =>
+          prev ? { ...prev, obligations: d.obligations ?? prev.obligations, obligationPayments: d.obligationPayments ?? prev.obligationPayments } : prev
+        );
+        setObPayInputs((m) => ({ ...m, [obId]: "" }));
+        setSaveMsg("ვალდებულება გასტუმრდა ✓");
+        setError("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  async function addEmployee(e: React.FormEvent) {
+    e.preventDefault();
+    if (!empName.trim()) return;
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "addEmployee",
+            pin: pinCode,
+            name: empName.trim(),
+            branch: empBranch,
+            dailyWage: parseFloat(empWage) || 0,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
+        setEmpName("");
+        setEmpWage("");
+        setSaveMsg("თანამშრომელი დამატებულია ✓");
+        setError("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  function toggleEmployee(empId: string) {
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "toggleEmployee", pin: pinCode, employeeId: empId }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
   async function loadReport(mode: string, from?: string, to?: string) {
     const b = repBranch === "ყველა" ? "ყველა" : repBranch;
     let url = `/api/reports?mode=${mode}&branch=${encodeURIComponent(b)}`;
@@ -662,16 +859,26 @@ export default function Dashboard() {
   }
 
   function txLabel(t: Transaction) {
-    if (t.type === "sale") return `${t.productName} × ${t.quantity}`;
+    if (t.type === "sale") {
+      const emp = t.employeeName ? ` (${t.employeeName})` : "";
+      return `${t.productName} × ${t.quantity}${emp}`;
+    }
     return t.category;
   }
 
   function txDetail(t: Transaction) {
+    if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) {
+      const moneyLeft = saleCreditRemaining(t);
+      const qtyLeft = saleQuantityRemaining(t);
+      const parts: string[] = [];
+      if (moneyLeft > 0) parts.push(`გადასახდელი ${formatMoney(moneyLeft)}`);
+      else parts.push("ფული ✓");
+      if (qtyLeft > 0) parts.push(`დასამიწოდებელი ${qtyLeft} ც`);
+      else parts.push("მოწოდება ✓");
+      return `ბე · ${parts.join(" · ")}`;
+    }
     if (t.type === "sale") {
-      if (t.paymentStatus === "ბე (ავანსი)" || (t.creditPaid ?? 0) > 0) {
-        const left = saleCreditRemaining(t);
-        return left > 0 ? `ბე · დარჩენილი ${formatMoney(left)}` : "ბე · დასრულებული ✓";
-      }
+      if (t.orderCompletedAt) return `ბე დასრულებული · ${t.paymentMethod}`;
       return `${t.paymentStatus} · ${t.paymentMethod}`;
     }
     return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
@@ -730,6 +937,9 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "inventory")} onClick={() => setTab("inventory")}>
           მარაგი და ნაშთები
         </button>
+        <button type="button" className={tabCls(tab === "employees")} onClick={() => setTab("employees")}>
+          თანამშრომლები
+        </button>
         {!unlocked && (
           <div className="flex items-center gap-2">
             <input
@@ -768,14 +978,13 @@ export default function Dashboard() {
 
       {tab === "main" && (
         <>
-          <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-            <Stat label="საერთო ბალანსი" value={formatMoney(balances.total)} accent={balances.total >= 0 ? "text-emerald-400" : "text-red-400"} />
+          <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             <Stat label="შემოსავალი" value={formatMoney(balances.revenue)} accent="text-emerald-400" />
             <Stat label="ხარჯები" value={formatMoney(balances.expenses)} accent="text-red-400" />
+            <Stat label="საერთო ბალანსი" value={formatMoney(balances.total)} accent={balances.total >= 0 ? "text-emerald-400" : "text-red-400"} />
             <Stat label="ქეში" value={formatMoney(balances.cash)} />
-            <Stat label="ბარათი" value={formatMoney(balances.card)} />
-            <Stat label="ანგარიში" value={formatMoney(balances.bank)} />
-            <Stat label="ბე (დარჩენილი)" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
+            <Stat label="ბარათი/ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
+            <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
 
           {unlocked && obSummary.total > 0 && (
@@ -830,11 +1039,13 @@ export default function Dashboard() {
                   )}
                 </Field>
                 <Field label="ფასი"><input className={inputCls} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(+e.target.value)} /></Field>
-                <Field label="გადახდის მეთოდი">
-                  <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)} disabled={payStatus === "ბე (ავანსი)"}>
-                    {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </Field>
+                {payStatus !== "ბე (ავანსი)" && (
+                  <Field label="გადახდის მეთოდი">
+                    <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
+                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </Field>
+                )}
                 <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
                 {payStatus === "ბე (ავანსი)" && (
                   <>
@@ -844,8 +1055,13 @@ export default function Dashboard() {
                     <Field label="ავანსი / ბე (₾)">
                       <input className={inputCls} type="number" min={0} step={0.01} value={creditAdvance} onChange={(e) => setCreditAdvance(e.target.value)} placeholder="მაგ: 15975" />
                     </Field>
-                    <div className="sm:col-span-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-                      შეკვეთის ჯამი: {formatMoney(qty * price)} · ავანსი: {formatMoney(parseFloat(creditAdvance) || 0)} · დარჩენილი: {formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))}
+                    <Field label="გადახდის მეთოდი (ავანსი)">
+                      <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
+                        {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </Field>
+                    <div className="mb-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                      შეკვეთა: {qty} ც · ჯამი {formatMoney(qty * price)} · ავანსი {formatMoney(parseFloat(creditAdvance) || 0)} · გადასახდელი {formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))} · მიწოდება დაიწყება 0/{qty} ც-დან
                     </div>
                   </>
                 )}
@@ -875,72 +1091,178 @@ export default function Dashboard() {
             </form>
           </div>
 
-          {creditTx.length > 0 && (
+          {openCreditOrders.length > 0 && (
             <section className="mb-6 space-y-3">
               <h3 className="text-sm font-semibold text-amber-400">
-                ბე შეკვეთები — {openCreditOrders.length} აქტიური · დარჩენილი {formatMoney(creditRemainingTotal)}
+                ბე შეკვეთები — {openCreditOrders.length} აქტიური · გადასახდელი {formatMoney(creditRemainingTotal)} · დასამიწოდებელი {creditQtyRemainingTotal} ც
               </h3>
-              {creditTx.map((sale) => {
+              {openCreditOrders.map((sale) => {
                 const paid = saleCreditPaid(sale);
-                const left = saleCreditRemaining(sale);
-                const done = isSaleCreditComplete(sale);
-                const pct = sale.amount ? Math.min(100, Math.round((paid / sale.amount) * 100)) : 0;
-                const payments = activeStore.creditPayments ? paymentsForSale(activeStore, sale.id) : [];
+                const moneyLeft = saleCreditRemaining(sale);
+                const delivered = saleQuantityDelivered(sale);
+                const qtyLeft = saleQuantityRemaining(sale);
+                const done = isCreditOrderFullyComplete(sale);
+                const moneyDone = moneyLeft <= 0;
+                const qtyDone = qtyLeft <= 0;
+                const moneyPct = sale.amount ? Math.min(100, Math.round((paid / sale.amount) * 100)) : 0;
+                const qtyPct = sale.quantity ? Math.min(100, Math.round((delivered / sale.quantity) * 100)) : 0;
+                const payments = paymentsForSale(activeStore, sale.id);
+                const deliveries = deliveriesForSale(activeStore, sale.id);
                 return (
                   <div
                     key={sale.id}
                     className={`rounded-xl border p-4 ${done ? "border-emerald-700/60 bg-emerald-950/30" : "border-amber-900/50 bg-amber-950/20"}`}
                   >
-                    <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className={`font-medium ${done ? "text-emerald-300" : "text-amber-200"}`}>
                           {sale.buyerName || sale.comment}
                           {done && <span className="ml-2 text-xs text-emerald-400">✓ შეკვეთა დასრულდა</span>}
                         </p>
                         <p className="text-sm text-zinc-400">
-                          {sale.branch} · {sale.productName} × {sale.quantity} · {formatMoney(sale.unitPrice)}/ც
+                          {sale.branch} · {sale.productName} · {formatMoney(sale.unitPrice)}/ც
                         </p>
                       </div>
-                      <div className="text-right text-sm">
-                        <p className={done ? "text-emerald-400" : "text-amber-400"}>{formatMoney(paid)} / {formatMoney(sale.amount)}</p>
-                        {!done && <p className="text-xs text-zinc-500">დარჩენილი: {formatMoney(left)}</p>}
+                    </div>
+
+                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-lg bg-zinc-900/60 px-3 py-2 text-xs">
+                        <p className="text-zinc-500">შეკვეთის ჯამი</p>
+                        <p className="font-medium">{formatMoney(sale.amount)}</p>
+                        <p className="text-zinc-500">{sale.quantity} ც × {formatMoney(sale.unitPrice)}</p>
+                      </div>
+                      <div className={`rounded-lg px-3 py-2 text-xs ${moneyDone ? "bg-emerald-950/40" : "bg-zinc-900/60"}`}>
+                        <p className="text-zinc-500">ფული {moneyDone ? "✓" : ""}</p>
+                        <p className={`font-medium ${moneyDone ? "text-emerald-400" : "text-amber-400"}`}>
+                          {formatMoney(paid)} / {formatMoney(sale.amount)}
+                        </p>
+                        <p className={moneyDone ? "text-emerald-400/80" : "text-amber-400/80"}>
+                          {moneyDone ? "სრულად ჩარიცხული" : `დარჩენილი ${formatMoney(moneyLeft)}`}
+                        </p>
+                      </div>
+                      <div className={`rounded-lg px-3 py-2 text-xs ${qtyDone ? "bg-emerald-950/40" : "bg-zinc-900/60"}`}>
+                        <p className="text-zinc-500">მოწოდება {qtyDone ? "✓" : ""}</p>
+                        <p className={`font-medium ${qtyDone ? "text-emerald-400" : "text-sky-400"}`}>
+                          {delivered} / {sale.quantity} ც
+                        </p>
+                        <p className={qtyDone ? "text-emerald-400/80" : "text-sky-400/80"}>
+                          {qtyDone ? "სრულად მიწოდებული" : `დარჩენილი ${qtyLeft} ც`}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-zinc-900/60 px-3 py-2 text-xs">
+                        <p className="text-zinc-500">სტატუსი</p>
+                        <p className={done ? "font-medium text-emerald-400" : "font-medium text-amber-300"}>
+                          {done ? "დასრულებული" : moneyDone && !qtyDone ? "ფული ✓ · მოწოდება დარჩა" : qtyDone && !moneyDone ? "მოწოდება ✓ · ფული დარჩა" : "მიმდინარე"}
+                        </p>
                       </div>
                     </div>
-                    <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
-                      <div
-                        className={`h-full transition-all ${done ? "bg-emerald-500" : "bg-amber-500"}`}
-                        style={{ width: `${pct}%` }}
-                      />
+
+                    <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="mb-1 flex justify-between text-xs text-zinc-500">
+                          <span>ფული</span>
+                          <span>{moneyPct}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                          <div className={`h-full transition-all ${moneyDone ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${moneyPct}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex justify-between text-xs text-zinc-500">
+                          <span>მოწოდება</span>
+                          <span>{qtyPct}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                          <div className={`h-full transition-all ${qtyDone ? "bg-emerald-500" : "bg-sky-500"}`} style={{ width: `${qtyPct}%` }} />
+                        </div>
+                      </div>
                     </div>
-                    {payments.length > 0 && (
-                      <div className="mb-2 border-t border-zinc-800/80 pt-2">
-                        <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
-                        {payments.map((p) => (
-                          <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
-                            <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
-                            <span>+{formatMoney(p.amount)}</span>
+
+                    {(payments.length > 0 || deliveries.length > 0) && (
+                      <div className="mb-3 grid gap-3 border-t border-zinc-800/80 pt-2 sm:grid-cols-2">
+                        {payments.length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
+                            {payments.map((p) => (
+                              <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
+                                <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
+                                <span>+{formatMoney(p.amount)}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                        {deliveries.length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs text-zinc-500">მიწოდების ისტორია:</p>
+                            {deliveries.map((d) => (
+                              <div key={d.id} className="flex justify-between text-xs text-sky-400/90">
+                                <span>{formatDate(d.deliveredAt)} · {d.note || "მიწოდება"}</span>
+                                <span>+{d.quantity} ც</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {!done && unlocked && (
-                      <div className="flex flex-wrap items-end gap-2 border-t border-zinc-800/80 pt-3">
-                        <div className="min-w-[140px] flex-1">
-                          <label className={labelCls}>ჩარიცხვა (₾)</label>
-                          <input
-                            className={inputCls}
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            max={left}
-                            value={creditPayInputs[sale.id] ?? ""}
-                            onChange={(e) => setCreditPayInputs((m) => ({ ...m, [sale.id]: e.target.value }))}
-                            placeholder={`მაქს ${left}`}
-                          />
+
+                    {unlocked && (
+                      <div className="grid gap-3 border-t border-zinc-800/80 pt-3 sm:grid-cols-2">
+                        <div className={`rounded-lg border p-3 ${moneyDone ? "border-emerald-900/40 bg-emerald-950/20" : "border-amber-900/40 bg-amber-950/10"}`}>
+                          <p className="mb-2 text-xs font-medium text-amber-300">თანხის დამატება</p>
+                          {moneyDone ? (
+                            <p className="text-xs text-emerald-400">ფული სრულადაა ჩარიცხული ✓</p>
+                          ) : (
+                            <div className="flex flex-wrap items-end gap-2">
+                              <div className="min-w-[100px] flex-1">
+                                <label className={labelCls}>თანხა (₾)</label>
+                                <input
+                                  className={inputCls}
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  max={moneyLeft}
+                                  value={creditPayInputs[sale.id] ?? ""}
+                                  onChange={(e) => setCreditPayInputs((m) => ({ ...m, [sale.id]: e.target.value }))}
+                                  placeholder={`მაქს ${moneyLeft}`}
+                                />
+                              </div>
+                              <div className="min-w-[120px] flex-1">
+                                <label className={labelCls}>გადახდის მეთოდი</label>
+                                <select
+                                  className={inputCls}
+                                  value={creditPayMethods[sale.id] ?? "ქეში (ნაღდი)"}
+                                  onChange={(e) => setCreditPayMethods((m) => ({ ...m, [sale.id]: e.target.value as PaymentMethod }))}
+                                >
+                                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              </div>
+                              <button type="button" className={btnCls} onClick={() => addCreditPayment(sale.id)}>ჩარიცხვა</button>
+                            </div>
+                          )}
                         </div>
-                        <button type="button" className={btnCls} onClick={() => addCreditPayment(sale.id)}>
-                          დამატება
-                        </button>
+                        <div className={`rounded-lg border p-3 ${qtyDone ? "border-emerald-900/40 bg-emerald-950/20" : "border-sky-900/40 bg-sky-950/10"}`}>
+                          <p className="mb-2 text-xs font-medium text-sky-300">პროდუქციის დამატება</p>
+                          {qtyDone ? (
+                            <p className="text-xs text-emerald-400">პროდუქტი სრულადაა მიწოდებული ✓</p>
+                          ) : (
+                            <div className="flex flex-wrap items-end gap-2">
+                              <div className="min-w-[120px] flex-1">
+                                <label className={labelCls}>რაოდენობა (ც)</label>
+                                <input
+                                  className={inputCls}
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  max={qtyLeft}
+                                  value={creditDeliverInputs[sale.id] ?? ""}
+                                  onChange={(e) => setCreditDeliverInputs((m) => ({ ...m, [sale.id]: e.target.value }))}
+                                  placeholder={`მაქს ${qtyLeft} ც · დარჩა ${qtyLeft}`}
+                                />
+                              </div>
+                              <button type="button" className={`${btnCls} bg-sky-600 hover:bg-sky-500`} onClick={() => addCreditDelivery(sale.id)}>დამატება</button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -949,8 +1271,50 @@ export default function Dashboard() {
             </section>
           )}
 
+          {creditHistory.length > 0 && (
+            <section className="mb-6 rounded-xl border border-amber-900/40 bg-amber-950/10 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-amber-300">ბე ისტორია</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                      <th className="pb-2 pr-3">დრო</th>
+                      <th className="pb-2 pr-3">ტიპი</th>
+                      <th className="pb-2 pr-3">ფილიალი</th>
+                      <th className="pb-2 pr-3">მყიდველი / პროდუქტი</th>
+                      <th className="pb-2 pr-3 text-right">რაოდენობა / თანხა</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {creditHistory.map((row) => (
+                      <tr key={row.id} className="border-b border-zinc-800/50">
+                        <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.at)}</td>
+                        <td className={`py-2 pr-3 ${row.kind === "pay" ? "text-emerald-400" : "text-sky-400"}`}>
+                          {row.kind === "pay" ? "გადახდა" : "მიწოდება"}
+                        </td>
+                        <td className="py-2 pr-3">{row.branch}</td>
+                        <td className="py-2 pr-3">
+                          <span className="text-zinc-300">{row.buyer}</span>
+                          <span className="text-zinc-500"> · {row.productName}</span>
+                        </td>
+                        <td className={`py-2 pr-3 text-right font-medium ${row.kind === "pay" ? "text-emerald-400" : "text-sky-400"}`}>
+                          {row.kind === "pay"
+                            ? `+${formatMoney(row.amount ?? 0)}${row.paymentMethod ? ` · ${row.paymentMethod}` : ""}`
+                            : `+${row.quantity} ც`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-            <h2 className="mb-4 text-lg font-semibold">ისტორია {unlocked && <span className="text-xs font-normal text-zinc-500">(წაშლა ერთი PIN-ით სესიაში)</span>}</h2>
+            <h2 className="mb-4 text-lg font-semibold">
+              გაყიდვები და ხარჯები
+              {unlocked && <span className="ml-2 text-xs font-normal text-zinc-500">(წაშლა ერთი PIN-ით სესიაში)</span>}
+            </h2>
             {history.length === 0 ? (
               <p className="text-sm text-zinc-500">ცარიელია</p>
             ) : (
@@ -972,12 +1336,14 @@ export default function Dashboard() {
                       <tr key={t.id} className="border-b border-zinc-800/50">
                         <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
                         <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
-                          {t.type === "sale" ? "გაყიდვა" : "ხარჯი"}
+                          {t.type === "sale"
+                            ? (t.orderCompletedAt ? "გაყიდვა" : t.paymentStatus === "ბე (ავანსი)" ? "ბე" : "გაყიდვა")
+                            : "ხარჯი"}
                           {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
                         </td>
                         <td className="py-2 pr-3">{t.branch}</td>
                         <td className="py-2 pr-3">{txLabel(t)}</td>
-                        <td className="py-2 pr-3 text-zinc-500">{t.comment}</td>
+                        <td className="py-2 pr-3 text-zinc-500">{t.comment || txDetail(t)}</td>
                         <td className={`py-2 pr-3 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
                           {t.type === "sale" ? "+" : "-"}{formatMoney(t.amount)}
                         </td>
@@ -1077,15 +1443,50 @@ export default function Dashboard() {
                         <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
                       </div>
                       <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
-                        <div className="h-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
+                        <div className={`h-full transition-all ${pct >= 100 ? "bg-emerald-500" : "bg-violet-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                       </div>
-                      <p className="mb-1 text-xs text-amber-400">დარჩენილი: {formatMoney(o.amount - o.paid)}</p>
+                      {o.paid < o.amount ? (
+                        <div className="mt-2 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
+                          <p className="mb-2 text-xs text-amber-400">დარჩენილი: {formatMoney(o.amount - o.paid)}</p>
+                          <div className="flex flex-wrap items-end gap-2">
+                            <div className="min-w-[90px] flex-1">
+                              <label className={labelCls}>თანხა</label>
+                              <input className={inputCls} type="number" min={0} step={0.01} max={o.amount - o.paid}
+                                value={obPayInputs[o.id] ?? ""}
+                                onChange={(e) => setObPayInputs((m) => ({ ...m, [o.id]: e.target.value }))}
+                                placeholder={`მაქს ${(o.amount - o.paid).toFixed(0)}`}
+                              />
+                            </div>
+                            <div className="min-w-[100px] flex-1">
+                              <label className={labelCls}>მეთოდი</label>
+                              <select className={inputCls}
+                                value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
+                                onChange={(e) => setObPayMethods((m) => ({ ...m, [o.id]: e.target.value as PaymentMethod }))}
+                              >
+                                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+                            <div className="min-w-[100px] flex-1">
+                              <label className={labelCls}>საიდან</label>
+                              <select className={inputCls}
+                                value={obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")}
+                                onChange={(e) => setObPayBranches((m) => ({ ...m, [o.id]: e.target.value as ExpenseBranch }))}
+                              >
+                                {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                              </select>
+                            </div>
+                            <button type="button" className={`${btnCls} bg-violet-600 hover:bg-violet-500`} onClick={() => payObligation(o.id)}>გასტუმრება</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-emerald-400">სრულად გასტუმრებული ✓</p>
+                      )}
                       {payments.length > 0 && (
                         <div className="mt-2 border-t border-zinc-800 pt-2">
                           <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
                           {payments.map((p) => (
                             <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
-                              <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
+                              <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}{p.paymentMethod ? ` · ${p.paymentMethod}` : ""}{p.branch ? ` · ${p.branch}` : ""}</span>
                               <span>+{formatMoney(p.amount)}</span>
                             </div>
                           ))}
@@ -1340,7 +1741,7 @@ export default function Dashboard() {
                 {branchReports.map((r: BranchDailyReport) => (
                   <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
                     <div className="mb-2 flex justify-between">
-                      <span className="font-medium">{r.branch} · {r.date}</span>
+                      <span className="font-medium">{r.branch} · {r.date}{r.submittedBy ? ` · ${r.submittedBy}` : ""}</span>
                       <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
                     </div>
                     {r.sales?.length ? (
@@ -1376,6 +1777,126 @@ export default function Dashboard() {
             )}
           </div>
         </section>
+      )}
+
+      {tab === "employees" && (
+        !unlocked ? (
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
+            <h2 className="mb-2 text-lg font-semibold">თანამშრომლები</h2>
+            <p className="text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ.</p>
+          </section>
+        ) : (
+        <section className="space-y-6">
+          <form onSubmit={addEmployee} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
+            <h2 className="mb-4 text-lg font-semibold text-teal-300">ახალი თანამშრომელი</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="სახელი"><input className={inputCls} value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="მაგ: ნინო" required /></Field>
+              <Field label="ფილიალი">
+                <select className={inputCls} value={empBranch} onChange={(e) => setEmpBranch(e.target.value as Branch)}>
+                  {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </Field>
+              <Field label="დღიური ხელფასი (₾)">
+                <input className={inputCls} type="number" min={0} step={0.01} value={empWage} onChange={(e) => setEmpWage(e.target.value)} placeholder="მაგ: 40" />
+              </Field>
+              <div className="flex items-end">
+                <button type="submit" className={`${btnCls} w-full`}>დამატება</button>
+              </div>
+            </div>
+          </form>
+
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <h3 className="mb-4 font-semibold">თანამშრომლების სია</h3>
+            {activeStore.employees.length === 0 ? (
+              <p className="text-sm text-zinc-500">თანამშრომლები არ არის დამატებული</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                      <th className="pb-2 pr-3">სახელი</th>
+                      <th className="pb-2 pr-3">ფილიალი</th>
+                      <th className="pb-2 pr-3 text-right">დღიური ხელფასი</th>
+                      <th className="pb-2 pr-3">სტატუსი</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeStore.employees.map((emp: Employee) => (
+                      <tr key={emp.id} className="border-b border-zinc-800/50">
+                        <td className="py-2 pr-3 font-medium">{emp.name}</td>
+                        <td className="py-2 pr-3">{emp.branch}</td>
+                        <td className="py-2 pr-3 text-right">{formatMoney(emp.dailyWage)}</td>
+                        <td className="py-2 pr-3">
+                          <span className={emp.active ? "text-emerald-400" : "text-zinc-500"}>
+                            {emp.active ? "აქტიური" : "გათიშული"}
+                          </span>
+                        </td>
+                        <td className="py-2">
+                          <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => toggleEmployee(emp.id)}>
+                            {emp.active ? "გათიშვა" : "ჩართვა"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold">სამუშაო დღეები / მოპწიჩკვა</h3>
+              <Field label="თვე">
+                <input type="month" className={inputCls} value={empMonthFilter} onChange={(e) => setEmpMonthFilter(e.target.value)} />
+              </Field>
+            </div>
+            {(() => {
+              const monthAttendance = activeStore.attendance.filter(
+                (a: AttendanceRecord) => a.date.startsWith(empMonthFilter)
+              );
+              const empMap = new Map<string, { name: string; branch: Branch; days: string[]; wage: number }>();
+              for (const emp of activeStore.employees.filter((e: Employee) => e.active)) {
+                empMap.set(emp.id, { name: emp.name, branch: emp.branch, days: [], wage: emp.dailyWage });
+              }
+              for (const a of monthAttendance) {
+                const row = empMap.get(a.employeeId);
+                if (row) row.days.push(a.date);
+              }
+              const rows = [...empMap.entries()].map(([id, data]) => ({
+                id,
+                ...data,
+                total: data.days.length * data.wage,
+              }));
+              return rows.length === 0 ? (
+                <p className="text-sm text-zinc-500">აქტიური თანამშრომლები არ არის</p>
+              ) : (
+                <div className="space-y-3">
+                  {rows.map((r) => (
+                    <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">{r.name} · <span className="text-zinc-400">{r.branch}</span></span>
+                        <span className="text-sm text-teal-400">{r.days.length} დღე · {formatMoney(r.total)}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {r.days.sort().map((d) => (
+                          <span key={d} className="rounded bg-teal-900/30 px-2 py-0.5 text-xs text-teal-300">{d.slice(5)}</span>
+                        ))}
+                        {r.days.length === 0 && <span className="text-xs text-zinc-500">არ მუშაობდა</span>}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="rounded-lg border border-teal-900/40 bg-teal-950/10 p-3 text-sm">
+                    <span className="font-medium text-teal-300">ჯამი ხელფასი ({empMonthFilter}):</span>{" "}
+                    <span className="text-teal-400">{formatMoney(rows.reduce((s, r) => s + r.total, 0))}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+        )
       )}
     </div>
   );

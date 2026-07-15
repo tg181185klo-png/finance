@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ExpenseCategory, ExpensePaymentMethod, PaymentMethod, Product } from "@/lib/types";
+import type { Employee, ExpenseCategory, ExpensePaymentMethod, PaymentMethod, Product } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatMoney, uid } from "@/lib/utils";
 import type { BranchInventory } from "@/lib/types";
@@ -47,6 +47,10 @@ export default function BranchPortal({ token }: { token: string }) {
   const [sales, setSales] = useState<SaleRow[]>([emptySale()]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([emptyExpense()]);
   const [submitting, setSubmitting] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [checkedIn, setCheckedIn] = useState<string[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [checkingIn, setCheckingIn] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -58,6 +62,12 @@ export default function BranchPortal({ token }: { token: string }) {
         else {
           setBranch(branchData.branch);
           setInventory(branchData.inventory ?? {});
+          setEmployees(branchData.employees ?? []);
+          const todayChecked = (branchData.attendance ?? []).map((a: { employeeId: string }) => a.employeeId);
+          setCheckedIn(todayChecked);
+          if (branchData.employees?.length === 1) {
+            setSelectedEmployee(branchData.employees[0].name);
+          }
         }
         setProducts(prodData.products ?? []);
       })
@@ -94,6 +104,27 @@ export default function BranchPortal({ token }: { token: string }) {
     return products.filter((p) => p.code.toLowerCase().includes(s) || p.name.toLowerCase().includes(s)).slice(0, 6);
   }
 
+  async function doCheckin(empId: string) {
+    setCheckingIn(true);
+    try {
+      const res = await fetch("/api/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "checkin", token, employeeId: empId }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setErr(d.error || "შეცდომა"); return; }
+      setCheckedIn((prev) => [...prev, empId]);
+      const emp = employees.find((e) => e.id === empId);
+      if (emp) setSelectedEmployee(emp.name);
+      setErr("");
+    } catch {
+      setErr("კავშირის შეცდომა");
+    } finally {
+      setCheckingIn(false);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
@@ -128,7 +159,7 @@ export default function BranchPortal({ token }: { token: string }) {
       const res = await fetch("/api/branch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, date, sales: validSales, expenses: validExpenses }),
+        body: JSON.stringify({ token, date, sales: validSales, expenses: validExpenses, submittedBy: selectedEmployee || undefined }),
       });
       const d = await res.json();
       if (!res.ok) {
@@ -161,10 +192,51 @@ export default function BranchPortal({ token }: { token: string }) {
 
       {ok && (
         <div className="mb-4 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          გაგზავნილია!
+          გაგზავნილია!{selectedEmployee && ` (${selectedEmployee})`}
         </div>
       )}
       {err && branch && <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
+
+      {employees.length > 0 && (
+        <section className="mb-4 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
+          <h2 className="mb-3 font-semibold text-teal-400">მოპწიჩკვა</h2>
+          <div className="space-y-2">
+            {employees.map((emp) => {
+              const isIn = checkedIn.includes(emp.id);
+              return (
+                <div key={emp.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                  <span className="font-medium">{emp.name}</span>
+                  {isIn ? (
+                    <span className="rounded-full bg-emerald-900/40 px-3 py-1 text-xs text-emerald-400">მოპწიჩკული ✓</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-medium hover:bg-teal-500 disabled:opacity-40"
+                      disabled={checkingIn}
+                      onClick={() => doCheckin(emp.id)}
+                    >
+                      {checkingIn ? "..." : "მოპწიჩკვა"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {selectedEmployee && (
+            <p className="mt-3 text-sm text-teal-300">მუშაობს: <span className="font-medium">{selectedEmployee}</span></p>
+          )}
+        </section>
+      )}
+
+      {employees.length > 1 && (
+        <div className="mb-4">
+          <label className="mb-1 block text-xs text-zinc-400">ვინ აგზავნის ანგარიშს?</label>
+          <select className={inputCls} value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)}>
+            <option value="">აირჩიეთ...</option>
+            {employees.map((emp) => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+          </select>
+        </div>
+      )}
 
       <form onSubmit={submit} className="space-y-6">
         <div>

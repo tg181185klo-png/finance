@@ -42,6 +42,9 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     recurringObligations: data.recurringObligations ?? [],
     obligationPayments: data.obligationPayments ?? [],
     creditPayments: data.creditPayments ?? [],
+    creditDeliveries: data.creditDeliveries ?? [],
+    employees: data.employees ?? [],
+    attendance: data.attendance ?? [],
   };
 }
 

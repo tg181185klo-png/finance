@@ -4,6 +4,7 @@ import type {
   BranchCash,
   BranchInventory,
   CreditPayment,
+  CreditDelivery,
   Expense,
   ExpenseBranch,
   Obligation,
@@ -97,10 +98,9 @@ export function calcBalances(
     if (!matchBranch(t.branch, branch)) continue;
     if (t.type === "sale") {
       b.revenue += t.amount;
-      if (t.paymentStatus === "ბე (ავანსი)") {
-        const paid = t.creditPaid ?? 0;
-        const left = Math.max(0, t.amount - paid);
-        if (!t.creditCompletedAt) b.credit += left;
+      if (isCreditOrder(t)) {
+        const left = saleCreditRemaining(t);
+        if (left > 0 && !t.orderCompletedAt) b.credit += left;
       } else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
       else if (t.paymentMethod === "ბარათი") b.card += t.amount;
       else b.bank += t.amount;
@@ -155,6 +155,21 @@ export function paymentsForSale(store: Store, saleId: string) {
     .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
 }
 
+export function deliveriesForSale(store: Store, saleId: string) {
+  return (store.creditDeliveries ?? [])
+    .filter((d) => d.saleId === saleId)
+    .sort((a, b) => b.deliveredAt.localeCompare(a.deliveredAt));
+}
+
+export function isCreditOrder(sale: Sale) {
+  return (
+    sale.paymentStatus === "ბე (ავანსი)" ||
+    (sale.creditPaid ?? 0) > 0 ||
+    (sale.quantityDelivered ?? 0) > 0 ||
+    Boolean(sale.orderCompletedAt)
+  );
+}
+
 export function saleCreditPaid(sale: Sale) {
   return sale.creditPaid ?? 0;
 }
@@ -163,12 +178,43 @@ export function saleCreditRemaining(sale: Sale) {
   return Math.max(0, sale.amount - saleCreditPaid(sale));
 }
 
-export function isSaleCreditOpen(sale: Sale) {
-  return sale.paymentStatus === "ბე (ავანსი)" && !sale.creditCompletedAt && saleCreditRemaining(sale) > 0;
+export function saleQuantityDelivered(sale: Sale) {
+  return sale.quantityDelivered ?? 0;
 }
 
+export function saleQuantityRemaining(sale: Sale) {
+  return Math.max(0, sale.quantity - saleQuantityDelivered(sale));
+}
+
+export function isCreditOrderFullyComplete(sale: Sale) {
+  return Boolean(sale.orderCompletedAt) || (saleCreditRemaining(sale) <= 0 && saleQuantityRemaining(sale) <= 0);
+}
+
+export function isCreditOrderActive(sale: Sale) {
+  return isCreditOrder(sale) && !isCreditOrderFullyComplete(sale);
+}
+
+/** @deprecated use isCreditOrderActive */
+export function isSaleCreditOpen(sale: Sale) {
+  return isCreditOrderActive(sale);
+}
+
+/** @deprecated use isCreditOrderFullyComplete */
 export function isSaleCreditComplete(sale: Sale) {
-  return Boolean(sale.creditCompletedAt) || saleCreditRemaining(sale) <= 0;
+  return isCreditOrderFullyComplete(sale);
+}
+
+export function markCreditOrderProgress(sale: Sale, at: string) {
+  if (saleCreditRemaining(sale) <= 0 && !sale.creditCompletedAt) {
+    sale.creditCompletedAt = at;
+  }
+  if (saleQuantityRemaining(sale) <= 0 && !sale.deliveryCompletedAt) {
+    sale.deliveryCompletedAt = at;
+  }
+  if (saleCreditRemaining(sale) <= 0 && saleQuantityRemaining(sale) <= 0 && !sale.orderCompletedAt) {
+    sale.orderCompletedAt = at;
+    sale.paymentStatus = "სრულად გადახდილი";
+  }
 }
 
 export function applyCreditPayment(
@@ -181,11 +227,13 @@ export function applyCreditPayment(
   if (!store.creditPayments) store.creditPayments = [];
   const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
   if (!sale) throw new Error("შეკვეთა ვერ მოიძებნა");
-  if (sale.paymentStatus !== "ბე (ავანსი)") throw new Error("ეს არ არის ბე შეკვეთა");
+  if (!isCreditOrder(sale) || isCreditOrderFullyComplete(sale)) {
+    throw new Error("ეს არ არის აქტიური ბე შეკვეთა");
+  }
 
   const remaining = saleCreditRemaining(sale);
   const pay = Math.min(amount, remaining);
-  if (pay <= 0) throw new Error("შეკვეთა უკვე სრულადაა გადახდილი");
+  if (pay <= 0) throw new Error("ფული უკვე სრულადაა ჩარიცხული");
 
   sale.creditPaid = saleCreditPaid(sale) + pay;
   const payment: CreditPayment = {
@@ -197,18 +245,58 @@ export function applyCreditPayment(
     paymentMethod,
   };
   store.creditPayments.push(payment);
-
-  if (saleCreditRemaining(sale) <= 0) {
-    sale.creditCompletedAt = payment.paidAt;
-    sale.paymentStatus = "სრულად გადახდილი";
-  }
-
+  markCreditOrderProgress(sale, payment.paidAt);
   return payment;
 }
 
+export function applyCreditDelivery(store: Store, saleId: string, quantity: number, note?: string) {
+  if (!store.creditDeliveries) store.creditDeliveries = [];
+  const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
+  if (!sale) throw new Error("შეკვეთა ვერ მოიძებნა");
+  if (!isCreditOrder(sale) || isCreditOrderFullyComplete(sale)) {
+    throw new Error("ეს არ არის აქტიური ბე შეკვეთა");
+  }
+
+  const remaining = saleQuantityRemaining(sale);
+  const qty = Math.min(quantity, remaining);
+  if (qty <= 0) throw new Error("პროდუქტი უკვე სრულადაა მიწოდებული");
+
+  sale.quantityDelivered = saleQuantityDelivered(sale) + qty;
+  store.inventory = adjustStock(store.inventory, sale.branch, sale.productCode, -qty);
+
+  const delivery: CreditDelivery = {
+    id: uid(),
+    saleId,
+    quantity: qty,
+    deliveredAt: new Date().toISOString(),
+    note,
+  };
+  store.creditDeliveries.push(delivery);
+  markCreditOrderProgress(sale, delivery.deliveredAt);
+  return delivery;
+}
+
+export function reverseCreditOrderData(store: Store, saleId: string) {
+  const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
+  if (sale && saleQuantityDelivered(sale) > 0) {
+    store.inventory = adjustStock(
+      store.inventory,
+      sale.branch,
+      sale.productCode,
+      saleQuantityDelivered(sale)
+    );
+  }
+  if (store.creditPayments) {
+    store.creditPayments = store.creditPayments.filter((p) => p.saleId !== saleId);
+  }
+  if (store.creditDeliveries) {
+    store.creditDeliveries = store.creditDeliveries.filter((d) => d.saleId !== saleId);
+  }
+}
+
+/** @deprecated */
 export function reverseCreditPayments(store: Store, saleId: string) {
-  if (!store.creditPayments) return;
-  store.creditPayments = store.creditPayments.filter((p) => p.saleId !== saleId);
+  reverseCreditOrderData(store, saleId);
 }
 
 export function applyExpenseToObligations(
