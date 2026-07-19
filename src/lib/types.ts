@@ -7,6 +7,7 @@ export type ExpenseCategory =
   | "საწვავი" | "ხელფასი" | "კომუნალურები" | "დღგ" | "სესხი";
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
 export type TxSource = "admin" | "branch";
+export type WorkShift = "დღის" | "საღამოს" | "ღამის";
 
 export interface Product {
   code: string;
@@ -88,6 +89,7 @@ export interface Obligation {
   category: ExpenseCategory;
   month: string;
   recurringId?: string;
+  employeeId?: string;
 }
 
 /** ყოველთვიური ფიქსირებული ვალდებულების შაბლონი */
@@ -127,6 +129,8 @@ export interface AttendanceRecord {
   branch: Branch;
   date: string;
   checkedInAt: string;
+  shift?: WorkShift;
+  wageAmount?: number;
 }
 
 export interface BranchSaleLine {
@@ -214,6 +218,7 @@ export interface PeriodReport {
   expenses: number;
   net: number;
   days: DayReport[];
+  transactions: Transaction[];
   obligationTotal: number;
   obligationPaid: number;
   obligationRemaining: number;

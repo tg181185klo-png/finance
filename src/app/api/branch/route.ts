@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
+import { uid, addEmployeeAttendance, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
-import type { BranchDailyReport, BranchExpenseLine, BranchIncomeLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
+import type { BranchDailyReport, BranchExpenseLine, BranchIncomeLine, BranchSaleLine, Expense, Sale, WorkShift } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       salesNote?: string;
       expensesNote?: string;
       submittedBy?: string;
+      submittedEmployeeId?: string;
+      shift?: WorkShift;
     };
 
     const preview = await readStore();
@@ -181,6 +183,16 @@ export async function POST(req: NextRequest) {
           store.inventory = applySaleToStock(store.inventory, t, -1);
         } else {
           applyExpenseToStore(store, t);
+        }
+      }
+      if ((branch === "ლილო" || branch === "დიღომი") && body.submittedBy) {
+        const employee = (store.employees ?? []).find(
+          (item) =>
+            item.branch === branch &&
+            (item.id === body.submittedEmployeeId || item.name === body.submittedBy)
+        );
+        if (employee) {
+          addEmployeeAttendance(store, employee, day, body.shift ?? "დღის", branch);
         }
       }
       store.branchReports = [report, ...store.branchReports];

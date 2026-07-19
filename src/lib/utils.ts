@@ -5,6 +5,7 @@ import type {
   BranchInventory,
   CreditPayment,
   CreditDelivery,
+  Employee,
   Expense,
   ExpenseBranch,
   Obligation,
@@ -14,6 +15,7 @@ import type {
   Sale,
   Store,
   Transaction,
+  WorkShift,
 } from "./types";
 
 export function uid() {
@@ -142,6 +144,75 @@ export function ensureMonthObligations(store: Store, month: string) {
     }
   }
   return changed;
+}
+
+export function addEmployeeAttendance(
+  store: Store,
+  employee: Employee,
+  date: string,
+  shift: WorkShift = "დღის",
+  branch: Branch = employee.branch
+) {
+  if (!store.attendance) store.attendance = [];
+  const existing = store.attendance.find(
+    (item) => item.employeeId === employee.id && item.date === date
+  );
+  if (existing) return existing;
+
+  const wageAmount = Math.max(0, employee.dailyWage || 0);
+  const record = {
+    id: uid(),
+    employeeId: employee.id,
+    employeeName: employee.name,
+    branch,
+    date,
+    checkedInAt: new Date().toISOString(),
+    shift,
+    wageAmount,
+  };
+  store.attendance.push(record);
+
+  const month = date.slice(0, 7);
+  if (!store.obligations[month]) store.obligations[month] = [];
+  let obligation = store.obligations[month].find((item) => item.employeeId === employee.id);
+  if (!obligation) {
+    obligation = {
+      id: uid(),
+      name: `${employee.name} — ხელფასი`,
+      amount: 0,
+      paid: 0,
+      branch: employee.branch,
+      category: "ხელფასი",
+      month,
+      employeeId: employee.id,
+    };
+    store.obligations[month].push(obligation);
+  }
+  obligation.amount += wageAmount;
+  return record;
+}
+
+export function removeEmployeeAttendance(store: Store, attendanceId: string) {
+  const record = (store.attendance ?? []).find((item) => item.id === attendanceId);
+  if (!record) throw new Error("სამუშაო დღის ჩანაწერი ვერ მოიძებნა");
+
+  const month = record.date.slice(0, 7);
+  const obligation = store.obligations[month]?.find(
+    (item) => item.employeeId === record.employeeId
+  );
+  const wageAmount = record.wageAmount ?? 0;
+  if (obligation && obligation.amount - wageAmount < obligation.paid) {
+    throw new Error("ამ ხელფასის ნაწილი უკვე გასტუმრებულია — სამუშაო დღე ვერ წაიშლება");
+  }
+  if (obligation) {
+    obligation.amount = Math.max(0, obligation.amount - wageAmount);
+    if (obligation.amount === 0 && obligation.paid === 0) {
+      store.obligations[month] = store.obligations[month].filter(
+        (item) => item.id !== obligation.id
+      );
+    }
+  }
+  store.attendance = store.attendance.filter((item) => item.id !== attendanceId);
 }
 
 export function paymentsForObligation(store: Store, obligationId: string) {
@@ -467,6 +538,7 @@ export function buildPeriodReport(
     expenses,
     net: revenue - expenses,
     days,
+    transactions: [...filtered].sort((a, b) => b.date.localeCompare(a.date)),
     obligationTotal,
     obligationPaid,
     obligationRemaining: obligationTotal - obligationPaid,

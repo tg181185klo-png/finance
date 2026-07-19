@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid } from "@/lib/utils";
-import { readStore, updateStore } from "@/lib/server-store";
-import type { Employee, AttendanceRecord, Branch } from "@/lib/types";
+import { addEmployeeAttendance, removeEmployeeAttendance, uid } from "@/lib/utils";
+import { branchByToken, readStore, updateStore } from "@/lib/server-store";
+import type { Branch, WorkShift } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +17,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      action: "addEmployee" | "toggleEmployee" | "checkin" | "checkout";
+      action: "addEmployee" | "updateEmployee" | "deleteEmployee" | "checkin" | "deleteAttendance";
       pin?: string;
       token?: string;
       name?: string;
       branch?: Branch;
       dailyWage?: number;
       employeeId?: string;
+      attendanceId?: string;
       date?: string;
+      shift?: WorkShift;
     };
 
-    if (body.action === "addEmployee" || body.action === "toggleEmployee") {
+    const adminAction = body.action !== "checkin" || !body.token;
+    if (adminAction) {
       if (body.pin !== ADMIN_PIN) {
         return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
       }
@@ -50,15 +53,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, employees: store.employees });
     }
 
-    if (body.action === "toggleEmployee") {
+    if (body.action === "updateEmployee") {
       if (!body.employeeId) {
         return NextResponse.json({ error: "employeeId საჭიროა" }, { status: 400 });
       }
       const store = await updateStore((s) => {
         const emp = (s.employees ?? []).find((e) => e.id === body.employeeId);
-        if (emp) emp.active = !emp.active;
+        if (!emp) throw new Error("თანამშრომელი ვერ მოიძებნა");
+        if (body.name?.trim()) emp.name = body.name.trim();
+        if (body.branch) emp.branch = body.branch;
+        if (typeof body.dailyWage === "number" && body.dailyWage >= 0) {
+          emp.dailyWage = body.dailyWage;
+        }
       });
       return NextResponse.json({ ok: true, employees: store.employees });
+    }
+
+    if (body.action === "deleteEmployee") {
+      if (!body.employeeId) {
+        return NextResponse.json({ error: "employeeId საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        s.employees = (s.employees ?? []).filter((e) => e.id !== body.employeeId);
+      });
+      return NextResponse.json({
+        ok: true,
+        employees: store.employees,
+        attendance: store.attendance,
+      });
     }
 
     if (body.action === "checkin") {
@@ -69,35 +91,43 @@ export async function POST(req: NextRequest) {
       let branch: Branch | null = null;
       if (body.token) {
         const preview = await readStore();
-        const { branchByToken } = await import("@/lib/server-store");
         branch = branchByToken(preview, body.token) ?? null;
         if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
       }
 
       const today = body.date || new Date().toISOString().slice(0, 10);
       const store = await updateStore((s) => {
-        if (!s.attendance) s.attendance = [];
         const emp = (s.employees ?? []).find((e) => e.id === body.employeeId);
         if (!emp) throw new Error("თანამშრომელი ვერ მოიძებნა");
-
-        const already = s.attendance.find(
-          (a) => a.employeeId === body.employeeId && a.date === today
-        );
-        if (already) throw new Error(`${emp.name} უკვე მოპწიჩკულია დღეს`);
-
-        s.attendance.push({
-          id: uid(),
-          employeeId: emp.id,
-          employeeName: emp.name,
-          branch: branch ?? emp.branch,
-          date: today,
-          checkedInAt: new Date().toISOString(),
-        });
+        if (branch && emp.branch !== branch) {
+          throw new Error("თანამშრომელი ამ ფილიალს არ ეკუთვნის");
+        }
+        if (!body.token && (s.attendance ?? []).some(
+          (item) => item.employeeId === emp.id && item.date === today
+        )) {
+          throw new Error(`${emp.name} ამ თარიღზე უკვე აღრიცხულია`);
+        }
+        addEmployeeAttendance(s, emp, today, body.shift ?? "დღის", branch ?? emp.branch);
       });
       return NextResponse.json({
         ok: true,
         attendance: store.attendance,
         employees: store.employees,
+        obligations: store.obligations,
+      });
+    }
+
+    if (body.action === "deleteAttendance") {
+      if (!body.attendanceId) {
+        return NextResponse.json({ error: "attendanceId საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        removeEmployeeAttendance(s, body.attendanceId!);
+      });
+      return NextResponse.json({
+        ok: true,
+        attendance: store.attendance,
+        obligations: store.obligations,
       });
     }
 

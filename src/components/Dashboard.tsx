@@ -18,6 +18,7 @@ import type {
   Sale,
   Store,
   Transaction,
+  WorkShift,
 } from "@/lib/types";
 import {
   BRANCHES,
@@ -170,6 +171,10 @@ export default function Dashboard() {
   const [empBranch, setEmpBranch] = useState<Branch>("ქუთაისი");
   const [empWage, setEmpWage] = useState("");
   const [empMonthFilter, setEmpMonthFilter] = useState(currentMonth());
+  const [empWageEdits, setEmpWageEdits] = useState<Record<string, string>>({});
+  const [empWorkEmployee, setEmpWorkEmployee] = useState("");
+  const [empWorkDate, setEmpWorkDate] = useState(new Date().toISOString().slice(0, 10));
+  const [empWorkShift, setEmpWorkShift] = useState<WorkShift>("დღის");
 
   // Reports
   const [report, setReport] = useState<PeriodReport | null>(null);
@@ -286,7 +291,7 @@ export default function Dashboard() {
   }, [loadProducts]);
 
   useEffect(() => {
-    if (tab !== "inventory" && tab !== "branches") return;
+    if (tab !== "inventory" && tab !== "branches" && tab !== "employees") return;
     const id = setInterval(() => {
       loadStore().catch(() => {});
     }, 30_000);
@@ -840,17 +845,104 @@ export default function Dashboard() {
     });
   }
 
-  function toggleEmployee(empId: string) {
+  function saveEmployee(employee: Employee) {
+    const dailyWage = parseFloat(empWageEdits[employee.id] ?? String(employee.dailyWage));
     runWithPin(async (pinCode) => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "toggleEmployee", pin: pinCode, employeeId: empId }),
+          body: JSON.stringify({
+            action: "updateEmployee",
+            pin: pinCode,
+            employeeId: employee.id,
+            dailyWage: Number.isFinite(dailyWage) ? dailyWage : employee.dailyWage,
+          }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
         setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
+        setSaveMsg("ანაზღაურება განახლდა ✓");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  function deleteEmployee(employeeId: string) {
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "deleteEmployee", pin: pinCode, employeeId }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
+        if (empWorkEmployee === employeeId) setEmpWorkEmployee("");
+        setSaveMsg("თანამშრომელი წაიშალა");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  function addWorkDay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!empWorkEmployee || !empWorkDate) return;
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "checkin",
+            pin: pinCode,
+            employeeId: empWorkEmployee,
+            date: empWorkDate,
+            shift: empWorkShift,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) =>
+          prev
+            ? {
+                ...prev,
+                attendance: d.attendance ?? prev.attendance,
+                obligations: d.obligations ?? prev.obligations,
+              }
+            : prev
+        );
+        setSaveMsg("სამუშაო დღე და ხელფასი დაერიცხა ✓");
+        setError("");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "შეცდომა");
+      }
+    });
+  }
+
+  function deleteWorkDay(attendanceId: string) {
+    runWithPin(async (pinCode) => {
+      try {
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "deleteAttendance", pin: pinCode, attendanceId }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
+        setStore((prev) =>
+          prev
+            ? {
+                ...prev,
+                attendance: d.attendance ?? prev.attendance,
+                obligations: d.obligations ?? prev.obligations,
+              }
+            : prev
+        );
+        setSaveMsg("სამუშაო დღე წაიშალა");
       } catch (e) {
         setError(e instanceof Error ? e.message : "შეცდომა");
       }
@@ -940,9 +1032,6 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
         <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
           ვალდებულებები
-        </button>
-        <button type="button" className={tabCls(tab === "inventory")} onClick={() => setTab("inventory")}>
-          მარაგი და ნაშთები
         </button>
         <button type="button" className={tabCls(tab === "employees")} onClick={() => setTab("employees")}>
           თანამშრომლები
@@ -1545,26 +1634,66 @@ export default function Dashboard() {
                 <Stat label="ვალდ. დარჩენილი" value={formatMoney(report.obligationRemaining)} accent="text-amber-400" />
               </div>
               {report.days.length > 0 && (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                      <th className="pb-2 pr-4">დღე</th>
-                      <th className="pb-2 pr-4 text-right">შემოსავალი</th>
-                      <th className="pb-2 pr-4 text-right">ხარჯი</th>
-                      <th className="pb-2 text-right">ნეტო</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.days.map((d) => (
-                      <tr key={d.date} className="border-b border-zinc-800/50">
-                        <td className="py-2 pr-4">{d.date}</td>
-                        <td className="py-2 pr-4 text-right text-emerald-400">{formatMoney(d.revenue)}</td>
-                        <td className="py-2 pr-4 text-right text-red-400">{formatMoney(d.expenses)}</td>
-                        <td className={`py-2 text-right ${d.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(d.net)}</td>
+                <div className="mb-6 overflow-x-auto">
+                  <h4 className="mb-2 text-sm font-semibold text-zinc-300">დღეების შეჯამება</h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                        <th className="pb-2 pr-4">დღე</th>
+                        <th className="pb-2 pr-4 text-right">შემოსავალი</th>
+                        <th className="pb-2 pr-4 text-right">ხარჯი</th>
+                        <th className="pb-2 text-right">ნეტო</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {report.days.map((d) => (
+                        <tr key={d.date} className="border-b border-zinc-800/50">
+                          <td className="py-2 pr-4">{d.date}</td>
+                          <td className="py-2 pr-4 text-right text-emerald-400">{formatMoney(d.revenue)}</td>
+                          <td className="py-2 pr-4 text-right text-red-400">{formatMoney(d.expenses)}</td>
+                          <td className={`py-2 text-right ${d.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(d.net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {report.transactions.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <h4 className="mb-2 text-sm font-semibold text-zinc-300">ყველა ტრანზაქცია</h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                        <th className="pb-2 pr-3">დრო</th>
+                        <th className="pb-2 pr-3">ფილიალი</th>
+                        <th className="pb-2 pr-3">ტიპი</th>
+                        <th className="pb-2 pr-3">აღწერა</th>
+                        <th className="pb-2 pr-3">მეთოდი</th>
+                        <th className="pb-2 text-right">თანხა</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.transactions.map((t) => (
+                        <tr key={t.id} className="border-b border-zinc-800/50">
+                          <td className="whitespace-nowrap py-2 pr-3 text-zinc-400">{formatDate(t.date)}</td>
+                          <td className="py-2 pr-3">{t.branch}</td>
+                          <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
+                            {t.type === "sale" ? "შემოსავალი" : "ხარჯი"}
+                          </td>
+                          <td className="py-2 pr-3">{txLabel(t)}</td>
+                          <td className="py-2 pr-3 text-zinc-400">
+                            {t.type === "sale" ? t.paymentMethod : (t.expensePaymentMethod ?? "ქეში (ნაღდი)")}
+                          </td>
+                          <td className={`py-2 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
+                            {t.type === "sale" ? "+" : "-"}{formatMoney(t.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-500">ამ პერიოდში ტრანზაქციები არ არის.</p>
               )}
             </div>
           )}
@@ -1836,8 +1965,7 @@ export default function Dashboard() {
                     <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                       <th className="pb-2 pr-3">სახელი</th>
                       <th className="pb-2 pr-3">ფილიალი</th>
-                      <th className="pb-2 pr-3 text-right">დღიური ხელფასი</th>
-                      <th className="pb-2 pr-3">სტატუსი</th>
+                      <th className="pb-2 pr-3">დღიური ხელფასი</th>
                       <th className="pb-2" />
                     </tr>
                   </thead>
@@ -1846,15 +1974,22 @@ export default function Dashboard() {
                       <tr key={emp.id} className="border-b border-zinc-800/50">
                         <td className="py-2 pr-3 font-medium">{emp.name}</td>
                         <td className="py-2 pr-3">{emp.branch}</td>
-                        <td className="py-2 pr-3 text-right">{formatMoney(emp.dailyWage)}</td>
                         <td className="py-2 pr-3">
-                          <span className={emp.active ? "text-emerald-400" : "text-zinc-500"}>
-                            {emp.active ? "აქტიური" : "გათიშული"}
-                          </span>
+                          <input
+                            className={`${inputCls} max-w-32`}
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={empWageEdits[emp.id] ?? String(emp.dailyWage)}
+                            onChange={(e) => setEmpWageEdits((values) => ({ ...values, [emp.id]: e.target.value }))}
+                          />
                         </td>
-                        <td className="py-2">
-                          <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => toggleEmployee(emp.id)}>
-                            {emp.active ? "გათიშვა" : "ჩართვა"}
+                        <td className="py-2 whitespace-nowrap">
+                          <button type="button" className="mr-3 text-xs text-emerald-400 hover:text-emerald-300" onClick={() => saveEmployee(emp)}>
+                            შენახვა
+                          </button>
+                          <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => deleteEmployee(emp.id)}>
+                            წაშლა
                           </button>
                         </td>
                       </tr>
@@ -1864,6 +1999,32 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+          <form onSubmit={addWorkDay} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
+            <h3 className="mb-4 font-semibold text-teal-300">სამუშაო დღის დამატება</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="თანამშრომელი">
+                <select className={inputCls} value={empWorkEmployee} onChange={(e) => setEmpWorkEmployee(e.target.value)} required>
+                  <option value="">აირჩიეთ...</option>
+                  {activeStore.employees.map((emp: Employee) => <option key={emp.id} value={emp.id}>{emp.name} · {emp.branch}</option>)}
+                </select>
+              </Field>
+              <Field label="თარიღი">
+                <input className={inputCls} type="date" value={empWorkDate} onChange={(e) => setEmpWorkDate(e.target.value)} required />
+              </Field>
+              <Field label="ცვლა">
+                <select className={inputCls} value={empWorkShift} onChange={(e) => setEmpWorkShift(e.target.value as WorkShift)}>
+                  <option value="დღის">დღის</option>
+                  <option value="საღამოს">საღამოს</option>
+                  <option value="ღამის">ღამის</option>
+                </select>
+              </Field>
+              <div className="flex items-end">
+                <button type="submit" className={`${btnCls} w-full`} disabled={!empWorkEmployee}>დამატება</button>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-teal-300">დამატებისას დღიური ანაზღაურება ავტომატურად დაემატება თანამშრომლის ხელფასის ვალდებულებას.</p>
+          </form>
 
           <div className="rounded-xl border border-zinc-800 p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1876,18 +2037,22 @@ export default function Dashboard() {
               const monthAttendance = activeStore.attendance.filter(
                 (a: AttendanceRecord) => a.date.startsWith(empMonthFilter)
               );
-              const empMap = new Map<string, { name: string; branch: Branch; days: string[]; wage: number }>();
-              for (const emp of activeStore.employees.filter((e: Employee) => e.active)) {
-                empMap.set(emp.id, { name: emp.name, branch: emp.branch, days: [], wage: emp.dailyWage });
+              const empMap = new Map<string, { name: string; branch: Branch; records: AttendanceRecord[]; wage: number }>();
+              for (const emp of activeStore.employees) {
+                empMap.set(emp.id, { name: emp.name, branch: emp.branch, records: [], wage: emp.dailyWage });
               }
               for (const a of monthAttendance) {
-                const row = empMap.get(a.employeeId);
-                if (row) row.days.push(a.date);
+                let row = empMap.get(a.employeeId);
+                if (!row) {
+                  row = { name: a.employeeName, branch: a.branch, records: [], wage: a.wageAmount ?? 0 };
+                  empMap.set(a.employeeId, row);
+                }
+                row.records.push(a);
               }
               const rows = [...empMap.entries()].map(([id, data]) => ({
                 id,
                 ...data,
-                total: data.days.length * data.wage,
+                total: data.records.reduce((sum, record) => sum + (record.wageAmount ?? data.wage), 0),
               }));
               return rows.length === 0 ? (
                 <p className="text-sm text-zinc-500">აქტიური თანამშრომლები არ არის</p>
@@ -1897,13 +2062,16 @@ export default function Dashboard() {
                     <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium">{r.name} · <span className="text-zinc-400">{r.branch}</span></span>
-                        <span className="text-sm text-teal-400">{r.days.length} დღე · {formatMoney(r.total)}</span>
+                        <span className="text-sm text-teal-400">{r.records.length} დღე · {formatMoney(r.total)}</span>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {r.days.sort().map((d) => (
-                          <span key={d} className="rounded bg-teal-900/30 px-2 py-0.5 text-xs text-teal-300">{d.slice(5)}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {r.records.sort((a, b) => a.date.localeCompare(b.date)).map((record) => (
+                          <span key={record.id} className="inline-flex items-center gap-2 rounded bg-teal-900/30 px-2 py-1 text-xs text-teal-300">
+                            {record.date.slice(5)} · {record.shift ?? "დღის"} · {formatMoney(record.wageAmount ?? r.wage)}
+                            <button type="button" className="text-red-400 hover:text-red-300" onClick={() => deleteWorkDay(record.id)}>✕</button>
+                          </span>
                         ))}
-                        {r.days.length === 0 && <span className="text-xs text-zinc-500">არ მუშაობდა</span>}
+                        {r.records.length === 0 && <span className="text-xs text-zinc-500">არ მუშაობდა</span>}
                       </div>
                     </div>
                   ))}

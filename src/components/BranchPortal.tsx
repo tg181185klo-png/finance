@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Employee, ExpenseCategory, ExpensePaymentMethod, PaymentMethod } from "@/lib/types";
+import type { Employee, ExpenseCategory, ExpensePaymentMethod, PaymentMethod, WorkShift } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatMoney, uid } from "@/lib/utils";
 
@@ -41,9 +41,8 @@ export default function BranchPortal({ token }: { token: string }) {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([emptyExpense()]);
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [checkedIn, setCheckedIn] = useState<string[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState("");
-  const [checkingIn, setCheckingIn] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [shift, setShift] = useState<WorkShift>("დღის");
 
   useEffect(() => {
     fetch(`/api/branch?token=${token}`, { cache: "no-store" })
@@ -53,10 +52,8 @@ export default function BranchPortal({ token }: { token: string }) {
         else {
           setBranch(branchData.branch);
           setEmployees(branchData.employees ?? []);
-          const todayChecked = (branchData.attendance ?? []).map((a: { employeeId: string }) => a.employeeId);
-          setCheckedIn(todayChecked);
           if (branchData.employees?.length === 1) {
-            setSelectedEmployee(branchData.employees[0].name);
+            setSelectedEmployeeId(branchData.employees[0].id);
           }
         }
       })
@@ -75,27 +72,6 @@ export default function BranchPortal({ token }: { token: string }) {
 
   function updateIncome(id: string, patch: Partial<IncomeRow>) {
     setIncomes((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
-
-  async function doCheckin(empId: string) {
-    setCheckingIn(true);
-    try {
-      const res = await fetch("/api/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "checkin", token, employeeId: empId }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setErr(d.error || "შეცდომა"); return; }
-      setCheckedIn((prev) => [...prev, empId]);
-      const emp = employees.find((e) => e.id === empId);
-      if (emp) setSelectedEmployee(emp.name);
-      setErr("");
-    } catch {
-      setErr("კავშირის შეცდომა");
-    } finally {
-      setCheckingIn(false);
-    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -121,14 +97,27 @@ export default function BranchPortal({ token }: { token: string }) {
       setErr("დაამატეთ მინიმუმ ერთი შემოსავალი ან ხარჯი");
       return;
     }
+    if ((branch === "ლილო" || branch === "დიღომი") && employees.length > 0 && !selectedEmployeeId) {
+      setErr("აირჩიეთ თანამშრომელი, რომელიც აგზავნის რეპორტს");
+      return;
+    }
 
     setSubmitting(true);
     setErr("");
     try {
+      const selectedEmployee = employees.find((item) => item.id === selectedEmployeeId);
       const res = await fetch("/api/branch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, date, incomes: validIncomes, expenses: validExpenses, submittedBy: selectedEmployee || undefined }),
+        body: JSON.stringify({
+          token,
+          date,
+          incomes: validIncomes,
+          expenses: validExpenses,
+          submittedBy: selectedEmployee?.name,
+          submittedEmployeeId: selectedEmployee?.id,
+          shift,
+        }),
       });
       const d = await res.json();
       if (!res.ok) {
@@ -155,49 +144,31 @@ export default function BranchPortal({ token }: { token: string }) {
 
       {ok && (
         <div className="mb-4 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          გაგზავნილია!{selectedEmployee && ` (${selectedEmployee})`}
+          გაგზავნილია!
         </div>
       )}
       {err && branch && <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
 
       {employees.length > 0 && (
-        <section className="mb-4 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
-          <h2 className="mb-3 font-semibold text-teal-400">მოპწიჩკვა</h2>
-          <div className="space-y-2">
-            {employees.map((emp) => {
-              const isIn = checkedIn.includes(emp.id);
-              return (
-                <div key={emp.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                  <span className="font-medium">{emp.name}</span>
-                  {isIn ? (
-                    <span className="rounded-full bg-emerald-900/40 px-3 py-1 text-xs text-emerald-400">მოპწიჩკული ✓</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="rounded-lg bg-teal-600 px-4 py-1.5 text-sm font-medium hover:bg-teal-500 disabled:opacity-40"
-                      disabled={checkingIn}
-                      onClick={() => doCheckin(emp.id)}
-                    >
-                      {checkingIn ? "..." : "მოპწიჩკვა"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
+          <div>
+            <label className="mb-1 block text-xs text-zinc-400">ვინ აგზავნის რეპორტს?</label>
+            <select className={inputCls} value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}>
+              <option value="">აირჩიეთ...</option>
+              {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+            </select>
           </div>
-          {selectedEmployee && (
-            <p className="mt-3 text-sm text-teal-300">მუშაობს: <span className="font-medium">{selectedEmployee}</span></p>
-          )}
-        </section>
-      )}
-
-      {employees.length > 1 && (
-        <div className="mb-4">
-          <label className="mb-1 block text-xs text-zinc-400">ვინ აგზავნის ანგარიშს?</label>
-          <select className={inputCls} value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)}>
-            <option value="">აირჩიეთ...</option>
-            {employees.map((emp) => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
-          </select>
+          <div>
+            <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
+            <select className={inputCls} value={shift} onChange={(e) => setShift(e.target.value as WorkShift)}>
+              <option value="დღის">დღის</option>
+              <option value="საღამოს">საღამოს</option>
+              <option value="ღამის">ღამის</option>
+            </select>
+          </div>
+          <p className="col-span-2 text-xs text-teal-300">
+            რეპორტის გაგზავნისას ამ თანამშრომელს სამუშაო დღე და ხელფასი ავტომატურად დაერიცხება.
+          </p>
         </div>
       )}
 
