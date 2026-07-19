@@ -1939,7 +1939,7 @@ export default function Dashboard() {
           <form onSubmit={addEmployee} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
             <h2 className="mb-4 text-lg font-semibold text-teal-300">ახალი თანამშრომელი</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="სახელი"><input className={inputCls} value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="მაგ: ნინო" required /></Field>
+              <Field label="სახელი და გვარი"><input className={inputCls} value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="მაგ: ნინო მაისურაძე" required /></Field>
               <Field label="ფილიალი">
                 <select className={inputCls} value={empBranch} onChange={(e) => setEmpBranch(e.target.value as Branch)}>
                   {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -1963,7 +1963,7 @@ export default function Dashboard() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                      <th className="pb-2 pr-3">სახელი</th>
+                      <th className="pb-2 pr-3">სახელი და გვარი</th>
                       <th className="pb-2 pr-3">ფილიალი</th>
                       <th className="pb-2 pr-3">დღიური ხელფასი</th>
                       <th className="pb-2" />

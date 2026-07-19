@@ -45,6 +45,22 @@ export async function POST(req: NextRequest) {
     const preview = await readStore();
     const branch = branchByToken(preview, body.token);
     if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
+    const requiresEmployee = branch === "ლილო" || branch === "დიღომი";
+    const reportingEmployee = requiresEmployee
+      ? (preview.employees ?? []).find(
+          (item) =>
+            item.id === body.submittedEmployeeId &&
+            item.branch === branch &&
+            item.active
+        )
+      : undefined;
+    if (requiresEmployee && !reportingEmployee) {
+      return NextResponse.json(
+        { error: "აირჩიეთ ამ ფილიალში დამატებული თანამშრომელი" },
+        { status: 400 }
+      );
+    }
+    const submittedBy = reportingEmployee?.name ?? body.submittedBy?.trim() ?? undefined;
 
     const reportId = uid();
     const day = dateOnly(body.date || new Date().toISOString());
@@ -79,7 +95,7 @@ export async function POST(req: NextRequest) {
       expensesTotal,
       expensesNote,
       submittedAt: now,
-      submittedBy: body.submittedBy,
+      submittedBy,
       incomes,
       sales,
       expenses,
@@ -104,7 +120,7 @@ export async function POST(req: NextRequest) {
         comment: `დღის შემოსავალი · ${income.paymentMethod}`,
         source: "branch",
         reportId,
-        employeeName: body.submittedBy,
+        employeeName: submittedBy,
       });
     }
 
@@ -124,7 +140,7 @@ export async function POST(req: NextRequest) {
         comment: `${s.productName} × ${s.quantity}`,
         source: "branch",
         reportId,
-        employeeName: body.submittedBy,
+        employeeName: submittedBy,
       };
       txs.push(sale);
     }
@@ -185,15 +201,12 @@ export async function POST(req: NextRequest) {
           applyExpenseToStore(store, t);
         }
       }
-      if ((branch === "ლილო" || branch === "დიღომი") && body.submittedBy) {
+      if (requiresEmployee && reportingEmployee) {
         const employee = (store.employees ?? []).find(
-          (item) =>
-            item.branch === branch &&
-            (item.id === body.submittedEmployeeId || item.name === body.submittedBy)
+          (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
         );
-        if (employee) {
-          addEmployeeAttendance(store, employee, day, body.shift ?? "დღის", branch);
-        }
+        if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
+        addEmployeeAttendance(store, employee, day, body.shift ?? "დღის", branch);
       }
       store.branchReports = [report, ...store.branchReports];
       store.transactions = [...txs, ...store.transactions];

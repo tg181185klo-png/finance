@@ -97,7 +97,7 @@ export default function BranchPortal({ token }: { token: string }) {
       setErr("დაამატეთ მინიმუმ ერთი შემოსავალი ან ხარჯი");
       return;
     }
-    if ((branch === "ლილო" || branch === "დიღომი") && employees.length > 0 && !selectedEmployeeId) {
+    if ((branch === "ლილო" || branch === "დიღომი") && !selectedEmployeeId) {
       setErr("აირჩიეთ თანამშრომელი, რომელიც აგზავნის რეპორტს");
       return;
     }
@@ -149,26 +149,34 @@ export default function BranchPortal({ token }: { token: string }) {
       )}
       {err && branch && <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
 
-      {employees.length > 0 && (
+      {(branch === "ლილო" || branch === "დიღომი") && (
         <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">ვინ აგზავნის რეპორტს?</label>
-            <select className={inputCls} value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)}>
-              <option value="">აირჩიეთ...</option>
-              {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
-            <select className={inputCls} value={shift} onChange={(e) => setShift(e.target.value as WorkShift)}>
-              <option value="დღის">დღის</option>
-              <option value="საღამოს">საღამოს</option>
-              <option value="ღამის">ღამის</option>
-            </select>
-          </div>
-          <p className="col-span-2 text-xs text-teal-300">
-            რეპორტის გაგზავნისას ამ თანამშრომელს სამუშაო დღე და ხელფასი ავტომატურად დაერიცხება.
-          </p>
+          {employees.length === 0 ? (
+            <p className="col-span-2 text-sm text-amber-300">
+              ამ ფილიალში თანამშრომელი ჯერ არ არის დამატებული. დაამატეთ თანამშრომლის სახელი და გვარი ადმინ პანელიდან.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-400">გამომგზავნის სახელი და გვარი</label>
+                <select className={inputCls} value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} required>
+                  <option value="">აირჩიეთ თანამშრომელი...</option>
+                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
+                <select className={inputCls} value={shift} onChange={(e) => setShift(e.target.value as WorkShift)}>
+                  <option value="დღის">დღის</option>
+                  <option value="საღამოს">საღამოს</option>
+                  <option value="ღამის">ღამის</option>
+                </select>
+              </div>
+              <p className="col-span-2 text-xs text-teal-300">
+                რეპორტის თარიღი ამ თანამშრომლის ნამუშევარ დღედ ჩაითვლება და დღიური ხელფასი ავტომატურად დაერიცხება.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -250,7 +258,13 @@ export default function BranchPortal({ token }: { token: string }) {
           <p className="mt-3 text-right text-sm font-medium text-red-400">სულ ხარჯი: {formatMoney(expensesTotal)}</p>
         </section>
 
-        <button type="submit" className={btnCls} disabled={submitting}>{submitting ? "იგზავნება..." : "გაგზავნა"}</button>
+        <button
+          type="submit"
+          className={btnCls}
+          disabled={submitting || ((branch === "ლილო" || branch === "დიღომი") && employees.length === 0)}
+        >
+          {submitting ? "იგზავნება..." : "გაგზავნა"}
+        </button>
       </form>
 
       <p className="mt-4 text-center text-sm text-zinc-500">
