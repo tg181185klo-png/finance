@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { ADMIN_PIN, BRANCHES } from "@/lib/constants";
 import { addRecurringObligation, currentMonth, ensureMonthObligations, uid } from "@/lib/utils";
 import { readStore, updateStore } from "@/lib/server-store";
-import type { Obligation, PaymentMethod, ExpenseBranch } from "@/lib/types";
+import type { Expense, Obligation, PaymentMethod, ExpenseBranch } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   const month = new URL(req.url).searchParams.get("month") ?? currentMonth();
@@ -49,24 +49,58 @@ export async function POST(req: NextRequest) {
         const left = ob.amount - ob.paid;
         const pay = Math.min(amount, left);
         if (pay <= 0) throw new Error("უკვე სრულად გადახდილია");
+
+        const paymentMethod = body.paymentMethod ?? "ქეში (ნაღდი)";
+        const source = body.branch ?? "საერთო";
+        const paymentBranches = source === "საერთო" ? BRANCHES : [source];
+        const totalCents = Math.round(pay * 100);
+        const baseCents = Math.floor(totalCents / paymentBranches.length);
+        let allocatedCents = 0;
+        const paidAt = new Date().toISOString();
+
         ob.paid += pay;
         if (!s.obligationPayments) s.obligationPayments = [];
-        s.obligationPayments.push({
-          id: uid(),
-          obligationId: ob.id,
-          expenseId: "",
-          amount: pay,
-          paidAt: new Date().toISOString(),
-          note: body.note || `${ob.name} — პირდაპირი გადახდა`,
-          paymentMethod: body.paymentMethod,
-          branch: body.branch,
-        });
+
+        for (let index = 0; index < paymentBranches.length; index += 1) {
+          const isLast = index === paymentBranches.length - 1;
+          const cents = isLast ? totalCents - allocatedCents : baseCents;
+          allocatedCents += cents;
+          const share = cents / 100;
+          const branch = paymentBranches[index];
+          const expenseId = uid();
+          const note = body.note || `${ob.name} — ვალდებულების გასტუმრება`;
+          const expense: Expense = {
+            id: expenseId,
+            type: "expense",
+            date: paidAt,
+            branch,
+            category: ob.category,
+            amount: share,
+            comment: note,
+            source: "admin",
+            obligationId: ob.id,
+            expensePaymentMethod: paymentMethod,
+          };
+
+          s.transactions = [expense, ...s.transactions];
+          s.obligationPayments.push({
+            id: uid(),
+            obligationId: ob.id,
+            expenseId,
+            amount: share,
+            paidAt,
+            note,
+            paymentMethod,
+            branch,
+          });
+        }
       });
 
       return NextResponse.json({
         ok: true,
         obligations: store.obligations,
         obligationPayments: store.obligationPayments,
+        transactions: store.transactions,
       });
     }
 

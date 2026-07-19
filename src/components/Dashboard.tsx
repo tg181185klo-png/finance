@@ -793,7 +793,14 @@ export default function Dashboard() {
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
         setStore((prev) =>
-          prev ? { ...prev, obligations: d.obligations ?? prev.obligations, obligationPayments: d.obligationPayments ?? prev.obligationPayments } : prev
+          prev
+            ? {
+                ...prev,
+                obligations: d.obligations ?? prev.obligations,
+                obligationPayments: d.obligationPayments ?? prev.obligationPayments,
+                transactions: d.transactions ?? prev.transactions,
+              }
+            : prev
         );
         setObPayInputs((m) => ({ ...m, [obId]: "" }));
         setSaveMsg("ვალდებულება გასტუმრდა ✓");
@@ -1458,7 +1465,7 @@ export default function Dashboard() {
                               />
                             </div>
                             <div className="min-w-[100px] flex-1">
-                              <label className={labelCls}>მეთოდი</label>
+                              <label className={labelCls}>რომელი ნაწილიდან</label>
                               <select className={inputCls}
                                 value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
                                 onChange={(e) => setObPayMethods((m) => ({ ...m, [o.id]: e.target.value as PaymentMethod }))}
@@ -1467,7 +1474,7 @@ export default function Dashboard() {
                               </select>
                             </div>
                             <div className="min-w-[100px] flex-1">
-                              <label className={labelCls}>საიდან</label>
+                              <label className={labelCls}>რომელი ფილიალიდან</label>
                               <select className={inputCls}
                                 value={obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")}
                                 onChange={(e) => setObPayBranches((m) => ({ ...m, [o.id]: e.target.value as ExpenseBranch }))}
@@ -1477,6 +1484,11 @@ export default function Dashboard() {
                             </div>
                             <button type="button" className={`${btnCls} bg-violet-600 hover:bg-violet-500`} onClick={() => payObligation(o.id)}>გასტუმრება</button>
                           </div>
+                          {(obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")) === "საერთო" && (
+                            <p className="mt-2 text-xs text-violet-300">
+                              „საერთო“ თანხას ქუთაისს, ლილოსა და დიღომს თანაბრად ჩამოაკლებს.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-emerald-400">სრულად გასტუმრებული ✓</p>
