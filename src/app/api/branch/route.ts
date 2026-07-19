@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { uid, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
-import type { BranchDailyReport, BranchExpenseLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
+import type { BranchDailyReport, BranchExpenseLine, BranchIncomeLine, BranchSaleLine, Expense, Sale } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       token: string;
       date: string;
+      incomes?: BranchIncomeLine[];
       sales?: BranchSaleLine[];
       expenses?: BranchExpenseLine[];
       salesTotal?: number;
@@ -46,15 +47,22 @@ export async function POST(req: NextRequest) {
     const reportId = uid();
     const day = dateOnly(body.date || new Date().toISOString());
     const now = new Date().toISOString();
+    const incomes = body.incomes ?? [];
     const sales = body.sales ?? [];
     const expenses = body.expenses ?? [];
 
-    const salesTotal = sales.length ? sales.reduce((s, x) => s + x.amount, 0) : (body.salesTotal || 0);
+    const salesTotal = incomes.length
+      ? incomes.reduce((s, x) => s + x.amount, 0)
+      : sales.length
+        ? sales.reduce((s, x) => s + x.amount, 0)
+        : (body.salesTotal || 0);
     const expensesTotal = expenses.length ? expenses.reduce((s, x) => s + x.amount, 0) : (body.expensesTotal || 0);
 
-    const salesNote = sales.length
-      ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
-      : body.salesNote?.trim() || `დღის გაყიდვა — ${branch}`;
+    const salesNote = incomes.length
+      ? incomes.map((i) => `${i.amount} ₾ (${i.paymentMethod})`).join("; ")
+      : sales.length
+        ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
+        : body.salesNote?.trim() || `დღის შემოსავალი — ${branch}`;
 
     const expensesNote = expenses.length
       ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
@@ -70,12 +78,33 @@ export async function POST(req: NextRequest) {
       expensesNote,
       submittedAt: now,
       submittedBy: body.submittedBy,
+      incomes,
       sales,
       expenses,
     };
 
     const txs: (Sale | Expense)[] = [];
     const txDate = `${day}T20:00:00.000Z`;
+
+    for (const income of incomes) {
+      txs.push({
+        id: uid(),
+        type: "sale",
+        date: txDate,
+        branch,
+        productCode: "—",
+        productName: "დღის შემოსავალი",
+        quantity: 1,
+        unitPrice: income.amount,
+        amount: income.amount,
+        paymentStatus: "სრულად გადახდილი",
+        paymentMethod: income.paymentMethod,
+        comment: `დღის შემოსავალი · ${income.paymentMethod}`,
+        source: "branch",
+        reportId,
+        employeeName: body.submittedBy,
+      });
+    }
 
     for (const s of sales) {
       const sale: Sale = {
@@ -98,7 +127,7 @@ export async function POST(req: NextRequest) {
       txs.push(sale);
     }
 
-    if (!sales.length && salesTotal > 0) {
+    if (!incomes.length && !sales.length && salesTotal > 0) {
       txs.push({
         id: uid(),
         type: "sale",

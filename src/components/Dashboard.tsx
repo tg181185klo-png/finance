@@ -1744,7 +1744,15 @@ export default function Dashboard() {
                       <span className="font-medium">{r.branch} · {r.date}{r.submittedBy ? ` · ${r.submittedBy}` : ""}</span>
                       <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
                     </div>
-                    {r.sales?.length ? (
+                    {r.incomes?.length ? (
+                      <div className="mb-2 space-y-1">
+                        {r.incomes.map((income, i) => (
+                          <p key={i} className="text-emerald-400">
+                            +{formatMoney(income.amount)} — შემოსავალი · {income.paymentMethod}
+                          </p>
+                        ))}
+                      </div>
+                    ) : r.sales?.length ? (
                       <div className="mb-2 space-y-1">
                         {r.sales.map((s, i) => (
                           <p key={i} className="text-emerald-400">

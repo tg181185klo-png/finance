@@ -138,6 +138,11 @@ export interface BranchSaleLine {
   paymentMethod: PaymentMethod;
 }
 
+export interface BranchIncomeLine {
+  amount: number;
+  paymentMethod: PaymentMethod;
+}
+
 export interface BranchExpenseLine {
   category: ExpenseCategory;
   amount: number;
@@ -155,6 +160,7 @@ export interface BranchDailyReport {
   expensesNote: string;
   submittedAt: string;
   submittedBy?: string;
+  incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
   expenses?: BranchExpenseLine[];
 }

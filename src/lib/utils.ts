@@ -107,6 +107,7 @@ export function calcBalances(
     } else {
       b.expenses += t.amount;
       if (t.expensePaymentMethod === "ბარათი") b.card -= t.amount;
+      else if (t.expensePaymentMethod === "ანგარიშზე ჩარიცხვა") b.bank -= t.amount;
       else b.cash -= t.amount;
     }
   }
