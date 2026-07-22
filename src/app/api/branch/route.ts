@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { uid, addEmployeeAttendance, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
-import type { BranchDailyReport, BranchExpenseLine, BranchIncomeLine, BranchSaleLine, Expense, Sale, WorkShift } from "@/lib/types";
+import type {
+  BranchDailyReport,
+  BranchExpenseLine,
+  BranchIncomeLine,
+  BranchSaleLine,
+  BranchWorkedEmployee,
+  Expense,
+  Sale,
+  WorkShift,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +49,7 @@ export async function POST(req: NextRequest) {
       submittedBy?: string;
       submittedEmployeeId?: string;
       shift?: WorkShift;
+      workedEmployees?: { employeeId: string; shift?: WorkShift }[];
     };
 
     const preview = await readStore();
@@ -61,6 +71,28 @@ export async function POST(req: NextRequest) {
       );
     }
     const submittedBy = reportingEmployee?.name ?? body.submittedBy?.trim() ?? undefined;
+
+    const workedEntries = branch === "ქუთაისი"
+      ? (body.workedEmployees ?? []).filter((item) => item.employeeId)
+      : [];
+    const kutaisiWorked: BranchWorkedEmployee[] = [];
+    for (const entry of workedEntries) {
+      const emp = (preview.employees ?? []).find(
+        (item) => item.id === entry.employeeId && item.branch === "ქუთაისი" && item.active
+      );
+      if (!emp) {
+        return NextResponse.json(
+          { error: "არჩეული თანამშრომელი არ ეკუთვნის ქუთაისს" },
+          { status: 400 }
+        );
+      }
+      kutaisiWorked.push({
+        employeeId: emp.id,
+        employeeName: emp.name,
+        shift: entry.shift ?? "დღის",
+        wageAmount: Math.max(0, emp.dailyWage || 0),
+      });
+    }
 
     const reportId = uid();
     const day = dateOnly(body.date || new Date().toISOString());
@@ -86,6 +118,20 @@ export async function POST(req: NextRequest) {
       ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
       : body.expensesNote?.trim() || `დღის ხარჯი — ${branch}`;
 
+    if (
+      !incomes.length &&
+      !sales.length &&
+      !expenses.length &&
+      salesTotal <= 0 &&
+      expensesTotal <= 0 &&
+      kutaisiWorked.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "დაამატეთ მინიმუმ ერთი შემოსავალი, ხარჯი ან თანამშრომელი" },
+        { status: 400 }
+      );
+    }
+
     const report: BranchDailyReport = {
       id: reportId,
       branch,
@@ -99,6 +145,7 @@ export async function POST(req: NextRequest) {
       incomes,
       sales,
       expenses,
+      ...(kutaisiWorked.length ? { workedEmployees: kutaisiWorked } : {}),
     };
 
     const txs: (Sale | Expense)[] = [];
@@ -207,6 +254,15 @@ export async function POST(req: NextRequest) {
         );
         if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
         addEmployeeAttendance(store, employee, day, body.shift ?? "დღის", branch);
+      }
+      if (branch === "ქუთაისი") {
+        for (const worked of kutaisiWorked) {
+          const employee = (store.employees ?? []).find(
+            (item) => item.id === worked.employeeId && item.branch === "ქუთაისი" && item.active
+          );
+          if (!employee) throw new Error(`${worked.employeeName} ვერ მოიძებნა`);
+          addEmployeeAttendance(store, employee, day, worked.shift, branch);
+        }
       }
       store.branchReports = [report, ...store.branchReports];
       store.transactions = [...txs, ...store.transactions];

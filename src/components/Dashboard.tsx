@@ -1901,9 +1901,9 @@ export default function Dashboard() {
                           </p>
                         ))}
                       </div>
-                    ) : (
+                    ) : r.salesTotal > 0 ? (
                       <p className="text-emerald-400">+{formatMoney(r.salesTotal)} — {r.salesNote}</p>
-                    )}
+                    ) : null}
                     {r.expenses?.length ? (
                       <div className="space-y-1">
                         {r.expenses.map((ex, i) => (
@@ -1912,9 +1912,19 @@ export default function Dashboard() {
                           </p>
                         ))}
                       </div>
-                    ) : (
+                    ) : r.expensesTotal > 0 ? (
                       <p className="text-red-400">-{formatMoney(r.expensesTotal)} — {r.expensesNote}</p>
-                    )}
+                    ) : null}
+                    {r.workedEmployees?.length ? (
+                      <div className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
+                        <p className="text-xs text-zinc-500">იმუშავეს:</p>
+                        {r.workedEmployees.map((w) => (
+                          <p key={w.employeeId} className="text-teal-300">
+                            {w.employeeName} · {w.shift} · {formatMoney(w.wageAmount)}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                     {unlocked && (
                       <button type="button" className="mt-2 text-xs text-red-400 hover:text-red-300" onClick={() => deleteReport(r.id)}>
                         წაშლა (ხელახლა შეავსონ)
@@ -2023,7 +2033,7 @@ export default function Dashboard() {
                 <button type="submit" className={`${btnCls} w-full`} disabled={!empWorkEmployee}>დამატება</button>
               </div>
             </div>
-            <p className="mt-2 text-xs text-teal-300">დამატებისას დღიური ანაზღაურება ავტომატურად დაემატება თანამშრომლის ხელფასის ვალდებულებას.</p>
+            <p className="mt-2 text-xs text-teal-300">დამატებისას დღიური ანაზღაურება ავტომატურად დაემატება თანამშრომლის ხელფასის ვალდებულებას. ქუთაისის ლინკიდანაც შეიძლება დღის რეპორტთან ერთად მონიშვნა.</p>
           </form>
 
           <div className="rounded-xl border border-zinc-800 p-5">

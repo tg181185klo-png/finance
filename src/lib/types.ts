@@ -154,6 +154,13 @@ export interface BranchExpenseLine {
   comment: string;
 }
 
+export interface BranchWorkedEmployee {
+  employeeId: string;
+  employeeName: string;
+  shift: WorkShift;
+  wageAmount: number;
+}
+
 export interface BranchDailyReport {
   id: string;
   branch: Branch;
@@ -167,6 +174,7 @@ export interface BranchDailyReport {
   incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
   expenses?: BranchExpenseLine[];
+  workedEmployees?: BranchWorkedEmployee[];
 }
 
 export interface BranchCash {

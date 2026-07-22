@@ -23,6 +23,8 @@ type ExpenseRow = {
   comment: string;
 };
 
+type WorkSelection = Record<string, { selected: boolean; shift: WorkShift }>;
+
 function emptyIncome(): IncomeRow {
   return { id: uid(), amount: "", paymentMethod: "ქეში (ნაღდი)" };
 }
@@ -43,6 +45,7 @@ export default function BranchPortal({ token }: { token: string }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [shift, setShift] = useState<WorkShift>("დღის");
+  const [workSelection, setWorkSelection] = useState<WorkSelection>({});
 
   useEffect(() => {
     fetch(`/api/branch?token=${token}`, { cache: "no-store" })
@@ -51,10 +54,16 @@ export default function BranchPortal({ token }: { token: string }) {
         if (branchData.error) setErr(branchData.error);
         else {
           setBranch(branchData.branch);
-          setEmployees(branchData.employees ?? []);
-          if (branchData.employees?.length === 1) {
-            setSelectedEmployeeId(branchData.employees[0].id);
+          const list: Employee[] = branchData.employees ?? [];
+          setEmployees(list);
+          if (list.length === 1) {
+            setSelectedEmployeeId(list[0].id);
           }
+          const initial: WorkSelection = {};
+          for (const emp of list) {
+            initial[emp.id] = { selected: false, shift: "დღის" };
+          }
+          setWorkSelection(initial);
         }
       })
       .catch(() => setErr("კავშირის შეცდომა"))
@@ -69,9 +78,43 @@ export default function BranchPortal({ token }: { token: string }) {
     () => expenses.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0),
     [expenses]
   );
+  const selectedWorkers = useMemo(
+    () =>
+      employees
+        .filter((emp) => workSelection[emp.id]?.selected)
+        .map((emp) => ({
+          employeeId: emp.id,
+          shift: workSelection[emp.id]?.shift ?? "დღის",
+          name: emp.name,
+          wage: emp.dailyWage,
+        })),
+    [employees, workSelection]
+  );
+  const isLiloOrDigomi = branch === "ლილო" || branch === "დიღომი";
+  const isKutaisi = branch === "ქუთაისი";
 
   function updateIncome(id: string, patch: Partial<IncomeRow>) {
     setIncomes((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function toggleWorker(employeeId: string, selected: boolean) {
+    setWorkSelection((prev) => ({
+      ...prev,
+      [employeeId]: {
+        selected,
+        shift: prev[employeeId]?.shift ?? "დღის",
+      },
+    }));
+  }
+
+  function setWorkerShift(employeeId: string, nextShift: WorkShift) {
+    setWorkSelection((prev) => ({
+      ...prev,
+      [employeeId]: {
+        selected: prev[employeeId]?.selected ?? false,
+        shift: nextShift,
+      },
+    }));
   }
 
   async function submit(e: React.FormEvent) {
@@ -93,11 +136,13 @@ export default function BranchPortal({ token }: { token: string }) {
         comment: r.comment.trim() || r.category,
       }));
 
-    if (!validIncomes.length && !validExpenses.length) {
-      setErr("დაამატეთ მინიმუმ ერთი შემოსავალი ან ხარჯი");
+    if (!validIncomes.length && !validExpenses.length && !(isKutaisi && selectedWorkers.length > 0)) {
+      setErr(isKutaisi
+        ? "დაამატეთ შემოსავალი, ხარჯი ან მონიშნეთ ვინ იმუშავა"
+        : "დაამატეთ მინიმუმ ერთი შემოსავალი ან ხარჯი");
       return;
     }
-    if ((branch === "ლილო" || branch === "დიღომი") && !selectedEmployeeId) {
+    if (isLiloOrDigomi && !selectedEmployeeId) {
       setErr("აირჩიეთ თანამშრომელი, რომელიც აგზავნის რეპორტს");
       return;
     }
@@ -117,6 +162,14 @@ export default function BranchPortal({ token }: { token: string }) {
           submittedBy: selectedEmployee?.name,
           submittedEmployeeId: selectedEmployee?.id,
           shift,
+          ...(isKutaisi
+            ? {
+                workedEmployees: selectedWorkers.map((w) => ({
+                  employeeId: w.employeeId,
+                  shift: w.shift,
+                })),
+              }
+            : {}),
         }),
       });
       const d = await res.json();
@@ -127,6 +180,13 @@ export default function BranchPortal({ token }: { token: string }) {
       setOk(true);
       setIncomes([emptyIncome()]);
       setExpenses([emptyExpense()]);
+      setWorkSelection((prev) => {
+        const next: WorkSelection = {};
+        for (const [id, value] of Object.entries(prev)) {
+          next[id] = { selected: false, shift: value.shift };
+        }
+        return next;
+      });
     } catch {
       setErr("კავშირის შეცდომა");
     } finally {
@@ -149,7 +209,7 @@ export default function BranchPortal({ token }: { token: string }) {
       )}
       {err && branch && <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
 
-      {(branch === "ლილო" || branch === "დიღომი") && (
+      {isLiloOrDigomi && (
         <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
           {employees.length === 0 ? (
             <p className="col-span-2 text-sm text-amber-300">
@@ -186,7 +246,61 @@ export default function BranchPortal({ token }: { token: string }) {
           <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} required />
         </div>
 
-        {/* შემოსავლები */}
+        {isKutaisi && (
+          <section className="rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
+            <h2 className="mb-1 font-semibold text-teal-300">თანამშრომლების აღრიცხვა</h2>
+            <p className="mb-3 text-xs text-zinc-400">
+              მონიშნეთ ვინ იმუშავა ამ თარიღზე. დღიური ხელფასი ავტომატურად დაერიცხება ადმინ პანელში მითითებული განაკვეთით.
+            </p>
+            {employees.length === 0 ? (
+              <p className="text-sm text-amber-300">
+                ქუთაისის თანამშრომლები ჯერ არ არის დამატებული. დაამატეთ ადმინ პანელიდან (თანამშრომლები → ფილიალი: ქუთაისი).
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {employees.map((emp) => {
+                  const row = workSelection[emp.id] ?? { selected: false, shift: "დღის" as WorkShift };
+                  return (
+                    <div key={emp.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={row.selected}
+                          onChange={(e) => toggleWorker(emp.id, e.target.checked)}
+                        />
+                        <span className="flex-1">
+                          <span className="block font-medium">{emp.name}</span>
+                          <span className="text-xs text-zinc-500">დღიური: {formatMoney(emp.dailyWage)}</span>
+                        </span>
+                      </label>
+                      {row.selected && (
+                        <div className="mt-2 pl-7">
+                          <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
+                          <select
+                            className={inputCls}
+                            value={row.shift}
+                            onChange={(e) => setWorkerShift(emp.id, e.target.value as WorkShift)}
+                          >
+                            <option value="დღის">დღის</option>
+                            <option value="საღამოს">საღამოს</option>
+                            <option value="ღამის">ღამის</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {selectedWorkers.length > 0 && (
+                  <p className="pt-1 text-right text-sm text-teal-300">
+                    მონიშნული: {selectedWorkers.length} · {formatMoney(selectedWorkers.reduce((s, w) => s + w.wage, 0))}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
         <section className="rounded-xl border border-emerald-900/40 bg-zinc-900/40 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-emerald-400">შემოსავალი</h2>
@@ -217,7 +331,6 @@ export default function BranchPortal({ token }: { token: string }) {
           <p className="mt-3 text-right text-sm font-medium text-emerald-400">სულ შემოსავალი: {formatMoney(incomeTotal)}</p>
         </section>
 
-        {/* ხარჯები */}
         <section className="rounded-xl border border-red-900/40 bg-zinc-900/40 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-red-400">ხარჯები</h2>
@@ -261,7 +374,7 @@ export default function BranchPortal({ token }: { token: string }) {
         <button
           type="submit"
           className={btnCls}
-          disabled={submitting || ((branch === "ლილო" || branch === "დიღომი") && employees.length === 0)}
+          disabled={submitting || (isLiloOrDigomi && employees.length === 0)}
         >
           {submitting ? "იგზავნება..." : "გაგზავნა"}
         </button>
