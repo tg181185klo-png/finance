@@ -146,6 +146,12 @@ export function ensureMonthObligations(store: Store, month: string) {
   return changed;
 }
 
+export function wageForShift(dailyWage: number, shift: WorkShift = "დღის") {
+  const base = Math.max(0, dailyWage || 0);
+  if (shift === "ღამის") return base + base / 2;
+  return base;
+}
+
 export function addEmployeeAttendance(
   store: Store,
   employee: Employee,
@@ -155,11 +161,14 @@ export function addEmployeeAttendance(
 ) {
   if (!store.attendance) store.attendance = [];
   const existing = store.attendance.find(
-    (item) => item.employeeId === employee.id && item.date === date
+    (item) =>
+      item.employeeId === employee.id &&
+      item.date === date &&
+      (item.shift ?? "დღის") === shift
   );
   if (existing) return existing;
 
-  const wageAmount = Math.max(0, employee.dailyWage || 0);
+  const wageAmount = wageForShift(employee.dailyWage, shift);
   const record = {
     id: uid(),
     employeeId: employee.id,

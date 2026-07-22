@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Employee, ExpenseCategory, ExpensePaymentMethod, PaymentMethod, WorkShift } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, PAYMENT_METHODS } from "@/lib/dashboard-data";
-import { formatMoney, uid } from "@/lib/utils";
+import { formatMoney, uid, wageForShift } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const btnCls = "w-full rounded-lg bg-emerald-600 py-3 font-medium hover:bg-emerald-500 disabled:opacity-40";
 const smallBtn = "rounded-lg border border-zinc-600 px-3 py-1.5 text-xs hover:bg-zinc-800";
+
+const ALL_SHIFTS: WorkShift[] = ["დღის", "საღამოს", "ღამის"];
 
 type IncomeRow = {
   id: string;
@@ -23,7 +25,7 @@ type ExpenseRow = {
   comment: string;
 };
 
-type WorkSelection = Record<string, { selected: boolean; shift: WorkShift }>;
+type WorkSelection = Record<string, WorkShift[]>;
 
 function emptyIncome(): IncomeRow {
   return { id: uid(), amount: "", paymentMethod: "ქეში (ნაღდი)" };
@@ -31,6 +33,10 @@ function emptyIncome(): IncomeRow {
 
 function emptyExpense(): ExpenseRow {
   return { id: uid(), category: "სხვა", amount: "", paymentMethod: "ქეში (ნაღდი)", comment: "" };
+}
+
+function shiftWageHint(dailyWage: number) {
+  return `დღე/საღამო: ${formatMoney(wageForShift(dailyWage, "დღის"))} · ღამე: ${formatMoney(wageForShift(dailyWage, "ღამის"))}`;
 }
 
 export default function BranchPortal({ token }: { token: string }) {
@@ -44,7 +50,7 @@ export default function BranchPortal({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [shift, setShift] = useState<WorkShift>("დღის");
+  const [reporterShifts, setReporterShifts] = useState<WorkShift[]>(["დღის"]);
   const [workSelection, setWorkSelection] = useState<WorkSelection>({});
 
   useEffect(() => {
@@ -61,7 +67,7 @@ export default function BranchPortal({ token }: { token: string }) {
           }
           const initial: WorkSelection = {};
           for (const emp of list) {
-            initial[emp.id] = { selected: false, shift: "დღის" };
+            initial[emp.id] = [];
           }
           setWorkSelection(initial);
         }
@@ -81,40 +87,44 @@ export default function BranchPortal({ token }: { token: string }) {
   const selectedWorkers = useMemo(
     () =>
       employees
-        .filter((emp) => workSelection[emp.id]?.selected)
+        .filter((emp) => (workSelection[emp.id] ?? []).length > 0)
         .map((emp) => ({
           employeeId: emp.id,
-          shift: workSelection[emp.id]?.shift ?? "დღის",
+          shifts: workSelection[emp.id] ?? [],
           name: emp.name,
-          wage: emp.dailyWage,
+          wage: (workSelection[emp.id] ?? []).reduce(
+            (sum, shift) => sum + wageForShift(emp.dailyWage, shift),
+            0
+          ),
         })),
     [employees, workSelection]
   );
   const isLiloOrDigomi = branch === "ლილო" || branch === "დიღომი";
   const isKutaisi = branch === "ქუთაისი";
+  const selectedReporter = employees.find((item) => item.id === selectedEmployeeId);
+  const reporterWageTotal = selectedReporter
+    ? reporterShifts.reduce((sum, shift) => sum + wageForShift(selectedReporter.dailyWage, shift), 0)
+    : 0;
 
   function updateIncome(id: string, patch: Partial<IncomeRow>) {
     setIncomes((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
-  function toggleWorker(employeeId: string, selected: boolean) {
-    setWorkSelection((prev) => ({
-      ...prev,
-      [employeeId]: {
-        selected,
-        shift: prev[employeeId]?.shift ?? "დღის",
-      },
-    }));
+  function toggleWorkerShift(employeeId: string, shift: WorkShift, checked: boolean) {
+    setWorkSelection((prev) => {
+      const current = prev[employeeId] ?? [];
+      const next = checked
+        ? [...new Set([...current, shift])]
+        : current.filter((item) => item !== shift);
+      return { ...prev, [employeeId]: next };
+    });
   }
 
-  function setWorkerShift(employeeId: string, nextShift: WorkShift) {
-    setWorkSelection((prev) => ({
-      ...prev,
-      [employeeId]: {
-        selected: prev[employeeId]?.selected ?? false,
-        shift: nextShift,
-      },
-    }));
+  function toggleReporterShift(shift: WorkShift, checked: boolean) {
+    setReporterShifts((prev) => {
+      if (checked) return [...new Set([...prev, shift])];
+      return prev.filter((item) => item !== shift);
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -146,6 +156,10 @@ export default function BranchPortal({ token }: { token: string }) {
       setErr("აირჩიეთ თანამშრომელი, რომელიც აგზავნის რეპორტს");
       return;
     }
+    if (isLiloOrDigomi && reporterShifts.length === 0) {
+      setErr("აირჩიეთ მინიმუმ ერთი ცვლა");
+      return;
+    }
 
     setSubmitting(true);
     setErr("");
@@ -161,12 +175,13 @@ export default function BranchPortal({ token }: { token: string }) {
           expenses: validExpenses,
           submittedBy: selectedEmployee?.name,
           submittedEmployeeId: selectedEmployee?.id,
-          shift,
+          shifts: isLiloOrDigomi ? reporterShifts : undefined,
+          shift: isLiloOrDigomi ? reporterShifts[0] : undefined,
           ...(isKutaisi
             ? {
                 workedEmployees: selectedWorkers.map((w) => ({
                   employeeId: w.employeeId,
-                  shift: w.shift,
+                  shifts: w.shifts,
                 })),
               }
             : {}),
@@ -180,11 +195,10 @@ export default function BranchPortal({ token }: { token: string }) {
       setOk(true);
       setIncomes([emptyIncome()]);
       setExpenses([emptyExpense()]);
+      setReporterShifts(["დღის"]);
       setWorkSelection((prev) => {
         const next: WorkSelection = {};
-        for (const [id, value] of Object.entries(prev)) {
-          next[id] = { selected: false, shift: value.shift };
-        }
+        for (const id of Object.keys(prev)) next[id] = [];
         return next;
       });
     } catch {
@@ -210,9 +224,9 @@ export default function BranchPortal({ token }: { token: string }) {
       {err && branch && <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">{err}</div>}
 
       {isLiloOrDigomi && (
-        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
+        <div className="mb-4 space-y-3 rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
           {employees.length === 0 ? (
-            <p className="col-span-2 text-sm text-amber-300">
+            <p className="text-sm text-amber-300">
               ამ ფილიალში თანამშრომელი ჯერ არ არის დამატებული. დაამატეთ თანამშრომლის სახელი და გვარი ადმინ პანელიდან.
             </p>
           ) : (
@@ -225,15 +239,28 @@ export default function BranchPortal({ token }: { token: string }) {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
-                <select className={inputCls} value={shift} onChange={(e) => setShift(e.target.value as WorkShift)}>
-                  <option value="დღის">დღის</option>
-                  <option value="საღამოს">საღამოს</option>
-                  <option value="ღამის">ღამის</option>
-                </select>
+                <label className="mb-1 block text-xs text-zinc-400">რომელ ცვლებში იმუშავა?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {ALL_SHIFTS.map((item) => (
+                    <label key={item} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-2 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={reporterShifts.includes(item)}
+                        onChange={(e) => toggleReporterShift(item, e.target.checked)}
+                      />
+                      {item}
+                    </label>
+                  ))}
+                </div>
+                {selectedReporter && (
+                  <p className="mt-2 text-xs text-zinc-500">{shiftWageHint(selectedReporter.dailyWage)}</p>
+                )}
+                {reporterShifts.length > 0 && selectedReporter && (
+                  <p className="mt-1 text-xs text-teal-300">ამ დღის ხელფასი: {formatMoney(reporterWageTotal)}</p>
+                )}
               </div>
-              <p className="col-span-2 text-xs text-teal-300">
-                რეპორტის თარიღი ამ თანამშრომლის ნამუშევარ დღედ ჩაითვლება და დღიური ხელფასი ავტომატურად დაერიცხება.
+              <p className="text-xs text-teal-300">
+                დღის და საღამოს ცვლა = დღიური ხელფასი; ღამის ცვლა = დღიური + ნახევარი. შეიძლება სამივე ცვლა ერთ დღეს.
               </p>
             </>
           )}
@@ -250,7 +277,7 @@ export default function BranchPortal({ token }: { token: string }) {
           <section className="rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
             <h2 className="mb-1 font-semibold text-teal-300">თანამშრომლების აღრიცხვა</h2>
             <p className="mb-3 text-xs text-zinc-400">
-              მონიშნეთ ვინ იმუშავა ამ თარიღზე. დღიური ხელფასი ავტომატურად დაერიცხება ადმინ პანელში მითითებული განაკვეთით.
+              მონიშნეთ ვინ და რომელ ცვლებში იმუშავა. დღე/საღამო = დღიური; ღამე = დღიური + ნახევარი. შეიძლება სამივე ცვლა ერთ დღეს.
             </p>
             {employees.length === 0 ? (
               <p className="text-sm text-amber-300">
@@ -259,34 +286,28 @@ export default function BranchPortal({ token }: { token: string }) {
             ) : (
               <div className="space-y-2">
                 {employees.map((emp) => {
-                  const row = workSelection[emp.id] ?? { selected: false, shift: "დღის" as WorkShift };
+                  const shifts = workSelection[emp.id] ?? [];
+                  const wage = shifts.reduce((sum, shift) => sum + wageForShift(emp.dailyWage, shift), 0);
                   return (
                     <div key={emp.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-                      <label className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={row.selected}
-                          onChange={(e) => toggleWorker(emp.id, e.target.checked)}
-                        />
-                        <span className="flex-1">
-                          <span className="block font-medium">{emp.name}</span>
-                          <span className="text-xs text-zinc-500">დღიური: {formatMoney(emp.dailyWage)}</span>
-                        </span>
-                      </label>
-                      {row.selected && (
-                        <div className="mt-2 pl-7">
-                          <label className="mb-1 block text-xs text-zinc-400">ცვლა</label>
-                          <select
-                            className={inputCls}
-                            value={row.shift}
-                            onChange={(e) => setWorkerShift(emp.id, e.target.value as WorkShift)}
-                          >
-                            <option value="დღის">დღის</option>
-                            <option value="საღამოს">საღამოს</option>
-                            <option value="ღამის">ღამის</option>
-                          </select>
-                        </div>
+                      <div className="mb-2">
+                        <span className="block font-medium">{emp.name}</span>
+                        <span className="text-xs text-zinc-500">{shiftWageHint(emp.dailyWage)}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {ALL_SHIFTS.map((item) => (
+                          <label key={item} className="flex items-center gap-2 rounded-lg border border-zinc-800 px-2 py-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={shifts.includes(item)}
+                              onChange={(e) => toggleWorkerShift(emp.id, item, e.target.checked)}
+                            />
+                            {item}
+                          </label>
+                        ))}
+                      </div>
+                      {shifts.length > 0 && (
+                        <p className="mt-2 text-right text-xs text-teal-300">ამ დღის ხელფასი: {formatMoney(wage)}</p>
                       )}
                     </div>
                   );

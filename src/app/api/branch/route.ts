@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid, addEmployeeAttendance, applyExpenseToStore, applySaleToStock, reverseExpenseObligation } from "@/lib/utils";
+import { uid, addEmployeeAttendance, applyExpenseToStore, applySaleToStock, reverseExpenseObligation, wageForShift } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type {
   BranchDailyReport,
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       submittedBy?: string;
       submittedEmployeeId?: string;
       shift?: WorkShift;
-      workedEmployees?: { employeeId: string; shift?: WorkShift }[];
+      shifts?: WorkShift[];
+      workedEmployees?: { employeeId: string; shift?: WorkShift; shifts?: WorkShift[] }[];
     };
 
     const preview = await readStore();
@@ -73,7 +74,10 @@ export async function POST(req: NextRequest) {
     const submittedBy = reportingEmployee?.name ?? body.submittedBy?.trim() ?? undefined;
 
     const workedEntries = branch === "ქუთაისი"
-      ? (body.workedEmployees ?? []).filter((item) => item.employeeId)
+      ? (body.workedEmployees ?? []).flatMap((item) => {
+          const shifts = (item.shifts?.length ? item.shifts : [item.shift ?? "დღის"]) as WorkShift[];
+          return [...new Set(shifts)].map((shift) => ({ employeeId: item.employeeId, shift }));
+        })
       : [];
     const kutaisiWorked: BranchWorkedEmployee[] = [];
     for (const entry of workedEntries) {
@@ -89,9 +93,16 @@ export async function POST(req: NextRequest) {
       kutaisiWorked.push({
         employeeId: emp.id,
         employeeName: emp.name,
-        shift: entry.shift ?? "დღის",
-        wageAmount: Math.max(0, emp.dailyWage || 0),
+        shift: entry.shift,
+        wageAmount: wageForShift(emp.dailyWage, entry.shift),
       });
+    }
+
+    const reporterShifts: WorkShift[] = requiresEmployee
+      ? [...new Set((body.shifts?.length ? body.shifts : [body.shift ?? "დღის"]) as WorkShift[])]
+      : [];
+    if (requiresEmployee && reporterShifts.length === 0) {
+      return NextResponse.json({ error: "აირჩიეთ მინიმუმ ერთი ცვლა" }, { status: 400 });
     }
 
     const reportId = uid();
@@ -253,7 +264,9 @@ export async function POST(req: NextRequest) {
           (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
         );
         if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
-        addEmployeeAttendance(store, employee, day, body.shift ?? "დღის", branch);
+        for (const workShift of reporterShifts) {
+          addEmployeeAttendance(store, employee, day, workShift, branch);
+        }
       }
       if (branch === "ქუთაისი") {
         for (const worked of kutaisiWorked) {

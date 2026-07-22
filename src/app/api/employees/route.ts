@@ -103,9 +103,12 @@ export async function POST(req: NextRequest) {
           throw new Error("თანამშრომელი ამ ფილიალს არ ეკუთვნის");
         }
         if (!body.token && (s.attendance ?? []).some(
-          (item) => item.employeeId === emp.id && item.date === today
+          (item) =>
+            item.employeeId === emp.id &&
+            item.date === today &&
+            (item.shift ?? "დღის") === (body.shift ?? "დღის")
         )) {
-          throw new Error(`${emp.name} ამ თარიღზე უკვე აღრიცხულია`);
+          throw new Error(`${emp.name} ამ თარიღზე ამ ცვლაში უკვე აღრიცხულია`);
         }
         addEmployeeAttendance(s, emp, today, body.shift ?? "დღის", branch ?? emp.branch);
       });
