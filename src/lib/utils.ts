@@ -357,8 +357,10 @@ export function applyCreditDelivery(store: Store, saleId: string, quantity: numb
   return delivery;
 }
 
-export function reverseCreditOrderData(store: Store, saleId: string) {
-  const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
+export function reverseCreditOrderData(store: Store, saleId: string, saleHint?: Sale) {
+  const sale =
+    saleHint ??
+    store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
   if (sale && saleQuantityDelivered(sale) > 0) {
     store.inventory = adjustStock(
       store.inventory,

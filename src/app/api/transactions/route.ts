@@ -2,11 +2,60 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
 import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
-import type { CreditPayment, Expense, Sale, Transaction } from "@/lib/types";
+import type { CreditPayment, Expense, Sale, Store, Transaction } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+function removeTransaction(s: Store, id: string) {
+  const removed = s.transactions.find((t) => t.id === id);
+  if (!removed) throw new Error("ჩანაწერი ვერ მოიძებნა");
+
+  s.transactions = s.transactions.filter((t) => t.id !== id);
+
+  if (removed.type === "sale") {
+    try {
+      s.inventory = applySaleToStock(s.inventory, removed, 1);
+    } catch {
+      // მარაგის დაბრუნება არ უნდა დაბლოკოს წაშლა
+    }
+    reverseCreditOrderData(s, removed.id, removed);
+  } else {
+    reverseExpenseObligation(s, removed);
+  }
+
+  return removed;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { transaction: Transaction; migrate?: Transaction[] };
+    const body = (await req.json()) as {
+      transaction?: Transaction;
+      migrate?: Transaction[];
+      action?: "delete";
+      id?: string;
+      pin?: string;
+    };
+
+    if (body.action === "delete") {
+      if (body.pin !== ADMIN_PIN) {
+        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
+      }
+      if (!body.id) {
+        return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        removeTransaction(s, body.id!);
+      });
+      return NextResponse.json({
+        ok: true,
+        transactions: store.transactions,
+        inventory: store.inventory,
+        obligations: store.obligations,
+        creditPayments: store.creditPayments,
+        creditDeliveries: store.creditDeliveries,
+      });
+    }
+
     let savedTx: Transaction | null = null;
 
     const store = await updateStore((s) => {
@@ -15,7 +64,7 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      const t = { ...body.transaction };
+      const t = { ...body.transaction! };
       if (!t.id) t.id = uid();
       savedTx = t;
 
@@ -56,7 +105,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = msg === "ჩანაწერი ვერ მოიძებნა" ? 404 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
 
@@ -71,13 +121,17 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
-    await updateStore((s) => {
+    const store = await updateStore((s) => {
       if (reportId) {
         const removed = s.transactions.filter((t) => t.reportId === reportId);
         for (const t of removed) {
           if (t.type === "sale") {
-            s.inventory = applySaleToStock(s.inventory, t, 1);
-            reverseCreditOrderData(s, t.id);
+            try {
+              s.inventory = applySaleToStock(s.inventory, t, 1);
+            } catch {
+              // ignore stock reverse errors
+            }
+            reverseCreditOrderData(s, t.id, t);
           } else reverseExpenseObligation(s, t);
         }
         s.transactions = s.transactions.filter((t) => t.reportId !== reportId);
@@ -86,23 +140,20 @@ export async function DELETE(req: NextRequest) {
       }
 
       if (!id) throw new Error("id საჭიროა");
-
-      const removed = s.transactions.find((t) => t.id === id);
-      s.transactions = s.transactions.filter((t) => t.id !== id);
-
-      if (removed?.type === "sale") {
-        s.inventory = applySaleToStock(s.inventory, removed, 1);
-        reverseCreditOrderData(s, removed.id);
-      }
-
-      if (removed?.type === "expense") {
-        reverseExpenseObligation(s, removed);
-      }
+      removeTransaction(s, id);
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      transactions: store.transactions,
+      inventory: store.inventory,
+      obligations: store.obligations,
+      creditPayments: store.creditPayments,
+      creditDeliveries: store.creditDeliveries,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = msg === "ჩანაწერი ვერ მოიძებნა" || msg === "id საჭიროა" ? 400 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

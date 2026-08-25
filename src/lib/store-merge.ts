@@ -30,10 +30,21 @@ export function mergeInventory(data?: Partial<Record<Branch, BranchInventory>>):
   return out;
 }
 
+function stableLegacyId(t: { date?: string; type?: string; branch?: string; amount?: number }, index: number) {
+  const date = t.date ?? "nodate";
+  const type = t.type ?? "tx";
+  const branch = t.branch ?? "nb";
+  const amount = t.amount ?? 0;
+  return `legacy-${date}-${type}-${branch}-${amount}-${index}`;
+}
+
 /** Ensures every Store field exists — safe on client and server */
 export function mergeStore(data: Partial<Store> = {}): Store {
+  const transactions = (data.transactions ?? []).map((t, index) =>
+    t.id ? t : { ...t, id: stableLegacyId(t, index) }
+  );
   return {
-    transactions: data.transactions ?? [],
+    transactions,
     obligations: data.obligations ?? {},
     branchTokens: { ...DEFAULT_BRANCH_TOKENS, ...data.branchTokens },
     branchReports: data.branchReports ?? [],

@@ -699,11 +699,34 @@ export default function Dashboard() {
   }
 
   function deleteTx(id: string) {
+    if (!id) {
+      setError("ჩანაწერის ID ვერ მოიძებნა — განაახლეთ გვერდი და სცადეთ თავიდან");
+      return;
+    }
     runWithPin(async (pinCode) => {
       try {
-        await apiTx("DELETE", undefined, `?id=${id}&pin=${encodeURIComponent(pinCode)}`);
-        await refresh();
-        setSaveMsg("წაშლილია");
+        setError("");
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", id, pin: pinCode }),
+          cache: "no-store",
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
+        setStore((prev) =>
+          prev
+            ? {
+                ...prev,
+                transactions: d.transactions ?? prev.transactions.filter((t) => t.id !== id),
+                inventory: d.inventory ?? prev.inventory,
+                obligations: d.obligations ?? prev.obligations,
+                creditPayments: d.creditPayments ?? prev.creditPayments,
+                creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+              }
+            : prev
+        );
+        setSaveMsg("წაშლილია ✓");
       } catch (e) {
         setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
       }
@@ -1452,7 +1475,18 @@ export default function Dashboard() {
                         </td>
                         {unlocked && (
                           <td className="py-2">
-                            <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => deleteTx(t.id)}>✕</button>
+                            <button
+                              type="button"
+                              title="წაშლა"
+                              className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                deleteTx(t.id);
+                              }}
+                            >
+                              ✕
+                            </button>
                           </td>
                         )}
                       </tr>

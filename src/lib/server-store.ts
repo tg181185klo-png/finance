@@ -168,7 +168,9 @@ export async function readStore(): Promise<Store> {
     }
     return store;
   }
-  if (changed) {
+
+  const missingIds = (loaded.transactions ?? []).some((t) => !t.id);
+  if (changed || missingIds) {
     try {
       await persistStore(store);
     } catch {
