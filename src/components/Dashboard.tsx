@@ -55,8 +55,17 @@ import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
 function branchLink(token: string) {
-  const base = env.appUrl || (typeof window !== "undefined" ? window.location.origin : "");
+  // ყოველთვის იმ დომენს იყენებს, რომლითაც ადმინი გახსნილია (მაგ. finance-eight-ruddy-60)
+  const base =
+    (typeof window !== "undefined" ? window.location.origin : "") ||
+    env.appUrl ||
+    "";
   return `${base}/f/${token}`;
+}
+
+function adminPanelUrl() {
+  if (typeof window !== "undefined" && window.location.origin) return window.location.origin;
+  return env.appUrl || "";
 }
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -1889,7 +1898,7 @@ export default function Dashboard() {
         <section className="space-y-6">
           <div className="rounded-xl border border-zinc-800 p-5">
             <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
-            <p className="mb-2 text-sm text-zinc-500">ადმინ პანელი: <code className="text-emerald-400">{env.appUrl || (typeof window !== "undefined" ? window.location.origin : "")}</code></p>
+            <p className="mb-2 text-sm text-zinc-500">ადმინ პანელი: <code className="text-emerald-400">{adminPanelUrl()}</code></p>
             <p className="mb-4 text-sm text-zinc-500">გაუგზავნეთ თითოეულ ფილიალს თავისი ლინკი. დღის ბოლოს შეავსებენ ანგარიშს.</p>
             {BRANCHES.map((b) => {
               const token = activeStore.branchTokens[b];

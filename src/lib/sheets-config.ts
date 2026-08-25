@@ -5,7 +5,7 @@ export const env = {
   googleSheetGidCost: process.env.GOOGLE_SHEET_GID_COST || "1981413768",
   googleSheetGidProducts: process.env.GOOGLE_SHEET_GID_PRODUCTS || "",
   adminPin: process.env.ADMIN_PIN || "12345",
-  appUrl: process.env.NEXT_PUBLIC_APP_URL || "",
+  appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://finance-eight-ruddy-60.vercel.app",
   blobToken: process.env.BLOB_READ_WRITE_TOKEN || "",
   excelPath: process.env.EXCEL_PATH || "",
 };
