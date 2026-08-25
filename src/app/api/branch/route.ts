@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN } from "@/lib/constants";
-import { uid, addEmployeeAttendance, applyExpenseToStore, applySaleToStock, reverseExpenseObligation, wageForShift } from "@/lib/utils";
+import {
+  uid,
+  addEmployeeAttendance,
+  applyExpenseToStore,
+  applySaleToStock,
+  reverseExpenseObligation,
+  wageForShift,
+} from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type {
+  BranchClientSale,
   BranchDailyReport,
   BranchExpenseLine,
   BranchIncomeLine,
@@ -23,15 +31,18 @@ export async function GET(req: NextRequest) {
   const branch = branchByToken(store, token);
   if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
 
-  return NextResponse.json({
-    branch,
-    token,
-    inventory: store.inventory[branch] ?? {},
-    employees: (store.employees ?? []).filter((e) => e.branch === branch && e.active),
-    attendance: (store.attendance ?? []).filter(
-      (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
-    ),
-  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  return NextResponse.json(
+    {
+      branch,
+      token,
+      inventory: store.inventory[branch] ?? {},
+      employees: (store.employees ?? []).filter((e) => e.branch === branch && e.active),
+      attendance: (store.attendance ?? []).filter(
+        (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
+      ),
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -41,6 +52,7 @@ export async function POST(req: NextRequest) {
       date: string;
       incomes?: BranchIncomeLine[];
       sales?: BranchSaleLine[];
+      clientSales?: BranchClientSale[];
       expenses?: BranchExpenseLine[];
       salesTotal?: number;
       expensesTotal?: number;
@@ -51,29 +63,39 @@ export async function POST(req: NextRequest) {
       shift?: WorkShift;
       shifts?: WorkShift[];
       workedEmployees?: { employeeId: string; shift?: WorkShift; shifts?: WorkShift[] }[];
+      zeroReport?: boolean;
     };
 
     const preview = await readStore();
     const branch = branchByToken(preview, body.token);
     if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
-    const requiresEmployee = branch === "ლილო" || branch === "დიღომი";
-    const reportingEmployee = requiresEmployee
-      ? (preview.employees ?? []).find(
-          (item) =>
-            item.id === body.submittedEmployeeId &&
-            item.branch === branch &&
-            item.active
-        )
-      : undefined;
-    if (requiresEmployee && !reportingEmployee) {
+
+    const isLiloOrDigomi = branch === "ლილო" || branch === "დიღომი";
+    const isKutaisi = branch === "ქუთაისი";
+
+    const reportingEmployee = (preview.employees ?? []).find(
+      (item) =>
+        item.id === body.submittedEmployeeId &&
+        item.branch === branch &&
+        item.active
+    );
+    if (!reportingEmployee) {
       return NextResponse.json(
         { error: "აირჩიეთ ამ ფილიალში დამატებული თანამშრომელი" },
         { status: 400 }
       );
     }
-    const submittedBy = reportingEmployee?.name ?? body.submittedBy?.trim() ?? undefined;
+    const submittedBy = reportingEmployee.name;
 
-    const workedEntries = branch === "ქუთაისი"
+    const clientSales = (body.clientSales ?? []).filter(
+      (c) =>
+        c.customerFirstName?.trim() &&
+        c.customerLastName?.trim() &&
+        c.phone?.trim() &&
+        (c.products?.length ?? 0) > 0
+    );
+
+    const workedEntries = isKutaisi
       ? (body.workedEmployees ?? []).flatMap((item) => {
           const shifts = (item.shifts?.length ? item.shifts : [item.shift ?? "დღის"]) as WorkShift[];
           return [...new Set(shifts)].map((shift) => ({ employeeId: item.employeeId, shift }));
@@ -94,51 +116,80 @@ export async function POST(req: NextRequest) {
         employeeId: emp.id,
         employeeName: emp.name,
         shift: entry.shift,
-        wageAmount: wageForShift(emp.dailyWage, entry.shift),
+        wageAmount: wageForShift(emp.dailyWage, entry.shift, "ქუთაისი"),
       });
     }
 
-    const reporterShifts: WorkShift[] = requiresEmployee
-      ? [...new Set((body.shifts?.length ? body.shifts : [body.shift ?? "დღის"]) as WorkShift[])]
-      : [];
-    if (requiresEmployee && reporterShifts.length === 0) {
-      return NextResponse.json({ error: "აირჩიეთ მინიმუმ ერთი ცვლა" }, { status: 400 });
-    }
+    // ლილო/დიღომი — ცვლების კოეფიციენტი არ მოქმედებს; ქუთაისი — ცვლები
+    const reporterShifts: WorkShift[] = isLiloOrDigomi
+      ? ["დღის"]
+      : isKutaisi && kutaisiWorked.length === 0
+        ? [...new Set((body.shifts?.length ? body.shifts : [body.shift ?? "დღის"]) as WorkShift[])]
+        : [];
 
     const reportId = uid();
     const day = dateOnly(body.date || new Date().toISOString());
     const now = new Date().toISOString();
     const incomes = body.incomes ?? [];
-    const sales = body.sales ?? [];
+    const legacySales = body.sales ?? [];
     const expenses = body.expenses ?? [];
 
-    const salesTotal = incomes.length
-      ? incomes.reduce((s, x) => s + x.amount, 0)
-      : sales.length
-        ? sales.reduce((s, x) => s + x.amount, 0)
-        : (body.salesTotal || 0);
-    const expensesTotal = expenses.length ? expenses.reduce((s, x) => s + x.amount, 0) : (body.expensesTotal || 0);
+    const flatSalesFromClients: BranchSaleLine[] = clientSales.flatMap((c) =>
+      c.products.map((p) => ({
+        ...p,
+        paymentMethod: p.paymentMethod || c.paymentMethod || "ქეში (ნაღდი)",
+      }))
+    );
+    const sales = [...legacySales, ...flatSalesFromClients];
 
-    const salesNote = incomes.length
-      ? incomes.map((i) => `${i.amount} ₾ (${i.paymentMethod})`).join("; ")
-      : sales.length
-        ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
-        : body.salesNote?.trim() || `დღის შემოსავალი — ${branch}`;
+    const salesTotal = clientSales.length
+      ? clientSales.reduce(
+          (sum, c) => sum + c.products.reduce((s, p) => s + (p.amount || 0), 0),
+          0
+        )
+      : incomes.length
+        ? incomes.reduce((s, x) => s + x.amount, 0)
+        : sales.length
+          ? sales.reduce((s, x) => s + x.amount, 0)
+          : body.salesTotal || 0;
+
+    const expensesTotal = expenses.length
+      ? expenses.reduce((s, x) => s + x.amount, 0)
+      : body.expensesTotal || 0;
+
+    const salesNote = clientSales.length
+      ? clientSales
+          .map((c) => {
+            const name = `${c.customerFirstName} ${c.customerLastName}`.trim();
+            const prods = c.products.map((p) => `${p.productName} ×${p.quantity}`).join(", ");
+            return `${name}: ${prods}`;
+          })
+          .join("; ")
+      : incomes.length
+        ? incomes.map((i) => `${i.amount} ₾ (${i.paymentMethod})`).join("; ")
+        : sales.length
+          ? sales.map((s) => `${s.productName} ×${s.quantity} (${s.paymentMethod})`).join("; ")
+          : body.salesNote?.trim() || (body.zeroReport ? "ნულოვანი რეპორტი — გაყიდვა არ ყოფილა" : `დღის შემოსავალი — ${branch}`);
 
     const expensesNote = expenses.length
       ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
       : body.expensesNote?.trim() || `დღის ხარჯი — ${branch}`;
 
-    if (
-      !incomes.length &&
-      !sales.length &&
-      !expenses.length &&
-      salesTotal <= 0 &&
-      expensesTotal <= 0 &&
-      kutaisiWorked.length === 0
-    ) {
+    // ნულოვანი რეპორტი დაშვებულია, თუ თანამშრომელი არჩეულია
+    const hasContent =
+      clientSales.length > 0 ||
+      incomes.length > 0 ||
+      sales.length > 0 ||
+      expenses.length > 0 ||
+      salesTotal > 0 ||
+      expensesTotal > 0 ||
+      kutaisiWorked.length > 0 ||
+      body.zeroReport === true ||
+      Boolean(reportingEmployee);
+
+    if (!hasContent) {
       return NextResponse.json(
-        { error: "დაამატეთ მინიმუმ ერთი შემოსავალი, ხარჯი ან თანამშრომელი" },
+        { error: "გამოაგზავნეთ რეპორტი — მინიმუმ აირჩიეთ თანამშრომელი" },
         { status: 400 }
       );
     }
@@ -155,12 +206,45 @@ export async function POST(req: NextRequest) {
       submittedBy,
       incomes,
       sales,
+      clientSales,
       expenses,
       ...(kutaisiWorked.length ? { workedEmployees: kutaisiWorked } : {}),
     };
 
     const txs: (Sale | Expense)[] = [];
     const txDate = `${day}T20:00:00.000Z`;
+
+    for (const client of clientSales) {
+      const buyerName = `${client.customerFirstName.trim()} ${client.customerLastName.trim()}`.trim();
+      const meta = [
+        client.phone?.trim() ? `ტელ: ${client.phone.trim()}` : "",
+        client.personalId?.trim() ? `პირადი: ${client.personalId.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      for (const p of client.products) {
+        if (!p.productCode || !p.quantity || p.amount <= 0) continue;
+        txs.push({
+          id: uid(),
+          type: "sale",
+          date: txDate,
+          branch,
+          productCode: p.productCode,
+          productName: p.productName,
+          quantity: p.quantity,
+          unitPrice: p.unitPrice,
+          amount: p.amount,
+          paymentStatus: "სრულად გადახდილი",
+          paymentMethod: p.paymentMethod || client.paymentMethod || "ქეში (ნაღდი)",
+          comment: meta || `${p.productName} × ${p.quantity}`,
+          buyerName,
+          source: "branch",
+          reportId,
+          employeeName: submittedBy,
+        });
+      }
+    }
 
     for (const income of incomes) {
       txs.push({
@@ -182,8 +266,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    for (const s of sales) {
-      const sale: Sale = {
+    for (const s of legacySales) {
+      txs.push({
         id: uid(),
         type: "sale",
         date: txDate,
@@ -199,26 +283,6 @@ export async function POST(req: NextRequest) {
         source: "branch",
         reportId,
         employeeName: submittedBy,
-      };
-      txs.push(sale);
-    }
-
-    if (!incomes.length && !sales.length && salesTotal > 0) {
-      txs.push({
-        id: uid(),
-        type: "sale",
-        date: txDate,
-        branch,
-        productCode: "—",
-        productName: "დღის გაყიდვები",
-        quantity: 1,
-        unitPrice: salesTotal,
-        amount: salesTotal,
-        paymentStatus: "სრულად გადახდილი",
-        paymentMethod: "ქეში (ნაღდი)",
-        comment: salesNote,
-        source: "branch",
-        reportId,
       });
     }
 
@@ -237,20 +301,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!expenses.length && expensesTotal > 0) {
-      txs.push({
-        id: uid(),
-        type: "expense",
-        date: txDate,
-        branch,
-        category: "სხვა",
-        amount: expensesTotal,
-        comment: expensesNote,
-        source: "branch",
-        reportId,
-      });
-    }
-
     await updateStore((store) => {
       for (const t of txs) {
         if (t.type === "sale") {
@@ -259,24 +309,32 @@ export async function POST(req: NextRequest) {
           applyExpenseToStore(store, t);
         }
       }
-      if (requiresEmployee && reportingEmployee) {
-        const employee = (store.employees ?? []).find(
-          (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
-        );
-        if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
-        for (const workShift of reporterShifts) {
-          addEmployeeAttendance(store, employee, day, workShift, branch);
+
+      // გამომგზავნი თანამშრომელი — სამუშაო დღე
+      const employee = (store.employees ?? []).find(
+        (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
+      );
+      if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
+
+      if (isLiloOrDigomi) {
+        addEmployeeAttendance(store, employee, day, "დღის", branch);
+      } else if (isKutaisi) {
+        if (kutaisiWorked.length) {
+          for (const worked of kutaisiWorked) {
+            const emp = (store.employees ?? []).find(
+              (item) => item.id === worked.employeeId && item.branch === "ქუთაისი" && item.active
+            );
+            if (!emp) throw new Error(`${worked.employeeName} ვერ მოიძებნა`);
+            addEmployeeAttendance(store, emp, day, worked.shift, branch);
+          }
+        } else {
+          const shifts = reporterShifts.length ? reporterShifts : (["დღის"] as WorkShift[]);
+          for (const workShift of shifts) {
+            addEmployeeAttendance(store, employee, day, workShift, branch);
+          }
         }
       }
-      if (branch === "ქუთაისი") {
-        for (const worked of kutaisiWorked) {
-          const employee = (store.employees ?? []).find(
-            (item) => item.id === worked.employeeId && item.branch === "ქუთაისი" && item.active
-          );
-          if (!employee) throw new Error(`${worked.employeeName} ვერ მოიძებნა`);
-          addEmployeeAttendance(store, employee, day, worked.shift, branch);
-        }
-      }
+
       store.branchReports = [report, ...store.branchReports];
       store.transactions = [...txs, ...store.transactions];
     });

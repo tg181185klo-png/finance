@@ -142,6 +142,16 @@ export interface BranchSaleLine {
   paymentMethod: PaymentMethod;
 }
 
+/** ფილიალის რეპორტში კლიენტის გაყიდვა */
+export interface BranchClientSale {
+  customerFirstName: string;
+  customerLastName: string;
+  personalId?: string;
+  phone: string;
+  paymentMethod: PaymentMethod;
+  products: BranchSaleLine[];
+}
+
 export interface BranchIncomeLine {
   amount: number;
   paymentMethod: PaymentMethod;
@@ -173,6 +183,7 @@ export interface BranchDailyReport {
   submittedBy?: string;
   incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
+  clientSales?: BranchClientSale[];
   expenses?: BranchExpenseLine[];
   workedEmployees?: BranchWorkedEmployee[];
 }

@@ -146,8 +146,14 @@ export function ensureMonthObligations(store: Store, month: string) {
   return changed;
 }
 
-export function wageForShift(dailyWage: number, shift: WorkShift = "დღის") {
+export function wageForShift(
+  dailyWage: number,
+  shift: WorkShift = "დღის",
+  branch?: Branch
+) {
   const base = Math.max(0, dailyWage || 0);
+  // ლილო / დიღომი — მხოლოდ დღიური ხელფასი, ცვლების კოეფიციენტი არ მოქმედებს
+  if (branch === "ლილო" || branch === "დიღომი") return base;
   if (shift === "ღამის") return base + base / 2;
   return base;
 }
@@ -160,15 +166,19 @@ export function addEmployeeAttendance(
   branch: Branch = employee.branch
 ) {
   if (!store.attendance) store.attendance = [];
-  const existing = store.attendance.find(
-    (item) =>
-      item.employeeId === employee.id &&
-      item.date === date &&
-      (item.shift ?? "დღის") === shift
-  );
+  const flatDaily = branch === "ლილო" || branch === "დიღომი";
+
+  const existing = flatDaily
+    ? store.attendance.find((item) => item.employeeId === employee.id && item.date === date)
+    : store.attendance.find(
+        (item) =>
+          item.employeeId === employee.id &&
+          item.date === date &&
+          (item.shift ?? "დღის") === shift
+      );
   if (existing) return existing;
 
-  const wageAmount = wageForShift(employee.dailyWage, shift);
+  const wageAmount = wageForShift(employee.dailyWage, shift, branch);
   const record = {
     id: uid(),
     employeeId: employee.id,
@@ -176,7 +186,7 @@ export function addEmployeeAttendance(
     branch,
     date,
     checkedInAt: new Date().toISOString(),
-    shift,
+    shift: flatDaily ? "დღის" as WorkShift : shift,
     wageAmount,
   };
   store.attendance.push(record);

@@ -1926,7 +1926,24 @@ export default function Dashboard() {
                       <span className="font-medium">{r.branch} · {r.date}{r.submittedBy ? ` · ${r.submittedBy}` : ""}</span>
                       <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
                     </div>
-                    {r.incomes?.length ? (
+                    {r.clientSales?.length ? (
+                      <div className="mb-2 space-y-2">
+                        {r.clientSales.map((c, i) => (
+                          <div key={i} className="rounded border border-zinc-800/80 p-2">
+                            <p className="text-zinc-200">
+                              {c.customerFirstName} {c.customerLastName}
+                              <span className="text-zinc-500"> · {c.phone}</span>
+                              {c.personalId ? <span className="text-zinc-500"> · პირადი: {c.personalId}</span> : null}
+                            </p>
+                            {c.products.map((p, j) => (
+                              <p key={j} className="text-emerald-400">
+                                +{formatMoney(p.amount)} — {p.productName} ×{p.quantity} · {p.paymentMethod || c.paymentMethod}
+                              </p>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    ) : r.incomes?.length ? (
                       <div className="mb-2 space-y-1">
                         {r.incomes.map((income, i) => (
                           <p key={i} className="text-emerald-400">
@@ -1944,7 +1961,9 @@ export default function Dashboard() {
                       </div>
                     ) : r.salesTotal > 0 ? (
                       <p className="text-emerald-400">+{formatMoney(r.salesTotal)} — {r.salesNote}</p>
-                    ) : null}
+                    ) : (
+                      <p className="text-zinc-500">ნულოვანი რეპორტი — გაყიდვა არ ყოფილა</p>
+                    )}
                     {r.expenses?.length ? (
                       <div className="space-y-1">
                         {r.expenses.map((ex, i) => (
@@ -1960,7 +1979,7 @@ export default function Dashboard() {
                       <div className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
                         <p className="text-xs text-zinc-500">იმუშავეს:</p>
                         {r.workedEmployees.map((w) => (
-                          <p key={w.employeeId} className="text-teal-300">
+                          <p key={`${w.employeeId}-${w.shift}`} className="text-teal-300">
                             {w.employeeName} · {w.shift} · {formatMoney(w.wageAmount)}
                           </p>
                         ))}
@@ -2004,7 +2023,7 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="mt-2 text-xs text-teal-300">
-              დღის და საღამოს ცვლა = დღიური ხელფასი; ღამის ცვლა = დღიური + ნახევარი. ერთ დღეს შეიძლება სამივე ცვლა.
+              დღის და საღამოს ცვლა = დღიური ხელფასი; ღამის ცვლა = დღიური + ნახევარი (მხოლოდ ქუთაისი). ლილო/დიღომი — მხოლოდ დღიური, ცვლები არ მოქმედებს.
             </p>
           </form>
 
@@ -2020,7 +2039,7 @@ export default function Dashboard() {
                       <th className="pb-2 pr-3">სახელი და გვარი</th>
                       <th className="pb-2 pr-3">ფილიალი</th>
                       <th className="pb-2 pr-3">დღიური</th>
-                      <th className="pb-2 pr-3">ღამის (1.5×)</th>
+                      <th className="pb-2 pr-3">ღამის / შენიშვნა</th>
                       <th className="pb-2" />
                     </tr>
                   </thead>
@@ -2039,7 +2058,11 @@ export default function Dashboard() {
                             onChange={(e) => setEmpWageEdits((values) => ({ ...values, [emp.id]: e.target.value }))}
                           />
                         </td>
-                        <td className="py-2 pr-3 text-zinc-400">{formatMoney(wageForShift(emp.dailyWage, "ღამის"))}</td>
+                        <td className="py-2 pr-3 text-zinc-400">
+                          {emp.branch === "ლილო" || emp.branch === "დიღომი"
+                            ? formatMoney(emp.dailyWage)
+                            : formatMoney(wageForShift(emp.dailyWage, "ღამის", emp.branch))}
+                        </td>
                         <td className="py-2 whitespace-nowrap">
                           <button type="button" className="mr-3 text-xs text-emerald-400 hover:text-emerald-300" onClick={() => saveEmployee(emp)}>
                             შენახვა
@@ -2091,10 +2114,15 @@ export default function Dashboard() {
                 {(() => {
                   const emp = activeStore.employees.find((item: Employee) => item.id === empWorkEmployee);
                   if (!emp || empWorkShifts.length === 0) return null;
-                  const total = empWorkShifts.reduce((sum, shift) => sum + wageForShift(emp.dailyWage, shift), 0);
+                  const total = empWorkShifts.reduce(
+                    (sum, shift) => sum + wageForShift(emp.dailyWage, shift, emp.branch),
+                    0
+                  );
                   return (
                     <p className="mt-2 text-xs text-teal-300">
-                      დღე/საღამო: {formatMoney(wageForShift(emp.dailyWage, "დღის"))} · ღამე: {formatMoney(wageForShift(emp.dailyWage, "ღამის"))} · არჩეული ჯამი: {formatMoney(total)}
+                      {emp.branch === "ლილო" || emp.branch === "დიღომი"
+                        ? `დღიური (ცვლები არ მოქმედებს): ${formatMoney(emp.dailyWage)}`
+                        : `დღე/საღამო: ${formatMoney(wageForShift(emp.dailyWage, "დღის", emp.branch))} · ღამე: ${formatMoney(wageForShift(emp.dailyWage, "ღამის", emp.branch))} · არჩეული ჯამი: ${formatMoney(total)}`}
                     </p>
                   );
                 })()}
@@ -2133,7 +2161,10 @@ export default function Dashboard() {
                 id,
                 ...data,
                 total: data.records.reduce(
-                  (sum, record) => sum + (record.wageAmount ?? wageForShift(data.wage, record.shift ?? "დღის")),
+                  (sum, record) =>
+                    sum +
+                    (record.wageAmount ??
+                      wageForShift(data.wage, record.shift ?? "დღის", data.branch)),
                   0
                 ),
               }));
@@ -2150,7 +2181,7 @@ export default function Dashboard() {
                       <div className="flex flex-wrap gap-2">
                         {r.records.sort((a, b) => a.date.localeCompare(b.date) || (a.shift ?? "").localeCompare(b.shift ?? "")).map((record) => (
                           <span key={record.id} className="inline-flex items-center gap-2 rounded bg-teal-900/30 px-2 py-1 text-xs text-teal-300">
-                            {record.date.slice(5)} · {record.shift ?? "დღის"} · {formatMoney(record.wageAmount ?? wageForShift(r.wage, record.shift ?? "დღის"))}
+                            {record.date.slice(5)} · {record.shift ?? "დღის"} · {formatMoney(record.wageAmount ?? wageForShift(r.wage, record.shift ?? "დღის", r.branch))}
                             <button type="button" className="text-red-400 hover:text-red-300" onClick={() => deleteWorkDay(record.id)}>✕</button>
                           </span>
                         ))}
