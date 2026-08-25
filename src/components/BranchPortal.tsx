@@ -7,15 +7,13 @@ import type {
   ExpensePaymentMethod,
   PaymentMethod,
   Product,
-  WorkShift,
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, PAYMENT_METHODS } from "@/lib/dashboard-data";
-import { formatMoney, uid, wageForShift } from "@/lib/utils";
+import { formatMoney, uid } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const btnCls = "w-full rounded-lg bg-emerald-600 py-3 font-medium hover:bg-emerald-500 disabled:opacity-40";
 const smallBtn = "rounded-lg border border-zinc-600 px-3 py-1.5 text-xs hover:bg-zinc-800";
-const ALL_SHIFTS: WorkShift[] = ["დღის", "საღამოს", "ღამის"];
 
 type ProductRow = {
   id: string;
@@ -23,6 +21,8 @@ type ProductRow = {
   productName: string;
   unitPrice: number;
   quantity: string;
+  search: string;
+  showList: boolean;
 };
 
 type ClientSaleRow = {
@@ -33,7 +33,6 @@ type ClientSaleRow = {
   phone: string;
   paymentMethod: PaymentMethod;
   products: ProductRow[];
-  search: string;
 };
 
 type ExpenseRow = {
@@ -45,7 +44,15 @@ type ExpenseRow = {
 };
 
 function emptyProduct(): ProductRow {
-  return { id: uid(), productCode: "", productName: "", unitPrice: 0, quantity: "1" };
+  return {
+    id: uid(),
+    productCode: "",
+    productName: "",
+    unitPrice: 0,
+    quantity: "1",
+    search: "",
+    showList: false,
+  };
 }
 
 function emptyClient(): ClientSaleRow {
@@ -57,12 +64,21 @@ function emptyClient(): ClientSaleRow {
     phone: "",
     paymentMethod: "ქეში (ნაღდი)",
     products: [emptyProduct()],
-    search: "",
   };
 }
 
 function emptyExpense(): ExpenseRow {
   return { id: uid(), category: "სხვა", amount: "", paymentMethod: "ქეში (ნაღდი)", comment: "" };
+}
+
+function matchProducts(products: Product[], query: string, limit = 12): Product[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return products.slice(0, limit);
+  const byCode = products.filter((p) => p.code.toLowerCase().includes(q));
+  const byName = products.filter(
+    (p) => p.name.toLowerCase().includes(q) && !byCode.some((x) => x.code === p.code)
+  );
+  return [...byCode, ...byName].slice(0, limit);
 }
 
 export default function BranchPortal({ token }: { token: string }) {
@@ -74,13 +90,10 @@ export default function BranchPortal({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productWarning, setProductWarning] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [reporterShifts, setReporterShifts] = useState<WorkShift[]>(["დღის"]);
   const [clients, setClients] = useState<ClientSaleRow[]>([emptyClient()]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
-
-  const isLiloOrDigomi = branch === "ლილო" || branch === "დიღომი";
-  const isKutaisi = branch === "ქუთაისი";
 
   useEffect(() => {
     Promise.all([
@@ -96,6 +109,10 @@ export default function BranchPortal({ token }: { token: string }) {
           if (list.length === 1) setSelectedEmployeeId(list[0].id);
         }
         setProducts((productData.products ?? []) as Product[]);
+        if (productData.warning) setProductWarning(String(productData.warning));
+        else if (productData.error && !(productData.products ?? []).length) {
+          setProductWarning(String(productData.error));
+        }
       })
       .catch(() => setErr("კავშირის შეცდომა"))
       .finally(() => setLoading(false));
@@ -139,16 +156,19 @@ export default function BranchPortal({ token }: { token: string }) {
       productCode: product.code,
       productName: product.name,
       unitPrice: product.price,
+      search: `${product.code} — ${product.name}`,
+      showList: false,
     });
-    updateClient(clientId, { search: "" });
   }
 
-  function filteredProducts(query: string) {
-    const q = query.toLowerCase().trim();
-    if (!q) return products.slice(0, 8);
-    return products
-      .filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-      .slice(0, 8);
+  function clearProduct(clientId: string, productId: string) {
+    updateProduct(clientId, productId, {
+      productCode: "",
+      productName: "",
+      unitPrice: 0,
+      search: "",
+      showList: true,
+    });
   }
 
   async function submit(e: React.FormEvent, asZero = false) {
@@ -156,15 +176,11 @@ export default function BranchPortal({ token }: { token: string }) {
     if (submitting) return;
 
     if (!selectedEmployeeId) {
-      setErr("აირჩიეთ თანამშრომელი, რომელიც აგზავნის რეპორტს");
+      setErr("აირჩიეთ გამომგზავნის სახელი და გვარი");
       return;
     }
     if (employees.length === 0) {
       setErr("ამ ფილიალში თანამშრომელი ჯერ არ არის დამატებული ადმინ პანელიდან");
-      return;
-    }
-    if (isKutaisi && reporterShifts.length === 0) {
-      setErr("აირჩიეთ მინიმუმ ერთი ცვლა");
       return;
     }
 
@@ -193,11 +209,7 @@ export default function BranchPortal({ token }: { token: string }) {
         };
       })
       .filter(
-        (c) =>
-          c.customerFirstName &&
-          c.customerLastName &&
-          c.phone &&
-          c.products.length > 0
+        (c) => c.customerFirstName && c.customerLastName && c.phone && c.products.length > 0
       );
 
     const validExpenses = expenses
@@ -209,30 +221,25 @@ export default function BranchPortal({ token }: { token: string }) {
         comment: r.comment.trim() || r.category,
       }));
 
-    // ნაწილობრივ შევსებული კლიენტი — შეცდომა
     const incomplete = clients.some((c) => {
       const started =
         c.firstName.trim() ||
         c.lastName.trim() ||
         c.phone.trim() ||
         c.personalId.trim() ||
-        c.products.some((p) => p.productCode);
+        c.products.some((p) => p.productCode || p.search.trim());
       if (!started) return false;
       const hasName = c.firstName.trim() && c.lastName.trim();
       const hasPhone = c.phone.trim();
       const hasProduct = c.products.some((p) => p.productCode && (parseFloat(p.quantity) || 0) > 0);
       return !(hasName && hasPhone && hasProduct);
     });
-    if (incomplete) {
+    if (!asZero && incomplete) {
       setErr("კლიენტისთვის შეავსეთ სახელი, გვარი, ტელეფონი და მინიმუმ ერთი საქონელი");
       return;
     }
 
     const zeroReport = asZero || (validClients.length === 0 && validExpenses.length === 0);
-    if (!zeroReport && validClients.length === 0 && validExpenses.length === 0) {
-      setErr("დაამატეთ გაყიდვა ან გამოაგზავნეთ ნულოვანი რეპორტი");
-      return;
-    }
 
     setSubmitting(true);
     setErr("");
@@ -244,12 +251,10 @@ export default function BranchPortal({ token }: { token: string }) {
         body: JSON.stringify({
           token,
           date,
-          clientSales: validClients,
-          expenses: validExpenses,
+          clientSales: asZero ? [] : validClients,
+          expenses: asZero ? [] : validExpenses,
           submittedBy: selectedEmployee?.name,
           submittedEmployeeId: selectedEmployeeId,
-          shifts: isKutaisi ? reporterShifts : ["დღის"],
-          shift: isKutaisi ? reporterShifts[0] : "დღის",
           zeroReport,
         }),
       });
@@ -261,7 +266,6 @@ export default function BranchPortal({ token }: { token: string }) {
       setOk(true);
       setClients([emptyClient()]);
       setExpenses([]);
-      if (!isLiloOrDigomi) setReporterShifts(["დღის"]);
     } catch {
       setErr("კავშირის შეცდომა");
     } finally {
@@ -283,7 +287,7 @@ export default function BranchPortal({ token }: { token: string }) {
 
       {ok && (
         <div className="mb-4 rounded-lg border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          გაგზავნილია! სამუშაო დღე დაერიცხა.
+          გაგზავნილია! ამ დღის დღიური ხელფასი დაერიცხა.
         </div>
       )}
       {err && branch && (
@@ -297,21 +301,20 @@ export default function BranchPortal({ token }: { token: string }) {
         </div>
 
         <section className="rounded-xl border border-teal-900/40 bg-zinc-900/40 p-4">
-          <h2 className="mb-3 font-semibold text-teal-300">თანამშრომელი</h2>
+          <h2 className="mb-3 font-semibold text-teal-300">გამომგზავნის სახელი და გვარი</h2>
           {employees.length === 0 ? (
             <p className="text-sm text-amber-300">
-              თანამშრომელი ჯერ არ არის დამატებული. დაამატეთ ადმინ პანელიდან ამ ფილიალისთვის.
+              თანამშრომელი ჯერ არ არის დამატებული. დაამატეთ ადმინ პანელიდან ამ ფილიალისთვის (მაგ: ნინო).
             </p>
           ) : (
             <>
-              <label className="mb-1 block text-xs text-zinc-400">ვინ აგზავნის რეპორტს?</label>
               <select
                 className={inputCls}
                 value={selectedEmployeeId}
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
                 required
               >
-                <option value="">აირჩიეთ...</option>
+                <option value="">აირჩიეთ თანამშრომელი...</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.name}
@@ -319,45 +322,8 @@ export default function BranchPortal({ token }: { token: string }) {
                 ))}
               </select>
               {selectedEmployee && (
-                <p className="mt-2 text-xs text-zinc-500">
-                  დღიური ხელფასი: {formatMoney(selectedEmployee.dailyWage)}
-                  {isLiloOrDigomi
-                    ? " (ცვლები არ მოქმედებს — ერთი დღიური)"
-                    : ` · ღამე: ${formatMoney(wageForShift(selectedEmployee.dailyWage, "ღამის", "ქუთაისი"))}`}
-                </p>
-              )}
-              {isKutaisi && (
-                <div className="mt-3">
-                  <label className="mb-1 block text-xs text-zinc-400">ცვლები</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {ALL_SHIFTS.map((item) => (
-                      <label
-                        key={item}
-                        className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-2 py-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={reporterShifts.includes(item)}
-                          onChange={(e) => {
-                            setReporterShifts((prev) =>
-                              e.target.checked
-                                ? [...new Set([...prev, item])]
-                                : prev.filter((s) => s !== item)
-                            );
-                          }}
-                        />
-                        {item}
-                      </label>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-teal-300">
-                    დღე/საღამო = დღიური; ღამე = დღიური + ნახევარი.
-                  </p>
-                </div>
-              )}
-              {isLiloOrDigomi && (
                 <p className="mt-2 text-xs text-teal-300">
-                  რეპორტის გაგზავნა ამ დღეს ჩაითვლება სამუშაო დღედ (დღიური ხელფასი).
+                  დღიური ხელფასი: {formatMoney(selectedEmployee.dailyWage)} — რეპორტის გაგზავნისას ამ თარიღზე დაერიცხება.
                 </p>
               )}
             </>
@@ -366,14 +332,18 @@ export default function BranchPortal({ token }: { token: string }) {
 
         <section className="rounded-xl border border-emerald-900/40 bg-zinc-900/40 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-emerald-400">კლიენტები / გაყიდვები</h2>
+            <h2 className="font-semibold text-emerald-400">შემოსავლები / კლიენტები</h2>
             <button type="button" className={smallBtn} onClick={() => setClients((s) => [...s, emptyClient()])}>
               + კლიენტი
             </button>
           </div>
-          <p className="mb-3 text-xs text-zinc-500">
-            საქონელი ირჩევა Google Sheets ბაზიდან (გასაყიდი ფასი). თუ გაყიდვა არ ყოფილა — გამოაგზავნეთ ნულოვანი რეპორტი ქვემოთ.
+          <p className="mb-2 text-xs text-zinc-500">
+            საქონელი აირჩიე სიიდან, ან ჩაწერე კოდი / დასახელება — გამოჩნდება შესაბამისი ვარიანტები Google Sheets / Drive ბაზიდან, გასაყიდი ფასით.
           </p>
+          {productWarning && <p className="mb-2 text-xs text-amber-300">{productWarning}</p>}
+          {products.length === 0 && (
+            <p className="mb-3 text-xs text-amber-300">პროდუქტების სია ცარიელია — შეამოწმეთ Sheets გაზიარება.</p>
+          )}
 
           <div className="space-y-4">
             {clients.map((client, ci) => (
@@ -461,83 +431,129 @@ export default function BranchPortal({ token }: { token: string }) {
                 </div>
 
                 <div className="space-y-3">
-                  {client.products.map((prod, pi) => (
-                    <div key={prod.id} className="rounded-lg border border-zinc-800/80 p-2">
-                      <div className="mb-1 flex justify-between text-xs text-zinc-500">
-                        <span>#{pi + 1}</span>
-                        {client.products.length > 1 && (
-                          <button
-                            type="button"
-                            className="text-red-400"
-                            onClick={() =>
-                              updateClient(client.id, {
-                                products: client.products.filter((p) => p.id !== prod.id),
-                              })
+                  {client.products.map((prod, pi) => {
+                    const suggestions = matchProducts(products, prod.search);
+                    return (
+                      <div key={prod.id} className="rounded-lg border border-zinc-800/80 p-2">
+                        <div className="mb-1 flex justify-between text-xs text-zinc-500">
+                          <span>საქონელი #{pi + 1}</span>
+                          {client.products.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-red-400"
+                              onClick={() =>
+                                updateClient(client.id, {
+                                  products: client.products.filter((p) => p.id !== prod.id),
+                                })
+                              }
+                            >
+                              წაშლა
+                            </button>
+                          )}
+                        </div>
+
+                        <label className="mb-1 block text-xs text-zinc-400">
+                          პროდუქტი (სია / კოდი / დასახელება)
+                        </label>
+                        <div className="relative">
+                          <input
+                            className={inputCls}
+                            value={
+                              prod.productCode
+                                ? `${prod.productCode} — ${prod.productName} · ${formatMoney(prod.unitPrice)}`
+                                : prod.search
                             }
-                          >
-                            წაშლა
-                          </button>
+                            onFocus={() => {
+                              if (!prod.productCode) {
+                                updateProduct(client.id, prod.id, { showList: true });
+                              }
+                            }}
+                            onChange={(e) => {
+                              if (prod.productCode) clearProduct(client.id, prod.id);
+                              updateProduct(client.id, prod.id, {
+                                search: e.target.value,
+                                showList: true,
+                                productCode: "",
+                                productName: "",
+                                unitPrice: 0,
+                              });
+                            }}
+                            placeholder="ჩაწერე კოდი ან დასახელება, ან აირჩიე სიიდან..."
+                            autoComplete="off"
+                          />
+                          {prod.productCode && (
+                            <button
+                              type="button"
+                              className="absolute right-2 top-2 text-xs text-zinc-400 hover:text-white"
+                              onClick={() => clearProduct(client.id, prod.id)}
+                            >
+                              შეცვლა
+                            </button>
+                          )}
+                          {!prod.productCode && prod.showList && (
+                            <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                              {suggestions.map((p) => (
+                                <li key={p.code}>
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => pickProduct(client.id, prod.id, p)}
+                                  >
+                                    <span className="text-emerald-400">{p.code}</span>
+                                    <span className="mx-1 text-zinc-500">—</span>
+                                    {p.name}
+                                    <span className="float-right text-zinc-400">{formatMoney(p.price)}</span>
+                                  </button>
+                                </li>
+                              ))}
+                              {suggestions.length === 0 && (
+                                <li className="px-3 py-2 text-xs text-zinc-500">ვერ მოიძებნა</li>
+                              )}
+                            </ul>
+                          )}
+                        </div>
+
+                        {!prod.productCode && products.length > 0 && (
+                          <div className="mt-2">
+                            <label className="mb-1 block text-xs text-zinc-400">სწრაფი არჩევა სიიდან</label>
+                            <select
+                              className={inputCls}
+                              value=""
+                              onChange={(e) => {
+                                const p = products.find((x) => x.code === e.target.value);
+                                if (p) pickProduct(client.id, prod.id, p);
+                              }}
+                            >
+                              <option value="">აირჩიეთ პროდუქტი...</option>
+                              {products.slice(0, 200).map((p) => (
+                                <option key={p.code} value={p.code}>
+                                  {p.code} — {p.name} ({p.price})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        <div className="mt-2">
+                          <label className="mb-1 block text-xs text-zinc-400">რაოდენობა</label>
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            className={inputCls}
+                            value={prod.quantity}
+                            onChange={(e) => updateProduct(client.id, prod.id, { quantity: e.target.value })}
+                          />
+                        </div>
+                        {prod.productCode && (
+                          <p className="mt-1 text-right text-xs text-emerald-400">
+                            ჯამი: {formatMoney((parseFloat(prod.quantity) || 0) * prod.unitPrice)}
+                          </p>
                         )}
                       </div>
-                      <label className="mb-1 block text-xs text-zinc-400">საქონლის ძებნა / არჩევა</label>
-                      <input
-                        className={inputCls}
-                        value={
-                          prod.productCode
-                            ? `${prod.productCode} — ${prod.productName} (${formatMoney(prod.unitPrice)})`
-                            : client.search
-                        }
-                        onChange={(e) => {
-                          if (prod.productCode) {
-                            updateProduct(client.id, prod.id, {
-                              productCode: "",
-                              productName: "",
-                              unitPrice: 0,
-                            });
-                          }
-                          updateClient(client.id, { search: e.target.value });
-                        }}
-                        placeholder="კოდი ან დასახელება..."
-                      />
-                      {!prod.productCode && client.search && (
-                        <ul className="mt-1 max-h-40 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900">
-                          {filteredProducts(client.search).map((p) => (
-                            <li key={p.code}>
-                              <button
-                                type="button"
-                                className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800"
-                                onClick={() => pickProduct(client.id, prod.id, p)}
-                              >
-                                <span className="text-emerald-400">{p.code}</span> — {p.name}
-                                <span className="float-right text-zinc-400">{formatMoney(p.price)}</span>
-                              </button>
-                            </li>
-                          ))}
-                          {filteredProducts(client.search).length === 0 && (
-                            <li className="px-3 py-2 text-xs text-zinc-500">ვერ მოიძებნა</li>
-                          )}
-                        </ul>
-                      )}
-                      <div className="mt-2">
-                        <label className="mb-1 block text-xs text-zinc-400">რაოდენობა</label>
-                        <input
-                          type="number"
-                          min={1}
-                          step={1}
-                          className={inputCls}
-                          value={prod.quantity}
-                          onChange={(e) => updateProduct(client.id, prod.id, { quantity: e.target.value })}
-                        />
-                      </div>
-                      {prod.productCode && (
-                        <p className="mt-1 text-right text-xs text-emerald-400">
-                          {(parseFloat(prod.quantity) || 0) * prod.unitPrice > 0
-                            ? formatMoney((parseFloat(prod.quantity) || 0) * prod.unitPrice)
-                            : "—"}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

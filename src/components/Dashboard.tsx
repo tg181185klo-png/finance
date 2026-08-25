@@ -18,7 +18,6 @@ import type {
   Sale,
   Store,
   Transaction,
-  WorkShift,
 } from "@/lib/types";
 import {
   BRANCHES,
@@ -48,7 +47,6 @@ import {
   isCreditOrderFullyComplete,
   isCreditOrderActive,
   uid,
-  wageForShift,
 } from "@/lib/utils";
 import { PinModal, usePin } from "@/components/PinModal";
 import { clearSessionPin, getSessionPin, setSessionPin } from "@/lib/pin-session";
@@ -175,7 +173,6 @@ export default function Dashboard() {
   const [empWageEdits, setEmpWageEdits] = useState<Record<string, string>>({});
   const [empWorkEmployee, setEmpWorkEmployee] = useState("");
   const [empWorkDate, setEmpWorkDate] = useState(new Date().toISOString().slice(0, 10));
-  const [empWorkShifts, setEmpWorkShifts] = useState<WorkShift[]>(["დღის"]);
 
   // Reports
   const [report, setReport] = useState<PeriodReport | null>(null);
@@ -914,38 +911,32 @@ export default function Dashboard() {
 
   function addWorkDay(e: React.FormEvent) {
     e.preventDefault();
-    if (!empWorkEmployee || !empWorkDate || empWorkShifts.length === 0) return;
+    if (!empWorkEmployee || !empWorkDate) return;
     runWithPin(async (pinCode) => {
       try {
-        let attendance = activeStore.attendance;
-        let obligations = activeStore.obligations;
-        for (const shift of empWorkShifts) {
-          const res = await fetch("/api/employees", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "checkin",
-              pin: pinCode,
-              employeeId: empWorkEmployee,
-              date: empWorkDate,
-              shift,
-            }),
-          });
-          const d = await res.json();
-          if (!res.ok) throw new Error(d.error || "შეცდომა");
-          attendance = d.attendance ?? attendance;
-          obligations = d.obligations ?? obligations;
-        }
+        const res = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "checkin",
+            pin: pinCode,
+            employeeId: empWorkEmployee,
+            date: empWorkDate,
+            shift: "დღის",
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "შეცდომა");
         setStore((prev) =>
           prev
             ? {
                 ...prev,
-                attendance,
-                obligations,
+                attendance: d.attendance ?? prev.attendance,
+                obligations: d.obligations ?? prev.obligations,
               }
             : prev
         );
-        setSaveMsg("სამუშაო ცვლ(ებ)ი და ხელფასი დაერიცხა ✓");
+        setSaveMsg("სამუშაო დღე და დღიური ხელფასი დაერიცხა ✓");
         setError("");
       } catch (e) {
         setError(e instanceof Error ? e.message : "შეცდომა");
@@ -2023,7 +2014,7 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="mt-2 text-xs text-teal-300">
-              დღის და საღამოს ცვლა = დღიური ხელფასი; ღამის ცვლა = დღიური + ნახევარი (მხოლოდ ქუთაისი). ლილო/დიღომი — მხოლოდ დღიური, ცვლები არ მოქმედებს.
+              ყველა ფილიალში დღიური ხელფასი ერთხელ ერიცხება რეპორტის გაგზავნისას (ცვლები აღარ მოქმედებს).
             </p>
           </form>
 
@@ -2038,8 +2029,7 @@ export default function Dashboard() {
                     <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                       <th className="pb-2 pr-3">სახელი და გვარი</th>
                       <th className="pb-2 pr-3">ფილიალი</th>
-                      <th className="pb-2 pr-3">დღიური</th>
-                      <th className="pb-2 pr-3">ღამის / შენიშვნა</th>
+                      <th className="pb-2 pr-3">დღიური ხელფასი</th>
                       <th className="pb-2" />
                     </tr>
                   </thead>
@@ -2058,11 +2048,6 @@ export default function Dashboard() {
                             onChange={(e) => setEmpWageEdits((values) => ({ ...values, [emp.id]: e.target.value }))}
                           />
                         </td>
-                        <td className="py-2 pr-3 text-zinc-400">
-                          {emp.branch === "ლილო" || emp.branch === "დიღომი"
-                            ? formatMoney(emp.dailyWage)
-                            : formatMoney(wageForShift(emp.dailyWage, "ღამის", emp.branch))}
-                        </td>
                         <td className="py-2 whitespace-nowrap">
                           <button type="button" className="mr-3 text-xs text-emerald-400 hover:text-emerald-300" onClick={() => saveEmployee(emp)}>
                             შენახვა
@@ -2080,8 +2065,8 @@ export default function Dashboard() {
           </div>
 
           <form onSubmit={addWorkDay} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
-            <h3 className="mb-4 font-semibold text-teal-300">სამუშაო ცვლების დამატება</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <h3 className="mb-4 font-semibold text-teal-300">სამუშაო დღის დამატება</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="თანამშრომელი">
                 <select className={inputCls} value={empWorkEmployee} onChange={(e) => setEmpWorkEmployee(e.target.value)} required>
                   <option value="">აირჩიეთ...</option>
@@ -2091,47 +2076,11 @@ export default function Dashboard() {
               <Field label="თარიღი">
                 <input className={inputCls} type="date" value={empWorkDate} onChange={(e) => setEmpWorkDate(e.target.value)} required />
               </Field>
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-xs text-zinc-400">ცვლები</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["დღის", "საღამოს", "ღამის"] as WorkShift[]).map((shift) => (
-                    <label key={shift} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={empWorkShifts.includes(shift)}
-                        onChange={(e) => {
-                          setEmpWorkShifts((prev) =>
-                            e.target.checked
-                              ? [...new Set([...prev, shift])]
-                              : prev.filter((item) => item !== shift)
-                          );
-                        }}
-                      />
-                      {shift}
-                    </label>
-                  ))}
-                </div>
-                {(() => {
-                  const emp = activeStore.employees.find((item: Employee) => item.id === empWorkEmployee);
-                  if (!emp || empWorkShifts.length === 0) return null;
-                  const total = empWorkShifts.reduce(
-                    (sum, shift) => sum + wageForShift(emp.dailyWage, shift, emp.branch),
-                    0
-                  );
-                  return (
-                    <p className="mt-2 text-xs text-teal-300">
-                      {emp.branch === "ლილო" || emp.branch === "დიღომი"
-                        ? `დღიური (ცვლები არ მოქმედებს): ${formatMoney(emp.dailyWage)}`
-                        : `დღე/საღამო: ${formatMoney(wageForShift(emp.dailyWage, "დღის", emp.branch))} · ღამე: ${formatMoney(wageForShift(emp.dailyWage, "ღამის", emp.branch))} · არჩეული ჯამი: ${formatMoney(total)}`}
-                    </p>
-                  );
-                })()}
-              </div>
-              <div className="flex items-end lg:col-span-4">
-                <button type="submit" className={`${btnCls} w-full sm:w-auto`} disabled={!empWorkEmployee || empWorkShifts.length === 0}>დამატება</button>
+              <div className="flex items-end">
+                <button type="submit" className={`${btnCls} w-full`} disabled={!empWorkEmployee}>დამატება</button>
               </div>
             </div>
-            <p className="mt-2 text-xs text-teal-300">დამატებისას არჩეული ცვლების ანაზღაურება ავტომატურად დაემატება თანამშრომლის ხელფასის ვალდებულებას. ქუთაისის/ლილოს/დიღომის ლინკიდანაც შეიძლება მონიშვნა.</p>
+            <p className="mt-2 text-xs text-teal-300">დამატებისას დღიური ხელფასი ერთხელ დაემატება. ფილიალის ლინკიდან რეპორტის გაგზავნაც იმავეს აკეთებს.</p>
           </form>
 
           <div className="rounded-xl border border-zinc-800 p-5">
@@ -2161,10 +2110,7 @@ export default function Dashboard() {
                 id,
                 ...data,
                 total: data.records.reduce(
-                  (sum, record) =>
-                    sum +
-                    (record.wageAmount ??
-                      wageForShift(data.wage, record.shift ?? "დღის", data.branch)),
+                  (sum, record) => sum + (record.wageAmount ?? data.wage),
                   0
                 ),
               }));
@@ -2176,12 +2122,12 @@ export default function Dashboard() {
                     <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium">{r.name} · <span className="text-zinc-400">{r.branch}</span></span>
-                        <span className="text-sm text-teal-400">{r.records.length} ცვლა · {formatMoney(r.total)}</span>
+                        <span className="text-sm text-teal-400">{r.records.length} დღე · {formatMoney(r.total)}</span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {r.records.sort((a, b) => a.date.localeCompare(b.date) || (a.shift ?? "").localeCompare(b.shift ?? "")).map((record) => (
+                        {r.records.sort((a, b) => a.date.localeCompare(b.date)).map((record) => (
                           <span key={record.id} className="inline-flex items-center gap-2 rounded bg-teal-900/30 px-2 py-1 text-xs text-teal-300">
-                            {record.date.slice(5)} · {record.shift ?? "დღის"} · {formatMoney(record.wageAmount ?? wageForShift(r.wage, record.shift ?? "დღის", r.branch))}
+                            {record.date.slice(5)} · {formatMoney(record.wageAmount ?? r.wage)}
                             <button type="button" className="text-red-400 hover:text-red-300" onClick={() => deleteWorkDay(record.id)}>✕</button>
                           </span>
                         ))}

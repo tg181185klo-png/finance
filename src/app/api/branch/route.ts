@@ -6,7 +6,6 @@ import {
   applyExpenseToStore,
   applySaleToStock,
   reverseExpenseObligation,
-  wageForShift,
 } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import type {
@@ -15,10 +14,8 @@ import type {
   BranchExpenseLine,
   BranchIncomeLine,
   BranchSaleLine,
-  BranchWorkedEmployee,
   Expense,
   Sale,
-  WorkShift,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -60,18 +57,12 @@ export async function POST(req: NextRequest) {
       expensesNote?: string;
       submittedBy?: string;
       submittedEmployeeId?: string;
-      shift?: WorkShift;
-      shifts?: WorkShift[];
-      workedEmployees?: { employeeId: string; shift?: WorkShift; shifts?: WorkShift[] }[];
       zeroReport?: boolean;
     };
 
     const preview = await readStore();
     const branch = branchByToken(preview, body.token);
     if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
-
-    const isLiloOrDigomi = branch === "ლილო" || branch === "დიღომი";
-    const isKutaisi = branch === "ქუთაისი";
 
     const reportingEmployee = (preview.employees ?? []).find(
       (item) =>
@@ -94,40 +85,6 @@ export async function POST(req: NextRequest) {
         c.phone?.trim() &&
         (c.products?.length ?? 0) > 0
     );
-
-    const workedEntries = isKutaisi
-      ? (body.workedEmployees ?? []).flatMap((item) => {
-          const shifts = (item.shifts?.length ? item.shifts : [item.shift ?? "დღის"]) as WorkShift[];
-          return [...new Set(shifts)].map((shift) => ({ employeeId: item.employeeId, shift }));
-        })
-      : [];
-    const kutaisiWorked: BranchWorkedEmployee[] = [];
-    for (const entry of workedEntries) {
-      const emp = (preview.employees ?? []).find(
-        (item) => item.id === entry.employeeId && item.branch === "ქუთაისი" && item.active
-      );
-      if (!emp) {
-        return NextResponse.json(
-          { error: "არჩეული თანამშრომელი არ ეკუთვნის ქუთაისს" },
-          { status: 400 }
-        );
-      }
-      kutaisiWorked.push({
-        employeeId: emp.id,
-        employeeName: emp.name,
-        shift: entry.shift,
-        wageAmount: wageForShift(emp.dailyWage, entry.shift, "ქუთაისი"),
-      });
-    }
-
-    // ლილო/დიღომი — ცვლების კოეფიციენტი არ მოქმედებს; ქუთაისი — ცვლები
-    const reporterShifts: WorkShift[] = isLiloOrDigomi
-      ? ["დღის"]
-      : isKutaisi && kutaisiWorked.length === 0
-        ? [...new Set((body.shifts?.length ? body.shifts : [body.shift ?? "დღის"]) as WorkShift[])]
-        : [];
-
-    const reportId = uid();
     const day = dateOnly(body.date || new Date().toISOString());
     const now = new Date().toISOString();
     const incomes = body.incomes ?? [];
@@ -183,7 +140,6 @@ export async function POST(req: NextRequest) {
       expenses.length > 0 ||
       salesTotal > 0 ||
       expensesTotal > 0 ||
-      kutaisiWorked.length > 0 ||
       body.zeroReport === true ||
       Boolean(reportingEmployee);
 
@@ -194,6 +150,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const reportId = uid();
     const report: BranchDailyReport = {
       id: reportId,
       branch,
@@ -208,7 +165,6 @@ export async function POST(req: NextRequest) {
       sales,
       clientSales,
       expenses,
-      ...(kutaisiWorked.length ? { workedEmployees: kutaisiWorked } : {}),
     };
 
     const txs: (Sale | Expense)[] = [];
@@ -310,30 +266,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // გამომგზავნი თანამშრომელი — სამუშაო დღე
+      // გამომგზავნი თანამშრომელი — სამუშაო დღე (დღიური ხელფასი, ცვლების გარეშე)
       const employee = (store.employees ?? []).find(
         (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
       );
       if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
-
-      if (isLiloOrDigomi) {
-        addEmployeeAttendance(store, employee, day, "დღის", branch);
-      } else if (isKutaisi) {
-        if (kutaisiWorked.length) {
-          for (const worked of kutaisiWorked) {
-            const emp = (store.employees ?? []).find(
-              (item) => item.id === worked.employeeId && item.branch === "ქუთაისი" && item.active
-            );
-            if (!emp) throw new Error(`${worked.employeeName} ვერ მოიძებნა`);
-            addEmployeeAttendance(store, emp, day, worked.shift, branch);
-          }
-        } else {
-          const shifts = reporterShifts.length ? reporterShifts : (["დღის"] as WorkShift[]);
-          for (const workShift of shifts) {
-            addEmployeeAttendance(store, employee, day, workShift, branch);
-          }
-        }
-      }
+      addEmployeeAttendance(store, employee, day, "დღის", branch);
 
       store.branchReports = [report, ...store.branchReports];
       store.transactions = [...txs, ...store.transactions];
