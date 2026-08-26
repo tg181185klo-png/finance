@@ -1905,9 +1905,25 @@ export default function Dashboard() {
               const link = branchLink(token);
               return (
               <div key={b} className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                <div className="mb-1 flex items-center justify-between">
+                <div className="mb-1 flex items-center justify-between gap-2">
                   <p className="font-medium">{b}</p>
-                  <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => navigator.clipboard.writeText(link)}>კოპირება</button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-xs text-zinc-400 hover:text-white"
+                      onClick={() => navigator.clipboard.writeText(link)}
+                    >
+                      კოპირება
+                    </button>
+                    <a
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-emerald-400 hover:text-emerald-300"
+                    >
+                      გახსნა
+                    </a>
+                  </div>
                 </div>
                 <code className="block break-all text-xs text-emerald-400">{link}</code>
               </div>
