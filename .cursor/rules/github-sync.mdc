@@ -3,15 +3,18 @@ description: Push code changes to GitHub after every update
 alwaysApply: true
 ---
 
-# GitHub Sync
+# GitHub + Vercel Sync
 
 Repository: https://github.com/tg181185klo-png/finance
+Production: https://finance-eight-ruddy-60.vercel.app
 
 After completing any code change in this project:
 1. Run `git add -A`
 2. Commit with a clear message describing what changed
 3. Run `git push origin main`
+4. Vercel auto-deploys from `main` (Git connected to `lasha-s-projects1/finance`)
 
 Do not commit: `.env.local`, `node_modules`, `.next`, `data/store.json` (local business data).
 
 Environment variables for production are set in Vercel dashboard.
+Required: `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_GID_COST`, `ADMIN_PIN`, `NEXT_PUBLIC_APP_URL`, `BLOB_READ_WRITE_TOKEN`.

@@ -16,6 +16,7 @@ export async function GET() {
       branchReports: store.branchReports.length,
       sheetId: env.googleSheetId,
       appUrl: env.appUrl || null,
+      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
