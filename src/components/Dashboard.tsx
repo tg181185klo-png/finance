@@ -20,6 +20,7 @@ import type {
   TxRecurrence,
 } from "@/lib/types";
 import ReportsPanel from "@/components/ReportsPanel";
+import BalancesPanel from "@/components/BalancesPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -82,7 +83,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "obligations" | "reports" | "branches" | "inventory" | "employees";
+type Tab = "main" | "balances" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -1050,6 +1051,7 @@ export default function Dashboard() {
 
       <nav className="mb-6 flex flex-wrap gap-2">
         <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
+        <button type="button" className={tabCls(tab === "balances")} onClick={() => setTab("balances")}>ბალანსი</button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
         <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
@@ -1644,6 +1646,10 @@ export default function Dashboard() {
           </div>
         </section>
         )
+      )}
+
+      {tab === "balances" && !loading && (
+        <BalancesPanel transactions={tx} branchCash={activeStore.branchCash} />
       )}
 
       {tab === "reports" && (
