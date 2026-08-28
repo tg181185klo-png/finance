@@ -31,9 +31,10 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       transaction?: Transaction;
       migrate?: Transaction[];
-      action?: "delete";
+      action?: "delete" | "updateRecurrence";
       id?: string;
       pin?: string;
+      recurrence?: string;
     };
 
     if (body.action === "delete") {
@@ -54,6 +55,21 @@ export async function POST(req: NextRequest) {
         creditPayments: store.creditPayments,
         creditDeliveries: store.creditDeliveries,
       });
+    }
+
+    if (body.action === "updateRecurrence") {
+      if (body.pin !== ADMIN_PIN) {
+        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
+      }
+      if (!body.id || !body.recurrence) {
+        return NextResponse.json({ error: "id და recurrence საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        const t = s.transactions.find((x) => x.id === body.id);
+        if (!t) throw new Error("ჩანაწერი ვერ მოიძებნა");
+        t.recurrence = body.recurrence as Sale["recurrence"];
+      });
+      return NextResponse.json({ ok: true, transactions: store.transactions });
     }
 
     let savedTx: Transaction | null = null;

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const today = new Date().toISOString().slice(0, 10);
 
   if (mode === "today") {
-    const report = buildPeriodReport(store.transactions, store.obligations, today, today, branch);
+    const report = buildPeriodReport(store.transactions, store.obligations, today, today, branch, store.branchCash);
     return NextResponse.json(report);
   }
 
@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
       store.obligations,
       `${month}-01`,
       `${month}-${String(last).padStart(2, "0")}`,
-      branch
+      branch,
+      store.branchCash
     );
     return NextResponse.json(report);
   }
@@ -36,6 +37,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "from და to საჭიროა" }, { status: 400 });
   }
 
-  const report = buildPeriodReport(store.transactions, store.obligations, from, to, branch);
+  const report = buildPeriodReport(store.transactions, store.obligations, from, to, branch, store.branchCash);
   return NextResponse.json(report);
 }

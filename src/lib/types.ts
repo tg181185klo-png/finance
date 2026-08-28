@@ -6,6 +6,7 @@ export type ExpenseCategory =
   | "ნედლეული" | "წარმოება" | "კომუნალური" | "საკვები" | "ლოგისტიკა" | "დისტრიბუცია" | "საყოფაცხოვრებო" | "სხვა"
   | "საწვავი" | "ხელფასი" | "კომუნალურები" | "დღგ" | "სესხი";
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
+export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
 export type TxSource = "admin" | "branch";
 export type WorkShift = "დღის" | "საღამოს" | "ღამის";
 
@@ -28,6 +29,8 @@ export interface Sale {
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   comment: string;
+  /** ყოველთვიური თუ ერთჯერადი (მოგება-ზარალის ანგარიშისთვის) */
+  recurrence?: TxRecurrence;
   source?: TxSource;
   reportId?: string;
   employeeName?: string;
@@ -72,6 +75,8 @@ export interface Expense {
   category: ExpenseCategory;
   amount: number;
   comment: string;
+  /** ყოველთვიური თუ ერთჯერადი (მოგება-ზარალის ანგარიშისთვის) */
+  recurrence?: TxRecurrence;
   source?: TxSource;
   reportId?: string;
   obligationId?: string;
@@ -222,11 +227,29 @@ export interface Balances {
   expenses: number;
 }
 
+export interface RecurrenceStats {
+  revenue: number;
+  expenses: number;
+  net: number;
+}
+
+export interface BranchPeriodStats {
+  branch: Branch;
+  revenue: number;
+  expenses: number;
+  net: number;
+  cashAtEnd: number;
+  cardAtEnd: number;
+  bankAtEnd: number;
+}
+
 export interface DayReport {
   date: string;
   revenue: number;
   expenses: number;
   net: number;
+  /** ქეში თითო ფილიალში ამ დღის ბოლოს */
+  cashByBranch?: Record<Branch, number>;
 }
 
 export interface PeriodReport {
@@ -241,4 +264,13 @@ export interface PeriodReport {
   obligationTotal: number;
   obligationPaid: number;
   obligationRemaining: number;
+  /** თითო ფილიალის შემოსავალი/ხარჯი პერიოდში */
+  byBranch: BranchPeriodStats[];
+  /** ყოველთვიური vs ერთჯერადი */
+  recurring: RecurrenceStats;
+  oneTime: RecurrenceStats;
+  /** პერიოდის ბოლოს ქეში (არჩეული ფილიალი ან ყველა) */
+  cashAtEnd: number;
+  cardAtEnd: number;
+  bankAtEnd: number;
 }

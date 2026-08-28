@@ -22,3 +22,4 @@ export const CATEGORIES: ExpenseCategory[] = [
 export const PAYMENT_STATUSES: PaymentStatus[] = ["სრულად გადახდილი", "ბე (ავანსი)"];
 export const PAYMENT_METHODS: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
 export const EXPENSE_PAYMENT_METHODS = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"] as const;
+export const TX_RECURRENCE = ["ყოველთვიური", "ერთჯერადი"] as const;

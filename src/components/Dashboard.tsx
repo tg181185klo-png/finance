@@ -13,18 +13,20 @@ import type {
   Obligation,
   PaymentMethod,
   PaymentStatus,
-  PeriodReport,
   Product,
   Sale,
   Store,
   Transaction,
+  TxRecurrence,
 } from "@/lib/types";
+import ReportsPanel from "@/components/ReportsPanel";
 import {
   BRANCHES,
   CATEGORIES,
   EXPENSE_BRANCHES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  TX_RECURRENCE,
 } from "@/lib/dashboard-data";
 import {
   calcBalances,
@@ -148,6 +150,7 @@ export default function Dashboard() {
   const [price, setPrice] = useState(0);
   const [payStatus, setPayStatus] = useState<PaymentStatus>("სრულად გადახდილი");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
+  const [sRecurrence, setSRecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [sComment, setSComment] = useState("");
   const [buyerName, setBuyerName] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
@@ -159,6 +162,7 @@ export default function Dashboard() {
   const [eBranch, setEBranch] = useState<ExpenseBranch>("საერთო");
   const [category, setCategory] = useState<ExpenseCategory>("საწვავი");
   const [eAmount, setEAmount] = useState("");
+  const [eRecurrence, setERecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [eComment, setEComment] = useState("");
 
   // Obligations
@@ -182,12 +186,6 @@ export default function Dashboard() {
   const [empWageEdits, setEmpWageEdits] = useState<Record<string, string>>({});
   const [empWorkEmployee, setEmpWorkEmployee] = useState("");
   const [empWorkDate, setEmpWorkDate] = useState(new Date().toISOString().slice(0, 10));
-
-  // Reports
-  const [report, setReport] = useState<PeriodReport | null>(null);
-  const [repFrom, setRepFrom] = useState("");
-  const [repTo, setRepTo] = useState("");
-  const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
 
   // Inventory
   const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
@@ -571,6 +569,7 @@ export default function Dashboard() {
       paymentStatus: payStatus,
       paymentMethod: payMethod,
       comment: sComment.trim() || `${selected.name} × ${qty}`,
+      recurrence: sRecurrence,
       source: "admin",
       buyerName: payStatus === "ბე (ავანსი)" ? buyerName.trim() || undefined : undefined,
       creditPaid: payStatus === "ბე (ავანსი)" ? advance : undefined,
@@ -613,6 +612,7 @@ export default function Dashboard() {
       category,
       amount,
       comment: eComment.trim() || category,
+      recurrence: eRecurrence,
       source: "admin",
     };
     try {
@@ -979,21 +979,6 @@ export default function Dashboard() {
     });
   }
 
-  async function loadReport(mode: string, from?: string, to?: string) {
-    const b = repBranch === "ყველა" ? "ყველა" : repBranch;
-    let url = `/api/reports?mode=${mode}&branch=${encodeURIComponent(b)}`;
-    if (from && to) url += `&from=${from}&to=${to}`;
-    const res = await fetch(url);
-    setReport(await res.json());
-  }
-
-  function exportReportExcel() {
-    if (!report) return;
-    const b = encodeURIComponent(report.branch);
-    const url = `/api/reports/export?from=${report.from}&to=${report.to}&branch=${b}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
   function txLabel(t: Transaction) {
     if (t.type === "sale") {
       const emp = t.employeeName ? ` (${t.employeeName})` : "";
@@ -1180,6 +1165,11 @@ export default function Dashboard() {
                   </Field>
                 )}
                 <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
+                <Field label="ტიპი (მოგება-ზარალი)">
+                  <select className={inputCls} value={sRecurrence} onChange={(e) => setSRecurrence(e.target.value as TxRecurrence)}>
+                    {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </Field>
                 {payStatus === "ბე (ავანსი)" && (
                   <>
                     <Field label="მყიდველი / კომპანია">
@@ -1217,6 +1207,11 @@ export default function Dashboard() {
                   </select>
                 </Field>
                 <Field label="თანხა (₾)"><input className={inputCls} type="number" min={0} step={0.01} value={eAmount} onChange={(e) => setEAmount(e.target.value)} required /></Field>
+                <Field label="ტიპი (მოგება-ზარალი)">
+                  <select className={inputCls} value={eRecurrence} onChange={(e) => setERecurrence(e.target.value as TxRecurrence)}>
+                    {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </Field>
                 <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={eComment} onChange={(e) => setEComment(e.target.value)} placeholder="მაგ: ივანე ხელფასი, ელექტროენერგია..." /></Field></div>
               </div>
               <p className="mt-2 text-xs text-zinc-500">ხარჯი ავტომატურად ემთხვევა ვალდებულებას კატეგორიით ან სახელით</p>
@@ -1652,118 +1647,13 @@ export default function Dashboard() {
       )}
 
       {tab === "reports" && (
-        <section className="space-y-6">
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={btnCls} onClick={() => loadReport("today")}>დღევანდელი</button>
-            <button type="button" className={btnCls} onClick={() => loadReport("month")}>მიმდინარე თვე</button>
-          </div>
-          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-800 p-4">
-            <Field label="დან"><input type="date" className={inputCls} value={repFrom} onChange={(e) => setRepFrom(e.target.value)} /></Field>
-            <Field label="მდე"><input type="date" className={inputCls} value={repTo} onChange={(e) => setRepTo(e.target.value)} /></Field>
-            <Field label="ფილიალი">
-              <select className={inputCls} value={repBranch} onChange={(e) => setRepBranch(e.target.value as Branch | "ყველა")}>
-                <option value="ყველა">ყველა</option>
-                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </Field>
-            <button type="button" className={btnCls} disabled={!repFrom || !repTo} onClick={() => loadReport("period", repFrom, repTo)}>პერიოდი</button>
-            {report && (
-              <button
-                type="button"
-                className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/50"
-                onClick={exportReportExcel}
-              >
-                Excel-ში ჩამოტვირთვა
-              </button>
-            )}
-          </div>
-
-          {report && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold">
-                  {report.from === report.to ? report.from : `${report.from} — ${report.to}`} · {report.branch}
-                </h3>
-                <button
-                  type="button"
-                  className="text-sm text-emerald-400 hover:text-emerald-300"
-                  onClick={exportReportExcel}
-                >
-                  ↓ Excel
-                </button>
-              </div>
-              <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
-                <Stat label="ხარჯები" value={formatMoney(report.expenses)} accent="text-red-400" />
-                <Stat label="ნეტო" value={formatMoney(report.net)} accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"} />
-                <Stat label="ვალდ. ფარული" value={formatMoney(report.obligationPaid)} accent="text-violet-300" />
-                <Stat label="ვალდ. დარჩენილი" value={formatMoney(report.obligationRemaining)} accent="text-amber-400" />
-              </div>
-              {report.days.length > 0 && (
-                <div className="mb-6 overflow-x-auto">
-                  <h4 className="mb-2 text-sm font-semibold text-zinc-300">დღეების შეჯამება</h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                        <th className="pb-2 pr-4">დღე</th>
-                        <th className="pb-2 pr-4 text-right">შემოსავალი</th>
-                        <th className="pb-2 pr-4 text-right">ხარჯი</th>
-                        <th className="pb-2 text-right">ნეტო</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.days.map((d) => (
-                        <tr key={d.date} className="border-b border-zinc-800/50">
-                          <td className="py-2 pr-4">{d.date}</td>
-                          <td className="py-2 pr-4 text-right text-emerald-400">{formatMoney(d.revenue)}</td>
-                          <td className="py-2 pr-4 text-right text-red-400">{formatMoney(d.expenses)}</td>
-                          <td className={`py-2 text-right ${d.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{formatMoney(d.net)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {report.transactions.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <h4 className="mb-2 text-sm font-semibold text-zinc-300">ყველა ტრანზაქცია</h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                        <th className="pb-2 pr-3">დრო</th>
-                        <th className="pb-2 pr-3">ფილიალი</th>
-                        <th className="pb-2 pr-3">ტიპი</th>
-                        <th className="pb-2 pr-3">აღწერა</th>
-                        <th className="pb-2 pr-3">მეთოდი</th>
-                        <th className="pb-2 text-right">თანხა</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.transactions.map((t) => (
-                        <tr key={t.id} className="border-b border-zinc-800/50">
-                          <td className="whitespace-nowrap py-2 pr-3 text-zinc-400">{formatDate(t.date)}</td>
-                          <td className="py-2 pr-3">{t.branch}</td>
-                          <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
-                            {t.type === "sale" ? "შემოსავალი" : "ხარჯი"}
-                          </td>
-                          <td className="py-2 pr-3">{txLabel(t)}</td>
-                          <td className="py-2 pr-3 text-zinc-400">
-                            {t.type === "sale" ? t.paymentMethod : (t.expensePaymentMethod ?? "ქეში (ნაღდი)")}
-                          </td>
-                          <td className={`py-2 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
-                            {t.type === "sale" ? "+" : "-"}{formatMoney(t.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-sm text-zinc-500">ამ პერიოდში ტრანზაქციები არ არის.</p>
-              )}
-            </div>
-          )}
-        </section>
+        <ReportsPanel
+          unlocked={unlocked}
+          getAdminPin={getAdminPin}
+          onTransactionsUpdate={(transactions) =>
+            setStore((prev) => (prev ? { ...prev, transactions } : prev))
+          }
+        />
       )}
 
       {tab === "inventory" && !loading && (

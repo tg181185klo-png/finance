@@ -3,6 +3,7 @@ import type {
   Branch,
   BranchCash,
   BranchInventory,
+  BranchPeriodStats,
   CreditPayment,
   CreditDelivery,
   Employee,
@@ -11,10 +12,13 @@ import type {
   Obligation,
   ObligationPayment,
   PaymentMethod,
+  PeriodReport,
+  RecurrenceStats,
   RecurringObligation,
   Sale,
   Store,
   Transaction,
+  TxRecurrence,
   WorkShift,
 } from "./types";
 
@@ -77,6 +81,62 @@ export function applySaleToStock(
 ) {
   if (!saleAffectsStock(sale)) return inventory;
   return adjustStock(inventory, sale.branch, sale.productCode, direction * sale.quantity);
+}
+
+export function txRecurrence(t: Transaction): TxRecurrence {
+  return t.recurrence ?? "ერთჯერადი";
+}
+
+export function calcBalancesUpToDate(
+  tx: Transaction[],
+  branch: Branch | "ყველა",
+  branchCash: Record<Branch, BranchCash> | undefined,
+  upToDate: string
+) {
+  const filtered = tx.filter((t) => t.date.slice(0, 10) <= upToDate);
+  return calcBalances(filtered, branch, branchCash);
+}
+
+function buildRecurrenceStats(filtered: Transaction[]): { recurring: RecurrenceStats; oneTime: RecurrenceStats } {
+  const recurring = { revenue: 0, expenses: 0, net: 0 };
+  const oneTime = { revenue: 0, expenses: 0, net: 0 };
+  for (const t of filtered) {
+    const bucket = txRecurrence(t) === "ყოველთვიური" ? recurring : oneTime;
+    if (t.type === "sale") bucket.revenue += t.amount;
+    else bucket.expenses += t.amount;
+  }
+  recurring.net = recurring.revenue - recurring.expenses;
+  oneTime.net = oneTime.revenue - oneTime.expenses;
+  return { recurring, oneTime };
+}
+
+function buildByBranchStats(
+  tx: Transaction[],
+  from: string,
+  to: string,
+  branchCash?: Record<Branch, BranchCash>
+): BranchPeriodStats[] {
+  return BRANCHES.map((br) => {
+    let revenue = 0;
+    let expenses = 0;
+    for (const t of tx) {
+      const d = t.date.slice(0, 10);
+      if (d < from || d > to) continue;
+      if (!matchBranch(t.branch, br)) continue;
+      if (t.type === "sale") revenue += t.amount;
+      else expenses += t.amount;
+    }
+    const bal = calcBalancesUpToDate(tx, br, branchCash, to);
+    return {
+      branch: br,
+      revenue,
+      expenses,
+      net: revenue - expenses,
+      cashAtEnd: bal.cash,
+      cardAtEnd: bal.card,
+      bankAtEnd: bal.bank,
+    };
+  });
 }
 
 export function calcBalances(
@@ -501,8 +561,9 @@ export function buildPeriodReport(
   obligations: Record<string, Obligation[]>,
   from: string,
   to: string,
-  branch: Branch | "ყველა"
-) {
+  branch: Branch | "ყველა",
+  branchCash?: Record<Branch, BranchCash>
+): PeriodReport {
   const filtered = tx.filter((t) => {
     const d = t.date.slice(0, 10);
     if (d < from || d > to) return false;
@@ -528,7 +589,20 @@ export function buildPeriodReport(
 
   const days = [...dayMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, v]) => ({ date, revenue: v.revenue, expenses: v.expenses, net: v.revenue - v.expenses }));
+    .map(([date, v]) => {
+      const cashByBranch = branchCash
+        ? (Object.fromEntries(
+            BRANCHES.map((br) => [br, calcBalancesUpToDate(tx, br, branchCash, date).cash])
+          ) as Record<Branch, number>)
+        : undefined;
+      return {
+        date,
+        revenue: v.revenue,
+        expenses: v.expenses,
+        net: v.revenue - v.expenses,
+        cashByBranch,
+      };
+    });
 
   const months = new Set<string>();
   for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate() + 1)) {
@@ -543,6 +617,10 @@ export function buildPeriodReport(
     obligationPaid += s.paid;
   }
 
+  const { recurring, oneTime } = buildRecurrenceStats(filtered);
+  const byBranch = buildByBranchStats(tx, from, to, branchCash);
+  const endBal = calcBalancesUpToDate(tx, branch, branchCash, to);
+
   return {
     from,
     to,
@@ -555,6 +633,12 @@ export function buildPeriodReport(
     obligationTotal,
     obligationPaid,
     obligationRemaining: obligationTotal - obligationPaid,
+    byBranch,
+    recurring,
+    oneTime,
+    cashAtEnd: endBal.cash,
+    cardAtEnd: endBal.card,
+    bankAtEnd: endBal.bank,
   };
 }
 

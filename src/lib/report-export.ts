@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { BRANCHES } from "./constants";
 import type { Branch, BranchDailyReport, PeriodReport, Transaction } from "./types";
 
 function txDescription(t: Transaction): string {
@@ -35,18 +36,72 @@ export function buildReportWorkbook(
     { პარამეტრი: "ფილიალი", მნიშვნელობა: report.branch },
     { პარამეტრი: "შემოსავალი", მნიშვნელობა: report.revenue },
     { პარამეტრი: "ხარჯები", მნიშვნელობა: report.expenses },
-    { პარამეტრი: "ნეტო", მნიშვნელობა: report.net },
+    { პარამეტრი: "ნეტო (მოგება/ზარალი)", მნიშვნელობა: report.net },
+    { პარამეტრი: "ქეში პერიოდის ბოლოს", მნიშვნელობა: report.cashAtEnd },
+    { პარამეტრი: "ბარათი პერიოდის ბოლოს", მნიშვნელობა: report.cardAtEnd },
+    { პარამეტრი: "ანგარიში პერიოდის ბოლოს", მნიშვნელობა: report.bankAtEnd },
     { პარამეტრი: "ვალდ. ფარული", მნიშვნელობა: report.obligationPaid },
     { პარამეტრი: "ვალდ. დარჩენილი", მნიშვნელობა: report.obligationRemaining },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "შეჯამება");
 
-  const dayRows = report.days.map((d) => ({
-    თარიღი: d.date,
-    შემოსავალი: d.revenue,
-    ხარჯი: d.expenses,
-    ნეტო: d.net,
+  const branchRows: Record<string, string | number>[] = report.byBranch.map((b) => ({
+    ფილიალი: b.branch,
+    შემოსავალი: b.revenue,
+    ხარჯი: b.expenses,
+    "ნეტო (მოგება/ზარალი)": b.net,
+    "ქეში (დღის/პერიოდის ბოლოს)": b.cashAtEnd,
+    ბარათი: b.cardAtEnd,
+    "ანგარიშზე": b.bankAtEnd,
   }));
+  const companyTotal = report.byBranch.reduce(
+    (acc, b) => ({
+      revenue: acc.revenue + b.revenue,
+      expenses: acc.expenses + b.expenses,
+      cash: acc.cash + b.cashAtEnd,
+      card: acc.card + b.cardAtEnd,
+      bank: acc.bank + b.bankAtEnd,
+    }),
+    { revenue: 0, expenses: 0, cash: 0, card: 0, bank: 0 }
+  );
+  branchRows.push({
+    ფილიალი: "კომპანია (ჯამი)",
+    შემოსავალი: companyTotal.revenue,
+    ხარჯი: companyTotal.expenses,
+    "ნეტო (მოგება/ზარალი)": companyTotal.revenue - companyTotal.expenses,
+    "ქეში (დღის/პერიოდის ბოლოს)": companyTotal.cash,
+    ბარათი: companyTotal.card,
+    "ანგარიშზე": companyTotal.bank,
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(branchRows), "ფილიალები");
+
+  const plRows = [
+    { კატეგორია: "ყოველთვიური შემოსავალი", თანხა: report.recurring.revenue },
+    { კატეგორია: "ყოველთვიური ხარჯი", თანხა: report.recurring.expenses },
+    { კატეგორია: "ყოველთვიური ნეტო", თანხა: report.recurring.net },
+    { კატეგორია: "ერთჯერადი შემოსავალი", თანხა: report.oneTime.revenue },
+    { კატეგორია: "ერთჯერადი ხარჯი", თანხა: report.oneTime.expenses },
+    { კატეგორია: "ერთჯერადი ნეტო", თანხა: report.oneTime.net },
+    { კატეგორია: "სულ შემოსავალი", თანხა: report.revenue },
+    { კატეგორია: "სულ ხარჯი", თანხა: report.expenses },
+    { კატეგორია: "სულ მოგება/ზარალი", თანხა: report.net },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(plRows), "მოგება-ზარალი");
+
+  const dayRows = report.days.map((d) => {
+    const row: Record<string, string | number> = {
+      თარიღი: d.date,
+      შემოსავალი: d.revenue,
+      ხარჯი: d.expenses,
+      ნეტო: d.net,
+    };
+    if (d.cashByBranch) {
+      for (const br of BRANCHES) {
+        row[`${br} ქეში`] = d.cashByBranch[br] ?? 0;
+      }
+    }
+    return row;
+  });
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(dayRows.length ? dayRows : [{ შეტყობინება: "მონაცემები არ არის" }]),
@@ -61,6 +116,7 @@ export function buildReportWorkbook(
     აღწერა: txDescription(t),
     "გადახდის მეთოდი":
       t.type === "sale" ? t.paymentMethod : (t.expensePaymentMethod ?? "ქეში (ნაღდი)"),
+    "ყოველთვიური/ერთჯერადი": t.recurrence ?? "ერთჯერადი",
     თანხა: t.type === "sale" ? t.amount : -t.amount,
     წყარო: t.source === "branch" ? "ფილიალი" : "ადმინი",
   }));

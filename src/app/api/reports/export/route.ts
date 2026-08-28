@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
     store.obligations,
     range.from,
     range.to,
-    branch
+    branch,
+    store.branchCash
   );
   const buf = buildReportWorkbook(report, store.branchReports);
   const filename = reportExportFilename(range.from, range.to, branch);
