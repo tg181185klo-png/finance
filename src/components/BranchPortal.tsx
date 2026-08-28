@@ -535,16 +535,37 @@ export default function BranchPortal({ token }: { token: string }) {
                           </div>
                         )}
 
-                        <div className="mt-2">
-                          <label className="mb-1 block text-xs text-zinc-400">რაოდენობა</label>
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            className={inputCls}
-                            value={prod.quantity}
-                            onChange={(e) => updateProduct(client.id, prod.id, { quantity: e.target.value })}
-                          />
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs text-zinc-400">რაოდენობა</label>
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              className={inputCls}
+                              value={prod.quantity}
+                              onChange={(e) => updateProduct(client.id, prod.id, { quantity: e.target.value })}
+                            />
+                          </div>
+                          {prod.productCode && (
+                            <div>
+                              <label className="mb-1 block text-xs text-zinc-400">
+                                გასაყიდი ფასი (კალკულატორი, შეგიძლიათ შეცვლა)
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                className={inputCls}
+                                value={prod.unitPrice || ""}
+                                onChange={(e) =>
+                                  updateProduct(client.id, prod.id, {
+                                    unitPrice: parseFloat(e.target.value) || 0,
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
                         </div>
                         {prod.productCode && (
                           <p className="mt-1 text-right text-xs text-emerald-400">

@@ -987,6 +987,13 @@ export default function Dashboard() {
     setReport(await res.json());
   }
 
+  function exportReportExcel() {
+    if (!report) return;
+    const b = encodeURIComponent(report.branch);
+    const url = `/api/reports/export?from=${report.from}&to=${report.to}&branch=${b}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   function txLabel(t: Transaction) {
     if (t.type === "sale") {
       const emp = t.employeeName ? ` (${t.employeeName})` : "";
@@ -1660,13 +1667,31 @@ export default function Dashboard() {
               </select>
             </Field>
             <button type="button" className={btnCls} disabled={!repFrom || !repTo} onClick={() => loadReport("period", repFrom, repTo)}>პერიოდი</button>
+            {report && (
+              <button
+                type="button"
+                className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/50"
+                onClick={exportReportExcel}
+              >
+                Excel-ში ჩამოტვირთვა
+              </button>
+            )}
           </div>
 
           {report && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <h3 className="mb-4 font-semibold">
-                {report.from === report.to ? report.from : `${report.from} — ${report.to}`} · {report.branch}
-              </h3>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold">
+                  {report.from === report.to ? report.from : `${report.from} — ${report.to}`} · {report.branch}
+                </h3>
+                <button
+                  type="button"
+                  className="text-sm text-emerald-400 hover:text-emerald-300"
+                  onClick={exportReportExcel}
+                >
+                  ↓ Excel
+                </button>
+              </div>
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
                 <Stat label="ხარჯები" value={formatMoney(report.expenses)} accent="text-red-400" />
