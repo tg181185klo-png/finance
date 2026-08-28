@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types";
 import ReportsPanel from "@/components/ReportsPanel";
 import BalancesPanel from "@/components/BalancesPanel";
+import BranchesPanel from "@/components/BranchesPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -1816,123 +1817,15 @@ export default function Dashboard() {
       )}
 
       {tab === "branches" && !loading && (
-        <section className="space-y-6">
-          <div className="rounded-xl border border-zinc-800 p-5">
-            <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
-            <p className="mb-2 text-sm text-zinc-500">ადმინ პანელი: <code className="text-emerald-400">{adminPanelUrl()}</code></p>
-            <p className="mb-4 text-sm text-zinc-500">გაუგზავნეთ თითოეულ ფილიალს თავისი ლინკი. დღის ბოლოს შეავსებენ ანგარიშს.</p>
-            {BRANCHES.map((b) => {
-              const token = activeStore.branchTokens[b];
-              const link = branchLink(token);
-              return (
-              <div key={b} className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="font-medium">{b}</p>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      className="text-xs text-zinc-400 hover:text-white"
-                      onClick={() => navigator.clipboard.writeText(link)}
-                    >
-                      კოპირება
-                    </button>
-                    <a
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-emerald-400 hover:text-emerald-300"
-                    >
-                      გახსნა
-                    </a>
-                  </div>
-                </div>
-                <code className="block break-all text-xs text-emerald-400">{link}</code>
-              </div>
-            );})}
-          </div>
-
-          <div className="rounded-xl border border-zinc-800 p-5">
-            <h2 className="mb-4 font-semibold">ფილიალის ანგარიშები {unlocked && <span className="text-xs text-zinc-500">(წაშლა კოდით)</span>}</h2>
-            {branchReports.length === 0 ? (
-              <p className="text-sm text-zinc-500">ჯერ არ არის მიღებული</p>
-            ) : (
-              <div className="space-y-3">
-                {branchReports.map((r: BranchDailyReport) => (
-                  <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
-                    <div className="mb-2 flex justify-between">
-                      <span className="font-medium">{r.branch} · {r.date}{r.submittedBy ? ` · ${r.submittedBy}` : ""}</span>
-                      <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
-                    </div>
-                    {r.clientSales?.length ? (
-                      <div className="mb-2 space-y-2">
-                        {r.clientSales.map((c, i) => (
-                          <div key={i} className="rounded border border-zinc-800/80 p-2">
-                            <p className="text-zinc-200">
-                              {c.customerFirstName} {c.customerLastName}
-                              <span className="text-zinc-500"> · {c.phone}</span>
-                              {c.personalId ? <span className="text-zinc-500"> · პირადი: {c.personalId}</span> : null}
-                            </p>
-                            {c.products.map((p, j) => (
-                              <p key={j} className="text-emerald-400">
-                                +{formatMoney(p.amount)} — {p.productName} ×{p.quantity} · {p.paymentMethod || c.paymentMethod}
-                              </p>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ) : r.incomes?.length ? (
-                      <div className="mb-2 space-y-1">
-                        {r.incomes.map((income, i) => (
-                          <p key={i} className="text-emerald-400">
-                            +{formatMoney(income.amount)} — შემოსავალი · {income.paymentMethod}
-                          </p>
-                        ))}
-                      </div>
-                    ) : r.sales?.length ? (
-                      <div className="mb-2 space-y-1">
-                        {r.sales.map((s, i) => (
-                          <p key={i} className="text-emerald-400">
-                            +{formatMoney(s.amount)} — {s.productName} ×{s.quantity} · {s.paymentMethod}
-                          </p>
-                        ))}
-                      </div>
-                    ) : r.salesTotal > 0 ? (
-                      <p className="text-emerald-400">+{formatMoney(r.salesTotal)} — {r.salesNote}</p>
-                    ) : (
-                      <p className="text-zinc-500">ნულოვანი რეპორტი — გაყიდვა არ ყოფილა</p>
-                    )}
-                    {r.expenses?.length ? (
-                      <div className="space-y-1">
-                        {r.expenses.map((ex, i) => (
-                          <p key={i} className="text-red-400">
-                            -{formatMoney(ex.amount)} — {ex.category}: {ex.comment} · {ex.paymentMethod}
-                          </p>
-                        ))}
-                      </div>
-                    ) : r.expensesTotal > 0 ? (
-                      <p className="text-red-400">-{formatMoney(r.expensesTotal)} — {r.expensesNote}</p>
-                    ) : null}
-                    {r.workedEmployees?.length ? (
-                      <div className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
-                        <p className="text-xs text-zinc-500">იმუშავეს:</p>
-                        {r.workedEmployees.map((w) => (
-                          <p key={`${w.employeeId}-${w.shift}`} className="text-teal-300">
-                            {w.employeeName} · {w.shift} · {formatMoney(w.wageAmount)}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                    {unlocked && (
-                      <button type="button" className="mt-2 text-xs text-red-400 hover:text-red-300" onClick={() => deleteReport(r.id)}>
-                        წაშლა (ხელახლა შეავსონ)
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+        <BranchesPanel
+          branchReports={branchReports}
+          employees={activeStore.employees ?? []}
+          branchTokens={activeStore.branchTokens}
+          unlocked={unlocked}
+          getAdminPin={getAdminPin}
+          onRefresh={refresh}
+          onDeleteReport={deleteReport}
+        />
       )}
 
       {tab === "employees" && (

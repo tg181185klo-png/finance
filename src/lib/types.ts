@@ -186,6 +186,7 @@ export interface BranchDailyReport {
   expensesNote: string;
   submittedAt: string;
   submittedBy?: string;
+  submittedEmployeeId?: string;
   incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
   clientSales?: BranchClientSale[];

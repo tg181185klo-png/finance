@@ -711,7 +711,7 @@ export default function BranchPortal({ token }: { token: string }) {
           disabled={submitting || employees.length === 0 || !selectedEmployeeId}
           onClick={(e) => submit(e, true)}
         >
-          გაყიდვა არ ყოფილა (ნულოვანი რეპორტი)
+          გაყიდვა არ ყოფილა (ნულოვანი რეპორტი + ხელფასის ხარჯი)
         </button>
       </form>
 
