@@ -71,14 +71,15 @@ function emptyExpense(): ExpenseRow {
   return { id: uid(), category: "სხვა", amount: "", paymentMethod: "ქეში (ნაღდი)", comment: "" };
 }
 
-function matchProducts(products: Product[], query: string, limit = 12): Product[] {
+function matchProducts(products: Product[], query: string, limit?: number): Product[] {
   const q = query.trim().toLowerCase();
-  if (!q) return products.slice(0, limit);
+  const cap = limit ?? (q ? 30 : products.length);
+  if (!q) return products.slice(0, cap);
   const byCode = products.filter((p) => p.code.toLowerCase().includes(q));
   const byName = products.filter(
     (p) => p.name.toLowerCase().includes(q) && !byCode.some((x) => x.code === p.code)
   );
-  return [...byCode, ...byName].slice(0, limit);
+  return [...byCode, ...byName].slice(0, cap);
 }
 
 export default function BranchPortal({ token }: { token: string }) {
@@ -453,7 +454,7 @@ export default function BranchPortal({ token }: { token: string }) {
                         </div>
 
                         <label className="mb-1 block text-xs text-zinc-400">
-                          პროდუქტი (სია / კოდი / დასახელება)
+                          პროდუქტი — კოდი და დასახელება ({products.length} კალკულატორში)
                         </label>
                         <div className="relative">
                           <input
@@ -491,7 +492,7 @@ export default function BranchPortal({ token }: { token: string }) {
                             </button>
                           )}
                           {!prod.productCode && prod.showList && (
-                            <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                            <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
                               {suggestions.map((p) => (
                                 <li key={p.code}>
                                   <button
@@ -500,15 +501,17 @@ export default function BranchPortal({ token }: { token: string }) {
                                     onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => pickProduct(client.id, prod.id, p)}
                                   >
-                                    <span className="text-emerald-400">{p.code}</span>
-                                    <span className="mx-1 text-zinc-500">—</span>
-                                    {p.name}
+                                    <span className="font-medium text-emerald-400">{p.code}</span>
+                                    <span className="mx-2 text-zinc-600">|</span>
+                                    <span>{p.name}</span>
                                     <span className="float-right text-zinc-400">{formatMoney(p.price)}</span>
                                   </button>
                                 </li>
                               ))}
                               {suggestions.length === 0 && (
-                                <li className="px-3 py-2 text-xs text-zinc-500">ვერ მოიძებნა</li>
+                                <li className="px-3 py-2 text-xs text-zinc-500">
+                                  {products.length === 0 ? "პროდუქტები ვერ ჩაიტვირთა" : "ვერ მოიძებნა"}
+                                </li>
                               )}
                             </ul>
                           )}
@@ -516,7 +519,7 @@ export default function BranchPortal({ token }: { token: string }) {
 
                         {!prod.productCode && products.length > 0 && (
                           <div className="mt-2">
-                            <label className="mb-1 block text-xs text-zinc-400">სწრაფი არჩევა სიიდან</label>
+                            <label className="mb-1 block text-xs text-zinc-400">სიიდან არჩევა (კოდი — დასახელება)</label>
                             <select
                               className={inputCls}
                               value=""
@@ -526,9 +529,9 @@ export default function BranchPortal({ token }: { token: string }) {
                               }}
                             >
                               <option value="">აირჩიეთ პროდუქტი...</option>
-                              {products.slice(0, 200).map((p) => (
+                              {products.map((p) => (
                                 <option key={p.code} value={p.code}>
-                                  {p.code} — {p.name} ({p.price})
+                                  {p.code} — {p.name} ({formatMoney(p.price)})
                                 </option>
                               ))}
                             </select>

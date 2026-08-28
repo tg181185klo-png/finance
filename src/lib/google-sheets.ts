@@ -41,6 +41,12 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
+function parsePrice(raw: string): number {
+  const s = (raw ?? "").trim().replace(/\s/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 function colIndex(headers: string[], ...keys: string[]) {
   const norm = (s: string) => s.trim().toLowerCase();
   for (const k of keys) {
@@ -56,22 +62,52 @@ function priceCol(headers: string[]) {
   return headers.findIndex((h) => h.includes("გასაყიდი ფასი") && !h.includes("დღგ გარეშე") && !h.includes("სულ"));
 }
 
-function parseRows(rows: string[][], map: Map<string, Product>) {
-  if (!rows.length) return;
+function looksLikeProductCode(code: string) {
+  if (!code || code.length > 24) return false;
+  if (/^[\d]+\/[\dA-Za-z\-\/]+$/.test(code)) return true;
+  if (/^[\d]+\/[\dA-Za-z]+$/.test(code)) return true;
+  return /^[\d\/A-Za-z\-]+$/.test(code) && code.includes("/");
+}
+
+function parseHeaderRows(rows: string[][], map: Map<string, Product>, overwrite = false) {
+  if (!rows.length) return 0;
   const headers = rows[0].map((h) => h.trim());
   const codeIdx = colIndex(headers, "კოდი", "ბარკოდი");
   const nameIdx = colIndex(headers, "პროდუქტი", "დასახელება");
   const priceIdx = priceCol(headers);
-  if (codeIdx < 0 || nameIdx < 0 || priceIdx < 0) return;
+  if (codeIdx < 0 || nameIdx < 0 || priceIdx < 0) return 0;
 
+  let added = 0;
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const code = (row[codeIdx] ?? "").trim();
     const name = (row[nameIdx] ?? "").trim();
-    const price = parseFloat((row[priceIdx] ?? "").replace(",", "."));
+    const price = parsePrice(row[priceIdx] ?? "");
     if (!code || !name || !Number.isFinite(price) || price <= 0) continue;
-    if (!map.has(code)) map.set(code, { code, name, price });
+    if (!overwrite && map.has(code)) continue;
+    map.set(code, { code, name, price });
+    added++;
   }
+  return added;
+}
+
+/** თვითღირებულების ფურცელი — სათაურის გარეშე, კოდი/სახელი/გასაყიდი ფასი ფიქსირებული სვეტებით */
+function parseCostSheetRows(rows: string[][], map: Map<string, Product>) {
+  const CODE = 0;
+  const NAME = 1;
+  const PRICE = 17;
+  let added = 0;
+
+  for (const row of rows) {
+    const code = (row[CODE] ?? "").trim();
+    const name = (row[NAME] ?? "").trim();
+    if (!looksLikeProductCode(code) || !name) continue;
+    const price = parsePrice(row[PRICE] ?? "");
+    if (!Number.isFinite(price) || price <= 0) continue;
+    map.set(code, { code, name, price });
+    added++;
+  }
+  return added;
 }
 
 export async function fetchProductsFromGoogleSheets(): Promise<{ products: Product[]; error?: string }> {
@@ -92,10 +128,19 @@ export async function fetchProductsFromGoogleSheets(): Promise<{ products: Produ
       }
       const text = await res.text();
       if (text.includes("Sign in") || text.includes("<!DOCTYPE html") || text.includes("accounts.google.com")) {
-        lastErr = "ფურცელი კერძოა — გააზიარეთ „ინტერნეტზე ყველას“";
+        lastErr = "ფურცელი კერძოა — გააზიარეთ „ინტერნეთზე ყველას“";
         continue;
       }
-      parseRows(parseCsv(text), map);
+
+      const rows = parseCsv(text);
+      const isCostSheet = sheet.gid === env.googleSheetGidCost;
+
+      if (isCostSheet) {
+        parseCostSheetRows(rows, map);
+      } else {
+        const n = parseHeaderRows(rows, map);
+        if (n === 0) parseCostSheetRows(rows, map);
+      }
     } catch (e) {
       lastErr = e instanceof Error ? e.message : "შეცდომა";
     }
