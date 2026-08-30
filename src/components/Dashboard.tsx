@@ -173,6 +173,7 @@ export default function Dashboard() {
   const [obAmount, setObAmount] = useState("");
   const [obBranch, setObBranch] = useState<ExpenseBranch | "ყველა">("ყველა");
   const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
+  const [obComment, setObComment] = useState("");
   const [obRecurring, setObRecurring] = useState(true);
 
   // Obligation payment
@@ -759,7 +760,14 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          obligation: { name: obName.trim(), amount, branch: obBranch, category: obCategory, month: obMonth },
+          obligation: {
+            name: obName.trim(),
+            amount,
+            branch: obBranch,
+            category: obCategory,
+            month: obMonth,
+            comment: obComment.trim() || undefined,
+          },
           recurring: obRecurring,
         }),
       });
@@ -769,6 +777,7 @@ export default function Dashboard() {
       setSaveMsg(obRecurring ? "ყოველთვიური ვალდებულება დაემატა ✓" : "ვალდებულება დაემატა ✓");
       setObName("");
       setObAmount("");
+      setObComment("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
     }
@@ -1453,6 +1462,16 @@ export default function Dashboard() {
                   {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </Field>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Field label="კომენტარი (არასავალდებულო)">
+                  <input
+                    className={inputCls}
+                    value={obComment}
+                    onChange={(e) => setObComment(e.target.value)}
+                    placeholder="მაგ: ბანკის ანგარიში, შენიშვნა..."
+                  />
+                </Field>
+              </div>
             </div>
             <label className="mt-3 flex items-center gap-2 text-sm text-violet-200">
               <input type="checkbox" checked={obRecurring} onChange={(e) => setObRecurring(e.target.checked)} />
@@ -1467,7 +1486,10 @@ export default function Dashboard() {
               <div className="space-y-2">
                 {recurringList.map((r) => (
                   <div key={r.id} className="flex items-center justify-between rounded-lg border border-violet-900/30 bg-zinc-900/40 px-3 py-2 text-sm">
-                    <span>{r.name} · {r.category} · {formatMoney(r.amount)}</span>
+                    <span>
+                      {r.name} · {r.category} · {formatMoney(r.amount)}
+                      {r.comment && <span className="text-zinc-500"> · {r.comment}</span>}
+                    </span>
                     <button type="button" className="text-xs text-red-400" onClick={() => deleteRecurring(r.id)}>წაშლა</button>
                   </div>
                 ))}
@@ -1503,6 +1525,7 @@ export default function Dashboard() {
                         <span>{o.branch} · {o.category}</span>
                         <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
                       </div>
+                      {o.comment && <p className="mb-1 text-xs text-zinc-500">{o.comment}</p>}
                       <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
                         <div className={`h-full transition-all ${pct >= 100 ? "bg-emerald-500" : "bg-violet-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                       </div>

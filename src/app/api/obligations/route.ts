@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
             amount: body.obligation!.amount,
             branch: body.obligation!.branch,
             category: body.obligation!.category,
+            comment: body.obligation!.comment?.trim() || undefined,
           },
           month
         );
@@ -130,6 +131,7 @@ export async function POST(req: NextRequest) {
           id: uid(),
           paid: 0,
           month,
+          comment: body.obligation!.comment?.trim() || undefined,
         };
         if (!store.obligations[month]) store.obligations[month] = [];
         store.obligations[month].push(saved);

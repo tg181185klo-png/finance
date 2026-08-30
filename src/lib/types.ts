@@ -93,6 +93,7 @@ export interface Obligation {
   branch: ExpenseBranch | "ყველა";
   category: ExpenseCategory;
   month: string;
+  comment?: string;
   recurringId?: string;
   employeeId?: string;
 }
@@ -104,6 +105,7 @@ export interface RecurringObligation {
   amount: number;
   branch: ExpenseBranch | "ყველა";
   category: ExpenseCategory;
+  comment?: string;
   createdAt: string;
 }
 

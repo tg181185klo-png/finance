@@ -199,6 +199,7 @@ export function ensureMonthObligations(store: Store, month: string) {
         category: rec.category,
         month,
         recurringId: rec.id,
+        comment: rec.comment,
       });
       changed = true;
     }
@@ -544,6 +545,7 @@ export function addRecurringObligation(
     category: rec.category,
     month,
     recurringId: rec.id,
+    comment: rec.comment,
   });
   return rec;
 }
