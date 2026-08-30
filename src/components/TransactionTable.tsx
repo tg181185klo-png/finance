@@ -39,52 +39,32 @@ export function txDetail(t: Transaction) {
 
 function DeleteRow({
   id,
-  unlocked,
-  sessionPin,
   onDelete,
 }: {
   id: string;
-  unlocked: boolean;
-  sessionPin: string;
   onDelete: (id: string, pin: string) => Promise<boolean>;
 }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (unlocked && sessionPin) {
-    return (
-      <button
-        type="button"
-        title="წაშლა"
-        disabled={busy}
-        className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300 disabled:opacity-40"
-        onClick={async () => {
-          setBusy(true);
-          await onDelete(id, sessionPin);
-          setBusy(false);
-        }}
-      >
-        ✕
-      </button>
-    );
-  }
-
   return (
     <input
       type="password"
-      className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs focus:border-red-500 focus:outline-none"
+      className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs focus:border-red-500 focus:outline-none disabled:opacity-40"
       placeholder="PIN ↵"
       value={pin}
       disabled={busy}
+      autoComplete="off"
       onChange={(e) => setPin(e.target.value)}
       onKeyDown={async (e) => {
         if (e.key !== "Enter" || !pin.trim() || busy) return;
+        e.preventDefault();
         setBusy(true);
-        await onDelete(id, pin.trim());
-        setPin("");
+        const ok = await onDelete(id, pin.trim());
+        if (ok) setPin("");
         setBusy(false);
       }}
-      title="PIN + Enter — წაშლა"
+      title="შეიყვანეთ ადმინ კოდი და Enter — წაშლა"
     />
   );
 }
@@ -92,8 +72,6 @@ function DeleteRow({
 type Props = {
   rows: Transaction[];
   showBranch?: boolean;
-  unlocked: boolean;
-  sessionPin: string;
   onDelete: (id: string, pin: string) => Promise<boolean>;
   emptyText?: string;
 };
@@ -101,8 +79,6 @@ type Props = {
 export default function TransactionTable({
   rows,
   showBranch = true,
-  unlocked,
-  sessionPin,
   onDelete,
   emptyText = "ტრანზაქციები არ არის",
 }: Props) {
@@ -148,7 +124,7 @@ export default function TransactionTable({
                 {formatMoney(t.amount)}
               </td>
               <td className="py-2">
-                <DeleteRow id={t.id} unlocked={unlocked} sessionPin={sessionPin} onDelete={onDelete} />
+                <DeleteRow id={t.id} onDelete={onDelete} />
               </td>
             </tr>
           ))}

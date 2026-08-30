@@ -65,16 +65,12 @@ function StatCard({
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
-  unlocked: boolean;
-  sessionPin: string;
   onDelete: (id: string, pin: string) => Promise<boolean>;
 };
 
 export default function OverviewPanel({
   transactions,
   branchCash,
-  unlocked,
-  sessionPin,
   onDelete,
 }: Props) {
   const [scope, setScope] = useState<ViewScope>("company");
@@ -234,13 +230,11 @@ export default function OverviewPanel({
           <span className="ml-2 text-sm font-normal text-zinc-500">({tableRows.length})</span>
         </h3>
         <p className="mb-4 text-xs text-zinc-500">
-          წასაშლელად: PIN + Enter უჯრაში, ან ✕ თუ PIN უკვე გახსნილია.
+          წასაშლელად: შეიყვანეთ ადმინ კოდი უჯრაში და დააჭირეთ Enter.
         </p>
         <TransactionTable
           rows={tableRows}
           showBranch={scope === "company"}
-          unlocked={unlocked}
-          sessionPin={sessionPin}
           onDelete={onDelete}
         />
       </div>

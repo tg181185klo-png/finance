@@ -1419,8 +1419,6 @@ export default function Dashboard() {
         <OverviewPanel
           transactions={tx}
           branchCash={activeStore.branchCash}
-          unlocked={unlocked}
-          sessionPin={getAdminPin()}
           onDelete={deleteTxWithPin}
         />
       )}

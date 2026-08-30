@@ -7,16 +7,12 @@ import TransactionTable from "@/components/TransactionTable";
 type Props = {
   transactions: Transaction[];
   filter: Branch | "ყველა";
-  unlocked: boolean;
-  sessionPin: string;
   onDelete: (id: string, pin: string) => Promise<boolean>;
 };
 
 export default function TransactionsPanel({
   transactions,
   filter,
-  unlocked,
-  sessionPin,
   onDelete,
 }: Props) {
   const rows = (
@@ -30,12 +26,10 @@ export default function TransactionsPanel({
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
       <h2 className="mb-2 text-lg font-semibold">გაყიდვები და ხარჯები</h2>
-      <p className="mb-4 text-xs text-zinc-500">PIN + Enter — წაშლა მოდალის გარეშე.</p>
+      <p className="mb-4 text-xs text-zinc-500">წასაშლელად: ადმინ კოდი + Enter უჯრაში.</p>
       <TransactionTable
         rows={rows}
         showBranch={filter === "ყველა"}
-        unlocked={unlocked}
-        sessionPin={sessionPin}
         onDelete={onDelete}
         emptyText="ცარიელია"
       />
