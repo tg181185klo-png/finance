@@ -22,6 +22,16 @@ function findCol(headers: string[], ...keys: string[]): number {
   return -1;
 }
 
+/** გასაყიდი/ჯამური თანხა — არა შესყიდვის სვეტები */
+function findSalesCol(headers: string[], ...keys: string[]): number {
+  for (let i = 0; i < headers.length; i += 1) {
+    const h = normHeader(headers[i]);
+    if (h.includes("შესყიდ")) continue;
+    if (keys.some((k) => h.includes(k))) return i;
+  }
+  return -1;
+}
+
 function num(value: unknown): number {
   const n = typeof value === "number" ? value : parseFloat(String(value ?? "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
@@ -40,8 +50,8 @@ export function parseDistributionExcel(buffer: Buffer): ParsedSaleRow[] {
   const codeCol = findCol(headers, "ბარკოდ", "კოდ");
   const nameCol = findCol(headers, "დასახელებ");
   const qtyCol = findCol(headers, "რაოდენობ");
-  const priceCol = findCol(headers, "გასაყიდ");
-  const totalCol = findCol(headers, "ჯამური თანხ");
+  const priceCol = findSalesCol(headers, "გასაყიდ");
+  const totalCol = findSalesCol(headers, "ჯამური თანხ");
 
   if (codeCol < 0) throw new Error("ვერ მოიძებნა „ბარკოდი/კოდი“ სვეტი");
   if (qtyCol < 0) throw new Error("ვერ მოიძებნა „რაოდენობა“ სვეტი");

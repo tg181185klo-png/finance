@@ -124,6 +124,8 @@ export default function ImportSalesPanel({
       <p className="mb-4 text-xs text-zinc-500">
         შეგიძლიათ რამდენიმე ფაილი ერთად აირჩიოთ — ერთნაირი კოდის პროდუქტები ავტომატურად ემართება (რაოდენობა + თანხა).
         მეორედ ატვირთვისას (ჩანაცვლების გარეშე) არსებულ იმპორტს დაემატება.
+        ქუთაისი/ლილო/დიღომისთვის ატვირთეთ ორივე: <span className="text-zinc-400">sacalo</span> და{" "}
+        <span className="text-zinc-400">ip</span> ფაილი (მაგ. magazia sacalo aprili + magazia ip aprili).
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
