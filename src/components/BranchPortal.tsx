@@ -663,7 +663,7 @@ export default function BranchPortal({ token }: { token: string }) {
                           s.map((x) => (x.id === row.id ? { ...x, amount: e.target.value } : x))
                         )
                       }
-                      placeholder="თანხა"
+                      placeholder="თანხა (₾)"
                     />
                     <select
                       className={inputCls}
@@ -685,6 +685,16 @@ export default function BranchPortal({ token }: { token: string }) {
                       ))}
                     </select>
                   </div>
+                  <input
+                    className={`${inputCls} mt-2`}
+                    value={row.comment}
+                    onChange={(e) =>
+                      setExpenses((s) =>
+                        s.map((x) => (x.id === row.id ? { ...x, comment: e.target.value } : x))
+                      )
+                    }
+                    placeholder="რაში დაიხარჯა? (მაგ: საწვავი, ყავა, საკანცელარიო...)"
+                  />
                 </div>
               ))}
               <button
