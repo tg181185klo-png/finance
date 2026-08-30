@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { Transaction } from "@/lib/types";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, currentMonth, monthStartEnd } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -53,11 +53,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, onHistoryRefresh }: Props) {
   const [fromDate, setFromDate] = useState("2026-03-01");
+  const [viewMonth, setViewMonth] = useState(currentMonth());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const visibleDays = useMemo(() => {
+    if (!preview?.days) return [];
+    const { from, to } = monthStartEnd(viewMonth);
+    return preview.days.filter((d) => d.date >= from && d.date <= to);
+  }, [preview, viewMonth]);
 
   const loadPreview = useCallback(async () => {
     setBusy(true);
@@ -133,8 +140,11 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, 
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="ისტორია დაწყებული">
+        <Field label="ისტორია დაწყებული (სინქრონიზაცია)">
           <input type="date" className={`${inputCls} w-auto`} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </Field>
+        <Field label="ნახვის თვე">
+          <input type="month" className={`${inputCls} w-auto`} value={viewMonth} onChange={(e) => setViewMonth(e.target.value)} />
         </Field>
         <button type="button" className={btnCls} disabled={busy} onClick={loadPreview}>
           განახლება
@@ -153,8 +163,9 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, 
       {err && <p className="mb-2 text-sm text-red-400">{err}</p>}
       {msg && <p className="mb-2 text-sm text-emerald-400">{msg}</p>}
 
-      {preview && preview.days.length > 0 && (
+      {preview && visibleDays.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
+          <p className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-500">ნაჩვენები: {viewMonth}</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
@@ -167,7 +178,7 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, 
               </tr>
             </thead>
             <tbody>
-              {preview.days.map((day) => (
+              {visibleDays.map((day) => (
                 <Fragment key={day.date}>
                   <tr className="border-b border-zinc-800/50 hover:bg-zinc-900/40">
                     <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
@@ -211,8 +222,8 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, 
         </div>
       )}
 
-      {preview && preview.days.length === 0 && (
-        <p className="text-sm text-zinc-500">არჩეული თარიღის შემდეგ შეკვეთები არ მოიძებნა.</p>
+      {preview && visibleDays.length === 0 && (
+        <p className="text-sm text-zinc-500">ამ თვეში შეკვეთები არ მოიძებნა — აირჩიეთ სხვა თვე ან განაახლეთ.</p>
       )}
     </div>
   );

@@ -48,7 +48,7 @@ export default function BranchesPanel({
   const [filterBranch, setFilterBranch] = useState<Branch | "ყველა">("ყველა");
   const [filterFrom, setFilterFrom] = useState(today);
   const [filterTo, setFilterTo] = useState(today);
-  const [quickDay, setQuickDay] = useState<"today" | "week" | "month" | "custom">("today");
+  const [quickDay, setQuickDay] = useState<"today" | "week" | "month" | "custom">("month");
 
   const [restoreBranch, setRestoreBranch] = useState<Branch>("დიღომი");
   const [restoreDate, setRestoreDate] = useState("");

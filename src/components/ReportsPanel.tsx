@@ -5,6 +5,7 @@ import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
+import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -60,17 +61,18 @@ type MonthHistoryRow = {
 
 type Props = {
   employees: Employee[];
+  period: ResolvedPeriod;
   unlocked: boolean;
   getAdminPin: () => string;
   onTransactionsUpdate: (transactions: Transaction[]) => void;
 };
 
-export default function ReportsPanel({ employees, unlocked, getAdminPin, onTransactionsUpdate }: Props) {
+export default function ReportsPanel({ employees, period, unlocked, getAdminPin, onTransactionsUpdate }: Props) {
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [monthBranchReport, setMonthBranchReport] = useState<PeriodReport | null>(null);
   const [monthCompanyReport, setMonthCompanyReport] = useState<PeriodReport | null>(null);
-  const [repFrom, setRepFrom] = useState("");
-  const [repTo, setRepTo] = useState("");
+  const [repFrom, setRepFrom] = useState(() => monthStartEnd().from);
+  const [repTo, setRepTo] = useState(() => monthStartEnd().to);
   const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
   const [monthBranch, setMonthBranch] = useState<Branch>("დიღომი");
   const [history, setHistory] = useState<MonthHistoryRow[]>([]);
@@ -116,6 +118,14 @@ export default function ReportsPanel({ employees, unlocked, getAdminPin, onTrans
   useEffect(() => {
     loadMonthlySnapshots();
   }, [loadMonthlySnapshots]);
+
+  useEffect(() => {
+    setRepFrom(period.from);
+    setRepTo(period.to);
+    loadReport("period", period.from, period.to).then((data) => {
+      if (data) setReport(data);
+    });
+  }, [period.from, period.to, loadReport]);
 
   async function runReport(mode: string, from?: string, to?: string) {
     const data = await loadReport(mode, from, to);
@@ -234,6 +244,13 @@ export default function ReportsPanel({ employees, unlocked, getAdminPin, onTrans
           </div>
         </div>
       )}
+
+      <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
+        <h2 className="mb-1 font-semibold text-violet-200">პერიოდის ანგარიში</h2>
+        <p className="mb-4 text-xs text-zinc-500">
+          ნაგულისხმევი: ზემოთ არჩეული პერიოდი ({period.label}). შეცვალეთ თარიღები ქვემოთ სხვა პერიოდისთვის.
+        </p>
+      </div>
 
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
         <h2 className="mb-1 font-semibold text-violet-200">თვის ჭრილი — სწრაფი ხედი</h2>

@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types";
 import ReportsPanel from "@/components/ReportsPanel";
 import OverviewPanel from "@/components/OverviewPanel";
+import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import {
   BRANCHES,
@@ -55,6 +56,7 @@ import {
 import { PinModal, usePin } from "@/components/PinModal";
 import { clearSessionPin, getSessionPin, setSessionPin } from "@/lib/pin-session";
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
+import { type PeriodMode, resolvePeriod, periodFlow } from "@/lib/period-filter";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
@@ -84,7 +86,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "overview" | "obligations" | "reports" | "branches" | "inventory" | "employees";
+type Tab = "main" | "overview" | "clients" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -139,6 +141,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Branch | "ყველა">("ყველა");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const skipCashAutoSave = useRef(true);
@@ -166,6 +171,7 @@ export default function Dashboard() {
   const [eAmount, setEAmount] = useState("");
   const [eRecurrence, setERecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [eComment, setEComment] = useState("");
+  const [eDate, setEDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Obligations
   const [obMonth, setObMonth] = useState(currentMonth());
@@ -308,6 +314,16 @@ export default function Dashboard() {
 
   const activeStore = store ?? mergeStore({});
   const tx = activeStore.transactions;
+
+  const period = useMemo(
+    () => resolvePeriod(periodMode, customFrom, customTo),
+    [periodMode, customFrom, customTo]
+  );
+
+  const periodStats = useMemo(
+    () => periodFlow(tx, filter, period.from, period.to),
+    [tx, filter, period.from, period.to]
+  );
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -604,7 +620,7 @@ export default function Dashboard() {
     const expense: Expense = {
       id: uid(),
       type: "expense",
-      date: new Date().toISOString(),
+      date: `${eDate}T12:00:00.000Z`,
       branch: eBranch,
       category,
       amount,
@@ -1025,6 +1041,23 @@ export default function Dashboard() {
               <option key={b} value={b}>{b}</option>
             ))}
           </select>
+          <select
+            className={`${inputCls} w-auto`}
+            value={periodMode}
+            onChange={(e) => setPeriodMode(e.target.value as PeriodMode)}
+          >
+            <option value="month">მიმდინარე თვე</option>
+            <option value="today">დღეს</option>
+            <option value="custom">პერიოდი...</option>
+          </select>
+          {periodMode === "custom" && (
+            <>
+              <input type="date" className={`${inputCls} w-auto`} value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <span className="text-zinc-500">—</span>
+              <input type="date" className={`${inputCls} w-auto`} value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            </>
+          )}
+          <span className="hidden text-xs text-zinc-500 sm:inline">{period.label}</span>
         </div>
       </header>
 
@@ -1032,6 +1065,9 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
         <button type="button" className={tabCls(tab === "overview")} onClick={() => setTab("overview")}>
           მიმოხილვა
+        </button>
+        <button type="button" className={tabCls(tab === "clients")} onClick={() => setTab("clients")}>
+          კლიენტები
         </button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
@@ -1079,11 +1115,12 @@ export default function Dashboard() {
 
       {tab === "main" && (
         <>
+          <p className="mb-3 text-xs text-zinc-500">ნაჩვენები პერიოდი: <span className="text-emerald-400">{period.label}</span></p>
           <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <Stat label="შემოსავალი" value={formatMoney(balances.revenue)} accent="text-emerald-400" />
-            <Stat label="ხარჯები" value={formatMoney(balances.expenses)} accent="text-red-400" />
-            <Stat label="საერთო ბალანსი" value={formatMoney(balances.total)} accent={balances.total >= 0 ? "text-emerald-400" : "text-red-400"} />
-            <Stat label="ქეში" value={formatMoney(balances.cash)} />
+            <Stat label="შემოსავალი" value={formatMoney(periodStats.revenue)} accent="text-emerald-400" />
+            <Stat label="ხარჯები" value={formatMoney(periodStats.expenses)} accent="text-red-400" />
+            <Stat label="ნეტო" value={formatMoney(periodStats.net)} accent={periodStats.net >= 0 ? "text-emerald-400" : "text-red-400"} />
+            <Stat label="ქეში (სულ)" value={formatMoney(balances.cash)} />
             <Stat label="ბარათი/ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
             <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
@@ -1178,7 +1215,11 @@ export default function Dashboard() {
 
             <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-red-400">ხარჯი</h2>
+              <p className="mb-3 text-xs text-zinc-500">წინა თვეების ხარჯისთვის აირჩიეთ თარიღი — შემოსავალი Excel/აპიდან ემატება</p>
               <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="თარიღი">
+                  <input type="date" className={inputCls} value={eDate} onChange={(e) => setEDate(e.target.value)} required />
+                </Field>
                 <Field label="ფილიალი">
                   <select className={inputCls} value={eBranch} onChange={(e) => setEBranch(e.target.value as ExpenseBranch)}>
                     {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -1428,8 +1469,14 @@ export default function Dashboard() {
         <OverviewPanel
           transactions={tx}
           branchCash={activeStore.branchCash}
+          period={period}
+          branchFilter={filter}
           onDelete={deleteTxWithPin}
         />
+      )}
+
+      {tab === "clients" && !loading && (
+        <ClientsPanel transactions={tx} period={period} branchFilter={filter} />
       )}
 
       {tab === "obligations" && (
@@ -1594,6 +1641,7 @@ export default function Dashboard() {
       {tab === "reports" && (
         <ReportsPanel
           employees={activeStore.employees ?? []}
+          period={period}
           unlocked={unlocked}
           getAdminPin={getAdminPin}
           onTransactionsUpdate={(transactions) =>
