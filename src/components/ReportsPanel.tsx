@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Branch, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
+import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
+import ImportSalesPanel from "@/components/ImportSalesPanel";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -48,13 +49,22 @@ function MiniReport({ title, report }: { title: string; report: PeriodReport | n
   );
 }
 
+type MonthHistoryRow = {
+  month: string;
+  revenue: number;
+  expenses: number;
+  net: number;
+  byBranch: { branch: Branch; revenue: number; expenses: number; net: number }[];
+};
+
 type Props = {
+  employees: Employee[];
   unlocked: boolean;
   getAdminPin: () => string;
   onTransactionsUpdate: (transactions: Transaction[]) => void;
 };
 
-export default function ReportsPanel({ unlocked, getAdminPin, onTransactionsUpdate }: Props) {
+export default function ReportsPanel({ employees, unlocked, getAdminPin, onTransactionsUpdate }: Props) {
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [monthBranchReport, setMonthBranchReport] = useState<PeriodReport | null>(null);
   const [monthCompanyReport, setMonthCompanyReport] = useState<PeriodReport | null>(null);
@@ -62,6 +72,7 @@ export default function ReportsPanel({ unlocked, getAdminPin, onTransactionsUpda
   const [repTo, setRepTo] = useState("");
   const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
   const [monthBranch, setMonthBranch] = useState<Branch>("დიღომი");
+  const [history, setHistory] = useState<MonthHistoryRow[]>([]);
   const [err, setErr] = useState("");
 
   const loadReport = useCallback(async (mode: string, from?: string, to?: string, branch?: Branch | "ყველა") => {
@@ -77,6 +88,20 @@ export default function ReportsPanel({ unlocked, getAdminPin, onTransactionsUpda
     setErr("");
     return data as PeriodReport;
   }, [repBranch]);
+
+  const loadHistory = useCallback(async () => {
+    const res = await fetch("/api/reports?mode=months&count=6");
+    const data = await res.json();
+    if (data.error) {
+      setErr(data.error);
+      return;
+    }
+    setHistory(data.months ?? []);
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   const loadMonthlySnapshots = useCallback(async () => {
     const [company, branch] = await Promise.all([
@@ -144,6 +169,61 @@ export default function ReportsPanel({ unlocked, getAdminPin, onTransactionsUpda
 
   return (
     <section className="space-y-6">
+      <ImportSalesPanel
+        employees={employees}
+        unlocked={unlocked}
+        getAdminPin={getAdminPin}
+        onImported={onTransactionsUpdate}
+        onHistoryRefresh={() => {
+          loadHistory();
+          loadMonthlySnapshots();
+        }}
+      />
+
+      {history.length > 0 && (
+        <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold text-emerald-200">ბოლო 6 თვე — კომპანია</h2>
+            <button type="button" className={btnCls} onClick={loadHistory}>განახლება</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                  <th className="pb-2 pr-3">თვე</th>
+                  <th className="pb-2 pr-3 text-right">შემოსავალი</th>
+                  <th className="pb-2 pr-3 text-right">ხარჯი</th>
+                  <th className="pb-2 pr-3 text-right">ნეტო</th>
+                  {BRANCHES.map((b) => (
+                    <th key={b} className="pb-2 pr-2 text-right text-[10px]">{b}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row) => (
+                  <tr key={row.month} className="border-b border-zinc-800/50">
+                    <td className="py-2 pr-3 font-medium">{row.month}</td>
+                    <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(row.revenue)}</td>
+                    <td className="py-2 pr-3 text-right text-red-400">{formatMoney(row.expenses)}</td>
+                    <td className={`py-2 pr-3 text-right ${row.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {formatMoney(row.net)}
+                    </td>
+                    {BRANCHES.map((b) => {
+                      const br = row.byBranch.find((x) => x.branch === b);
+                      return (
+                        <td key={b} className="py-2 pr-2 text-right text-xs text-zinc-400">
+                          {br ? formatMoney(br.revenue) : "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
         <h2 className="mb-1 font-semibold text-violet-200">თვის ჭრილი — სწრაფი ხედი</h2>
         <p className="mb-4 text-xs text-zinc-500">

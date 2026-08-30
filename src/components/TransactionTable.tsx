@@ -113,6 +113,7 @@ export default function TransactionTable({
                       : "გაყიდვა"
                   : "ხარჯი"}
                 {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
+                {t.source === "import" && <span className="ml-1 text-xs text-zinc-500">📊</span>}
               </td>
               {showBranch && <td className="py-2 pr-3">{t.branch}</td>}
               <td className="py-2 pr-3">{txLabel(t)}</td>

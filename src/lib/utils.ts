@@ -50,7 +50,7 @@ export function emptyBranchCash(): BranchCash {
 }
 
 export function emptyInventory(): Record<Branch, BranchInventory> {
-  return { ქუთაისი: {}, ლილო: {}, დიღომი: {} };
+  return Object.fromEntries(BRANCHES.map((b) => [b, {}])) as Record<Branch, BranchInventory>;
 }
 
 export function getStock(inventory: Record<Branch, BranchInventory>, branch: Branch, productCode: string) {
@@ -653,6 +653,26 @@ export function monthStartEnd(month = currentMonth()) {
   const [y, m] = month.split("-").map(Number);
   const last = new Date(y, m, 0).getDate();
   return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
+}
+
+/** ბოლო N თვის YYYY-MM სია (უახლესი პირველი) */
+export function lastMonths(count: number, fromMonth?: string): string[] {
+  const base = fromMonth ?? currentMonth();
+  const [y, m] = base.split("-").map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(y, m - 1 - i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+export function importCommentPrefix(month: string, fileName: string) {
+  return `Excel · ${month} · ${fileName}`;
+}
+
+export function isImportSaleComment(comment: string, month: string, branch?: string) {
+  return comment.startsWith(`Excel · ${month}`);
 }
 
 // Client migration from old localStorage

@@ -1563,7 +1563,7 @@ export default function Dashboard() {
                           </div>
                           {(obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")) === "საერთო" && (
                             <p className="mt-2 text-xs text-violet-300">
-                              „საერთო“ თანხას ქუთაისს, ლილოსა და დიღომს თანაბრად ჩამოაკლებს.
+                              „საერთო“ თანხას ყველა ფილიალს თანაბრად ჩამოაკლებს.
                             </p>
                           )}
                         </div>
@@ -1593,6 +1593,7 @@ export default function Dashboard() {
 
       {tab === "reports" && (
         <ReportsPanel
+          employees={activeStore.employees ?? []}
           unlocked={unlocked}
           getAdminPin={getAdminPin}
           onTransactionsUpdate={(transactions) =>

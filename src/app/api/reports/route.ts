@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildPeriodReport, currentMonth } from "@/lib/utils";
+import { buildPeriodReport, currentMonth, lastMonths, monthStartEnd } from "@/lib/utils";
 import { readStore } from "@/lib/server-store";
 import type { Branch } from "@/lib/types";
 
@@ -27,6 +27,49 @@ export async function GET(req: NextRequest) {
       store.obligations,
       `${month}-01`,
       `${month}-${String(last).padStart(2, "0")}`,
+      branch,
+      store.branchCash
+    );
+    return NextResponse.json(report);
+  }
+
+  if (mode === "months") {
+    const count = Math.min(12, Math.max(1, parseInt(p.get("count") ?? "6", 10)));
+    const months = lastMonths(count);
+    const items = months.map((m) => {
+      const { from, to } = monthStartEnd(m);
+      const company = buildPeriodReport(
+        store.transactions,
+        store.obligations,
+        from,
+        to,
+        "ყველა",
+        store.branchCash
+      );
+      return {
+        month: m,
+        revenue: company.revenue,
+        expenses: company.expenses,
+        net: company.net,
+        byBranch: company.byBranch.map((b) => ({
+          branch: b.branch,
+          revenue: b.revenue,
+          expenses: b.expenses,
+          net: b.net,
+        })),
+      };
+    });
+    return NextResponse.json({ months: items });
+  }
+
+  if (mode === "monthly") {
+    const monthParam = p.get("month") ?? month;
+    const { from, to } = monthStartEnd(monthParam);
+    const report = buildPeriodReport(
+      store.transactions,
+      store.obligations,
+      from,
+      to,
       branch,
       store.branchCash
     );

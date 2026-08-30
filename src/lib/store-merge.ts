@@ -6,14 +6,11 @@ export const DEFAULT_BRANCH_TOKENS: Record<Branch, string> = {
   ქუთაისი: "kut-a8f3",
   ლილო: "lil-b2c9",
   დიღომი: "dig-c5e1",
+  დისტრიბუცია: "dis-e4a2",
 };
 
 export function mergeBranchCash(data?: Partial<Record<Branch, BranchCash>>): Record<Branch, BranchCash> {
-  const base = {
-    ქუთაისი: emptyBranchCash(),
-    ლილო: emptyBranchCash(),
-    დიღომი: emptyBranchCash(),
-  };
+  const base = Object.fromEntries(BRANCHES.map((b) => [b, emptyBranchCash()])) as Record<Branch, BranchCash>;
   const out = { ...base };
   for (const b of BRANCHES) {
     out[b] = { ...base[b], ...data?.[b] };

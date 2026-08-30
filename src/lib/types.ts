@@ -1,4 +1,4 @@
-export type Branch = "ქუთაისი" | "ლილო" | "დიღომი";
+export type Branch = "ქუთაისი" | "ლილო" | "დიღომი" | "დისტრიბუცია";
 export type ExpenseBranch = Branch | "საერთო";
 export type PaymentStatus = "სრულად გადახდილი" | "ბე (ავანსი)";
 export type PaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
@@ -7,7 +7,7 @@ export type ExpenseCategory =
   | "საწვავი" | "ხელფასი" | "კომუნალურები" | "დღგ" | "სესხი";
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
 export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
-export type TxSource = "admin" | "branch";
+export type TxSource = "admin" | "branch" | "import";
 export type WorkShift = "დღის" | "საღამოს" | "ღამის";
 
 export interface Product {
