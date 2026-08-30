@@ -20,9 +20,8 @@ import type {
   TxRecurrence,
 } from "@/lib/types";
 import ReportsPanel from "@/components/ReportsPanel";
-import BalancesPanel from "@/components/BalancesPanel";
+import OverviewPanel from "@/components/OverviewPanel";
 import BranchesPanel from "@/components/BranchesPanel";
-import TransactionsPanel from "@/components/TransactionsPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -85,7 +84,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "transactions" | "balances" | "obligations" | "reports" | "branches" | "inventory" | "employees";
+type Tab = "main" | "overview" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -1022,10 +1021,9 @@ export default function Dashboard() {
 
       <nav className="mb-6 flex flex-wrap gap-2">
         <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
-        <button type="button" className={tabCls(tab === "transactions")} onClick={() => setTab("transactions")}>
-          ტრანზაქციები
+        <button type="button" className={tabCls(tab === "overview")} onClick={() => setTab("overview")}>
+          მიმოხილვა
         </button>
-        <button type="button" className={tabCls(tab === "balances")} onClick={() => setTab("balances")}>ბალანსი</button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
         <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
@@ -1417,10 +1415,10 @@ export default function Dashboard() {
         </>
       )}
 
-      {tab === "transactions" && !loading && (
-        <TransactionsPanel
+      {tab === "overview" && !loading && (
+        <OverviewPanel
           transactions={tx}
-          filter={filter}
+          branchCash={activeStore.branchCash}
           unlocked={unlocked}
           sessionPin={getAdminPin()}
           onDelete={deleteTxWithPin}
@@ -1570,10 +1568,6 @@ export default function Dashboard() {
           </div>
         </section>
         )
-      )}
-
-      {tab === "balances" && !loading && (
-        <BalancesPanel transactions={tx} branchCash={activeStore.branchCash} />
       )}
 
       {tab === "reports" && (
