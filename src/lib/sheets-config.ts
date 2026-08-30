@@ -6,6 +6,7 @@ export const env = {
   googleSheetGidProducts: process.env.GOOGLE_SHEET_GID_PRODUCTS || "",
   adminPin: process.env.ADMIN_PIN || "12345",
   appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://finance-eight-ruddy-60.vercel.app",
+  distribuciaApiUrl: process.env.DISTRIBUCIA_API_URL || "https://polimeri-distribucia.netlify.app",
   blobToken: process.env.BLOB_READ_WRITE_TOKEN || "",
   excelPath: process.env.EXCEL_PATH || "",
 };

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
+import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -169,6 +170,16 @@ export default function ReportsPanel({ employees, unlocked, getAdminPin, onTrans
 
   return (
     <section className="space-y-6">
+      <DistribuciaSyncPanel
+        unlocked={unlocked}
+        getAdminPin={getAdminPin}
+        onSynced={onTransactionsUpdate}
+        onHistoryRefresh={() => {
+          loadHistory();
+          loadMonthlySnapshots();
+        }}
+      />
+
       <ImportSalesPanel
         employees={employees}
         unlocked={unlocked}

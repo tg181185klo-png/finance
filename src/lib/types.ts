@@ -7,7 +7,7 @@ export type ExpenseCategory =
   | "საწვავი" | "ხელფასი" | "კომუნალურები" | "დღგ" | "სესხი";
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
 export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
-export type TxSource = "admin" | "branch" | "import";
+export type TxSource = "admin" | "branch" | "import" | "distribucia";
 export type WorkShift = "დღის" | "საღამოს" | "ღამის";
 
 export interface Product {
@@ -46,6 +46,8 @@ export interface Sale {
   deliveryCompletedAt?: string;
   /** შეკვეთა სრულად დასრულებული (ფული + მოწოდება) */
   orderCompletedAt?: string;
+  /** polimeri-distribucia აპის შეკვეთის ID */
+  distribuciaOrderId?: string;
 }
 
 /** ბე შეკვეთის გადახდის ისტორია */
