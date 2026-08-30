@@ -22,6 +22,7 @@ import type {
 import ReportsPanel from "@/components/ReportsPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import BranchesPanel from "@/components/BranchesPanel";
+import TransactionsPanel from "@/components/TransactionsPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -84,7 +85,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "balances" | "obligations" | "reports" | "branches" | "inventory" | "employees";
+type Tab = "main" | "transactions" | "balances" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -377,12 +378,6 @@ export default function Dashboard() {
     }
     return rows.sort((a, b) => b.at.localeCompare(a.at));
   }, [activeStore.creditPayments, activeStore.creditDeliveries, saleById, filter]);
-  const history = useMemo(() => {
-    const list = filter === "ყველა" ? tx : tx.filter((t) => t.branch === filter || t.branch === "საერთო");
-    return [...list]
-      .filter((t) => !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [tx, filter]);
 
   const obSummary = useMemo(
     () => obligationSummary(activeStore.obligations, obMonth, filter),
@@ -706,39 +701,40 @@ export default function Dashboard() {
     });
   }
 
-  function deleteTx(id: string) {
+  async function deleteTxWithPin(id: string, pinCode: string): Promise<boolean> {
     if (!id) {
-      setError("ჩანაწერის ID ვერ მოიძებნა — განაახლეთ გვერდი და სცადეთ თავიდან");
-      return;
+      setError("ჩანაწერის ID ვერ მოიძებნა");
+      return false;
     }
-    runWithPin(async (pinCode) => {
-      try {
-        setError("");
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "delete", id, pin: pinCode }),
-          cache: "no-store",
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
-        setStore((prev) =>
-          prev
-            ? {
-                ...prev,
-                transactions: d.transactions ?? prev.transactions.filter((t) => t.id !== id),
-                inventory: d.inventory ?? prev.inventory,
-                obligations: d.obligations ?? prev.obligations,
-                creditPayments: d.creditPayments ?? prev.creditPayments,
-                creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
-              }
-            : prev
-        );
-        setSaveMsg("წაშლილია ✓");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
-      }
-    });
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id, pin: pinCode }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
+      if (await verifyPin(pinCode)) rememberPin(pinCode);
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: d.transactions ?? prev.transactions.filter((t) => t.id !== id),
+              inventory: d.inventory ?? prev.inventory,
+              obligations: d.obligations ?? prev.obligations,
+              creditPayments: d.creditPayments ?? prev.creditPayments,
+              creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+            }
+          : prev
+      );
+      setSaveMsg("წაშლილია ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
+      return false;
+    }
   }
 
   function deleteReport(reportId: string) {
@@ -981,32 +977,6 @@ export default function Dashboard() {
     });
   }
 
-  function txLabel(t: Transaction) {
-    if (t.type === "sale") {
-      const emp = t.employeeName ? ` (${t.employeeName})` : "";
-      return `${t.productName} × ${t.quantity}${emp}`;
-    }
-    return t.category;
-  }
-
-  function txDetail(t: Transaction) {
-    if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) {
-      const moneyLeft = saleCreditRemaining(t);
-      const qtyLeft = saleQuantityRemaining(t);
-      const parts: string[] = [];
-      if (moneyLeft > 0) parts.push(`გადასახდელი ${formatMoney(moneyLeft)}`);
-      else parts.push("ფული ✓");
-      if (qtyLeft > 0) parts.push(`დასამიწოდებელი ${qtyLeft} ც`);
-      else parts.push("მოწოდება ✓");
-      return `ბე · ${parts.join(" · ")}`;
-    }
-    if (t.type === "sale") {
-      if (t.orderCompletedAt) return `ბე დასრულებული · ${t.paymentMethod}`;
-      return `${t.paymentStatus} · ${t.paymentMethod}`;
-    }
-    return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
-  }
-
   async function unlockAdmin(pinCode: string) {
     const ok = await verifyPin(pinCode);
     if (ok) {
@@ -1052,6 +1022,9 @@ export default function Dashboard() {
 
       <nav className="mb-6 flex flex-wrap gap-2">
         <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
+        <button type="button" className={tabCls(tab === "transactions")} onClick={() => setTab("transactions")}>
+          ტრანზაქციები
+        </button>
         <button type="button" className={tabCls(tab === "balances")} onClick={() => setTab("balances")}>ბალანსი</button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
@@ -1441,67 +1414,17 @@ export default function Dashboard() {
             </section>
           )}
 
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-            <h2 className="mb-4 text-lg font-semibold">
-              გაყიდვები და ხარჯები
-              {unlocked && <span className="ml-2 text-xs font-normal text-zinc-500">(წაშლა ერთი PIN-ით სესიაში)</span>}
-            </h2>
-            {history.length === 0 ? (
-              <p className="text-sm text-zinc-500">ცარიელია</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                      <th className="pb-2 pr-3">დრო</th>
-                      <th className="pb-2 pr-3">ტიპი</th>
-                      <th className="pb-2 pr-3">ფილიალი</th>
-                      <th className="pb-2 pr-3">აღწერა</th>
-                      <th className="pb-2 pr-3">კომენტარი</th>
-                      <th className="pb-2 pr-3 text-right">თანხა</th>
-                      {unlocked && <th className="pb-2" />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((t) => (
-                      <tr key={t.id} className="border-b border-zinc-800/50">
-                        <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
-                        <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
-                          {t.type === "sale"
-                            ? (t.orderCompletedAt ? "გაყიდვა" : t.paymentStatus === "ბე (ავანსი)" ? "ბე" : "გაყიდვა")
-                            : "ხარჯი"}
-                          {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
-                        </td>
-                        <td className="py-2 pr-3">{t.branch}</td>
-                        <td className="py-2 pr-3">{txLabel(t)}</td>
-                        <td className="py-2 pr-3 text-zinc-500">{t.comment || txDetail(t)}</td>
-                        <td className={`py-2 pr-3 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
-                          {t.type === "sale" ? "+" : "-"}{formatMoney(t.amount)}
-                        </td>
-                        {unlocked && (
-                          <td className="py-2">
-                            <button
-                              type="button"
-                              title="წაშლა"
-                              className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                deleteTx(t.id);
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </>
+      )}
+
+      {tab === "transactions" && !loading && (
+        <TransactionsPanel
+          transactions={tx}
+          filter={filter}
+          unlocked={unlocked}
+          sessionPin={getAdminPin()}
+          onDelete={deleteTxWithPin}
+        />
       )}
 
       {tab === "obligations" && (
