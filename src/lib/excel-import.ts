@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Branch, Sale } from "./types";
-import { importCommentPrefix, monthStartEnd, uid } from "./utils";
+import { monthStartEnd } from "./utils";
 
 export type ParsedSaleRow = {
   productCode: string;
@@ -72,19 +72,58 @@ export function parseDistributionExcel(buffer: Buffer): ParsedSaleRow[] {
   }
 
   if (!out.length) throw new Error("ვალიდური ხაზები ვერ მოიძებნა — შეამოწმეთ სვეტების სახელები");
-  return out;
+  return mergeRowsByProduct(out);
+}
+
+/** ერთნაირი კოდის ხაზების გაერთიანება — რაოდენობა და თანხა ემატება */
+export function mergeRowsByProduct(rows: ParsedSaleRow[]): ParsedSaleRow[] {
+  const map = new Map<string, ParsedSaleRow>();
+  for (const row of rows) {
+    const key = row.productCode.trim();
+    if (!key) continue;
+    const cur = map.get(key);
+    if (!cur) {
+      map.set(key, { ...row, productCode: key });
+      continue;
+    }
+    cur.quantity += row.quantity;
+    cur.amount = Math.round((cur.amount + row.amount) * 100) / 100;
+    cur.unitPrice =
+      cur.quantity > 0 ? Math.round((cur.amount / cur.quantity) * 100) / 100 : cur.unitPrice;
+    if (row.productName.length > cur.productName.length) cur.productName = row.productName;
+  }
+  return [...map.values()].sort((a, b) => a.productCode.localeCompare(b.productCode));
+}
+
+export function salesToImportRows(sales: Sale[]): ParsedSaleRow[] {
+  return sales.map((s) => ({
+    productCode: s.productCode,
+    productName: s.productName,
+    quantity: s.quantity,
+    unitPrice: s.unitPrice,
+    amount: s.amount,
+  }));
+}
+
+export function importSaleId(branch: Branch, month: string, productCode: string) {
+  const safe = productCode.replace(/[^a-zA-Z0-9/]/g, "_");
+  return `import-${month}-${branch}-${safe}`;
+}
+
+export function isBranchMonthImport(sale: Sale, branch: Branch, month: string) {
+  return sale.source === "import" && sale.branch === branch && sale.date.slice(0, 7) === month;
 }
 
 export function buildImportSales(
   rows: ParsedSaleRow[],
-  opts: { branch: Branch; month: string; fileName: string; employeeName?: string }
+  opts: { branch: Branch; month: string; fileLabel: string; employeeName?: string }
 ): Sale[] {
   const { to } = monthStartEnd(opts.month);
   const date = `${to}T12:00:00.000Z`;
-  const comment = importCommentPrefix(opts.month, opts.fileName);
+  const comment = `Excel · ${opts.month} · ${opts.branch} · ${opts.fileLabel}`;
 
   return rows.map((row) => ({
-    id: uid(),
+    id: importSaleId(opts.branch, opts.month, row.productCode),
     type: "sale" as const,
     date,
     branch: opts.branch,
@@ -105,5 +144,5 @@ export function buildImportSales(
 export function summarizeImportRows(rows: ParsedSaleRow[]) {
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const qty = rows.reduce((s, r) => s + r.quantity, 0);
-  return { lines: rows.length, total, quantity: qty };
+  return { lines: rows.length, products: rows.length, total, quantity: qty };
 }

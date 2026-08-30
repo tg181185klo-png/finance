@@ -1,28 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN, BRANCHES } from "@/lib/constants";
-import { buildImportSales, parseDistributionExcel, summarizeImportRows } from "@/lib/excel-import";
+import {
+  buildImportSales,
+  isBranchMonthImport,
+  mergeRowsByProduct,
+  parseDistributionExcel,
+  salesToImportRows,
+  summarizeImportRows,
+} from "@/lib/excel-import";
 import { updateStore } from "@/lib/server-store";
 import type { Branch, Sale, Store } from "@/lib/types";
-import { importCommentPrefix, reverseCreditOrderData } from "@/lib/utils";
+import { reverseCreditOrderData } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-function removeImportSales(store: Store, branch: Branch, month: string) {
-  const prefix = `Excel · ${month} ·`;
+function removeBranchMonthImports(store: Store, branch: Branch, month: string) {
   const removed = store.transactions.filter(
-    (t) => t.type === "sale" && t.branch === branch && t.source === "import" && t.comment.startsWith(prefix)
+    (t): t is Sale => t.type === "sale" && isBranchMonthImport(t, branch, month)
   );
   for (const t of removed) {
-    if (t.type === "sale") reverseCreditOrderData(store, t.id, t);
+    reverseCreditOrderData(store, t.id, t);
   }
   store.transactions = store.transactions.filter((t) => !removed.some((r) => r.id === t.id));
   return removed.length;
 }
 
+function parseFiles(form: FormData): File[] {
+  const list = form.getAll("files").filter((f): f is File => f instanceof File);
+  const single = form.get("file");
+  if (single instanceof File) list.push(single);
+  return list;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
-    const file = form.get("file");
+    const files = parseFiles(form);
     const pin = String(form.get("pin") ?? "");
     const branch = String(form.get("branch") ?? "დისტრიბუცია") as Branch;
     const month = String(form.get("month") ?? "");
@@ -36,53 +49,74 @@ export async function POST(req: NextRequest) {
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return NextResponse.json({ error: "თვე: YYYY-MM ფორმატი" }, { status: 400 });
     }
-    if (!(file instanceof File)) {
+    if (!files.length) {
       return NextResponse.json({ error: "Excel ფაილი საჭიროა" }, { status: 400 });
     }
     if (!previewOnly && pin !== ADMIN_PIN) {
       return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const rows = parseDistributionExcel(buffer);
-    const summary = summarizeImportRows(rows);
+    let parsedRows: ReturnType<typeof parseDistributionExcel> = [];
+    for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      parsedRows = mergeRowsByProduct([...parsedRows, ...parseDistributionExcel(buffer)]);
+    }
+
+    const fileNames = files.map((f) => f.name);
+    const summary = summarizeImportRows(parsedRows);
 
     if (previewOnly) {
       return NextResponse.json({
         ok: true,
         preview: true,
         ...summary,
-        sample: rows.slice(0, 5),
+        products: parsedRows.length,
+        sample: parsedRows.slice(0, 8),
         month,
         branch,
-        fileName: file.name,
+        fileNames,
+        mergeMode: !replaceExisting,
       });
     }
 
-    const sales: Sale[] = buildImportSales(rows, {
-      branch,
-      month,
-      fileName: file.name,
-      employeeName: employeeName || undefined,
-    });
+    let imported = 0;
+    let removed = 0;
+    let mergedProductCount = parsedRows.length;
+    let mergedTotal = summary.total;
 
-    let replaced = 0;
     const store = await updateStore((s) => {
-      if (replaceExisting) {
-        replaced = removeImportSales(s, branch, month);
+      let mergedRows = parsedRows;
+      if (!replaceExisting) {
+        const existing = s.transactions.filter(
+          (t): t is Sale => t.type === "sale" && isBranchMonthImport(t, branch, month)
+        );
+        mergedRows = mergeRowsByProduct([...salesToImportRows(existing), ...parsedRows]);
       }
+      mergedProductCount = mergedRows.length;
+      mergedTotal = summarizeImportRows(mergedRows).total;
+      removed = removeBranchMonthImports(s, branch, month);
+      const label =
+        fileNames.length === 1 ? fileNames[0] : `${fileNames.length} ფაილი · შეჯამება`;
+      const sales = buildImportSales(mergedRows, {
+        branch,
+        month,
+        fileLabel: label,
+        employeeName: employeeName || undefined,
+      });
+      imported = sales.length;
       s.transactions = [...sales, ...s.transactions];
     });
 
     return NextResponse.json({
       ok: true,
-      imported: sales.length,
-      replaced,
-      total: summary.total,
+      imported,
+      products: mergedProductCount,
+      replaced: removed,
+      total: mergedTotal,
       month,
       branch,
-      fileName: file.name,
-      commentTag: importCommentPrefix(month, file.name),
+      fileNames,
+      mergeMode: !replaceExisting,
       transactions: store.transactions,
     });
   } catch (err) {

@@ -20,6 +20,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 type Preview = {
   lines: number;
+  products: number;
   total: number;
   quantity: number;
   sample: { productCode: string; productName: string; quantity: number; unitPrice: number; amount: number }[];
@@ -40,7 +41,7 @@ export default function ImportSalesPanel({
   onImported,
   onHistoryRefresh,
 }: Props) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [branch, setBranch] = useState<Branch>("დისტრიბუცია");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -48,7 +49,7 @@ export default function ImportSalesPanel({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
   const [employeeId, setEmployeeId] = useState("");
-  const [replaceExisting, setReplaceExisting] = useState(true);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -62,8 +63,8 @@ export default function ImportSalesPanel({
   const selectedEmployee = branchEmployees.find((e) => e.id === employeeId);
 
   async function runImport(previewOnly: boolean) {
-    if (!file) {
-      setErr("აირჩიეთ Excel ფაილი");
+    if (!files.length) {
+      setErr("აირჩიეთ ერთი ან რამდენიმე Excel ფაილი");
       return;
     }
     if (!previewOnly && !unlocked) {
@@ -75,7 +76,7 @@ export default function ImportSalesPanel({
     setMsg("");
     try {
       const form = new FormData();
-      form.append("file", file);
+      for (const f of files) form.append("files", f);
       form.append("branch", branch);
       form.append("month", month);
       form.append("replaceExisting", String(replaceExisting));
@@ -91,17 +92,23 @@ export default function ImportSalesPanel({
       if (previewOnly) {
         setPreview({
           lines: data.lines,
+          products: data.products ?? data.lines,
           total: data.total,
           quantity: data.quantity,
           sample: data.sample ?? [],
         });
-        setMsg(`პრევიუ: ${data.lines} ხაზი · ${formatMoney(data.total)}`);
+        setMsg(
+          `პრევიუ: ${data.products ?? data.lines} პროდუქტი · ${data.quantity} ც · ${formatMoney(data.total)}` +
+            (data.mergeMode ? " · დაემატება არსებულს" : " · ჩაანაცვლებს")
+        );
       } else {
         setPreview(null);
         onImported(data.transactions ?? []);
         onHistoryRefresh();
         setMsg(
-          `იმპორტი დასრულდა ✓ ${data.imported} გაყიდვა · ${formatMoney(data.total)}${data.replaced ? ` (ჩანაცვლდა ${data.replaced})` : ""}`
+          `იმპორტი ✓ ${data.products} პროდუქტი · ${formatMoney(data.total)}` +
+            (data.mergeMode ? " · დაემატა არსებულ იმპორტს" : " · ჩანაცვლდა") +
+            (data.replaced ? ` (${data.replaced} ძველი ხაზი)` : "")
         );
       }
     } catch (e) {
@@ -115,18 +122,19 @@ export default function ImportSalesPanel({
     <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-5">
       <h2 className="mb-1 font-semibold text-sky-200">Excel იმპორტი — გაყიდვები</h2>
       <p className="mb-4 text-xs text-zinc-500">
-        ატვირთეთ distribucia marti.xlsx ფორმატის ფაილი (ბარკოდი, დასახელება, რაოდენობა, გასაყიდი/ჯამური ფასი).
-        მარაგი არ იცვლება — მხოლოდ შემოსავლის ისტორია.
+        შეგიძლიათ რამდენიმე ფაილი ერთად აირჩიოთ — ერთნაირი კოდის პროდუქტები ავტომატურად ემართება (რაოდენობა + თანხა).
+        მეორედ ატვირთვისას (ჩანაცვლების გარეშე) არსებულ იმპორტს დაემატება.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Excel ფაილი">
+        <Field label="Excel ფაილი (ერთი ან რამდენიმე)">
           <input
             type="file"
             accept=".xlsx,.xls"
+            multiple
             className={`${inputCls} file:mr-2 file:rounded file:border-0 file:bg-zinc-800 file:px-2 file:py-1 file:text-xs`}
             onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
+              setFiles([...(e.target.files ?? [])]);
               setPreview(null);
               setMsg("");
             }}
@@ -154,17 +162,21 @@ export default function ImportSalesPanel({
 
       <label className="mt-3 flex items-center gap-2 text-sm text-sky-200">
         <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
-        ამ ფილიალისა და თვის წინა Excel იმპორტის ჩანაწერების ჩანაცვლება
+        წინა იმპორტის ჩანაცვლება (თუ არ მონიშნავ — ახალი ფაილი დაემატება და ერთნაირი კოდები შეიჯამება)
       </label>
 
+      {files.length > 0 && (
+        <p className="mt-2 text-xs text-zinc-500">არჩეული: {files.map((f) => f.name).join(", ")}</p>
+      )}
+
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" className={btnCls} disabled={!file || busy} onClick={() => runImport(true)}>
+        <button type="button" className={btnCls} disabled={!files.length || busy} onClick={() => runImport(true)}>
           პრევიუ
         </button>
         <button
           type="button"
           className={`${btnCls} bg-sky-600 hover:bg-sky-500`}
-          disabled={!file || busy || !unlocked}
+          disabled={!files.length || busy || !unlocked}
           onClick={() => runImport(false)}
         >
           იმპორტი
@@ -178,7 +190,7 @@ export default function ImportSalesPanel({
       {preview && (
         <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
           <p className="mb-2 text-xs text-zinc-400">
-            {preview.lines} პოზიცია · {preview.quantity} ც · ჯამი {formatMoney(preview.total)}
+            {preview.products} უნიკალური პროდუქტი · {preview.quantity} ც · ჯამი {formatMoney(preview.total)}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -193,7 +205,7 @@ export default function ImportSalesPanel({
               </thead>
               <tbody>
                 {preview.sample.map((r) => (
-                  <tr key={r.productCode + r.amount} className="border-b border-zinc-800/40">
+                  <tr key={r.productCode} className="border-b border-zinc-800/40">
                     <td className="py-1 pr-2 text-emerald-400">{r.productCode}</td>
                     <td className="py-1 pr-2">{r.productName}</td>
                     <td className="py-1 pr-2 text-right">{r.quantity}</td>
@@ -204,8 +216,8 @@ export default function ImportSalesPanel({
               </tbody>
             </table>
           </div>
-          {preview.lines > preview.sample.length && (
-            <p className="mt-1 text-xs text-zinc-600">+ კიდევ {preview.lines - preview.sample.length} ხაზი</p>
+          {preview.products > preview.sample.length && (
+            <p className="mt-1 text-xs text-zinc-600">+ კიდევ {preview.products - preview.sample.length} პროდუქტი</p>
           )}
         </div>
       )}
