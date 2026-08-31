@@ -2,9 +2,7 @@ export type Branch = "ქუთაისი" | "ლილო" | "დიღომ
 export type ExpenseBranch = Branch | "საერთო";
 export type PaymentStatus = "სრულად გადახდილი" | "ბე (ავანსი)";
 export type PaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
-export type ExpenseCategory =
-  | "ნედლეული" | "წარმოება" | "კომუნალური" | "საკვები" | "ლოგისტიკა" | "დისტრიბუცია" | "საყოფაცხოვრებო" | "სხვა"
-  | "საწვავი" | "ხელფასი" | "კომუნალურები" | "დღგ" | "სესხი";
+export type ExpenseCategory = string;
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
 export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
 export type TxSource = "admin" | "branch" | "import" | "distribucia";

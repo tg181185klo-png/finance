@@ -1,12 +1,13 @@
 import * as XLSX from "xlsx";
-import type { Branch, Deposit, DepositKind, Expense, ExpenseCategory } from "./types";
+import type { Branch, Deposit, DepositKind, Expense } from "./types";
+import { mapExpenseCategory } from "./expense-categories";
 import { resolveExpenseBranchFromText } from "./branch-allocation";
 
 export type ParsedExpenseRow = {
   rowIndex: number;
   date: string;
   branch: Branch;
-  category: ExpenseCategory;
+  category: string;
   amount: number;
   comment: string;
   label: string;
@@ -52,26 +53,7 @@ export function resolveExpenseBranch(label: string, comment: string, defaultBran
   return resolveExpenseBranchFromText(label, comment, defaultBranch);
 }
 
-export function mapExpenseCategory(label: string, comment: string): ExpenseCategory {
-  const text = `${label} ${comment}`.toLowerCase();
-
-  if (/ხელფას/i.test(text)) return "ხელფასი";
-  if (/დღგ/i.test(text)) return "დღგ";
-  if (/სესხ/i.test(text)) return "სესხი";
-  if (/დივიდენდ/i.test(text)) return "სხვა";
-  if (/ნედლეულ/i.test(text)) return "ნედლეული";
-  if (/საწარმო|წარმოებ/i.test(text)) return "წარმოება";
-  if (/საკვები|კვებ/i.test(text)) return "საკვები";
-  if (/საყოფაცხოვრებ|დასუფთავ/i.test(text)) return "საყოფაცხოვრებო";
-  if (/ელ\.?\s*ენერგ|კომუნალ|წყალი/i.test(text)) return "კომუნალური";
-  if (/საწვავ/i.test(text)) return "ლოგისტიკა";
-  if (/ტრანსპორტ|შემოტან|ტაქს/i.test(text)) return "ლოგისტიკა";
-  if (/^დისტრიბუცია$/i.test(label.trim()) || (/დისტრიბუც/i.test(label) && !/ხელფას/i.test(label))) {
-    return "დისტრიბუცია";
-  }
-
-  return "სხვა";
-}
+export { mapExpenseCategory } from "./expense-categories";
 
 export function parseExpenseDate(value: unknown): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
