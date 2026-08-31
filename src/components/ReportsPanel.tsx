@@ -52,13 +52,31 @@ function MiniReport({ title, report }: { title: string; report: PeriodReport | n
   );
 }
 
+type MonthBranchStat = { branch: Branch; revenue: number; expenses: number; net: number };
+
 type MonthHistoryRow = {
   month: string;
   revenue: number;
   expenses: number;
   net: number;
-  byBranch: { branch: Branch; revenue: number; expenses: number; net: number }[];
+  byBranch: MonthBranchStat[];
 };
+
+function BranchMonthCell({ br }: { br?: MonthBranchStat }) {
+  if (!br) return <span className="text-zinc-600">—</span>;
+  const hasExpense = br.expenses > 0;
+  return (
+    <div className="min-w-[4.5rem] space-y-0.5">
+      <div className={`font-medium ${br.net >= 0 ? "text-zinc-200" : "text-red-400"}`}>{formatMoney(br.net)}</div>
+      {hasExpense && (
+        <>
+          <div className="text-[10px] leading-tight text-emerald-500/80">+{formatMoney(br.revenue)}</div>
+          <div className="text-[10px] leading-tight text-red-400">−{formatMoney(br.expenses)}</div>
+        </>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   employees: Employee[];
@@ -219,7 +237,9 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
             <button type="button" className={btnCls} onClick={loadHistory}>განახლება</button>
           </div>
           <p className="mb-3 text-xs text-zinc-500">
-            ფილიალის სვეტები: ნეტო (შემოსავალი − ხარჯი) — ხარჯი ჩაწერილია იმ ფილიალზე, სადაც იმპორტში მიუთითებულია.
+            ფილიალის სვეტებში: <span className="text-zinc-300">ნეტო</span>, ქვემოთ{" "}
+            <span className="text-emerald-500">+შემოსავალი</span> და{" "}
+            <span className="text-red-400">−ხარჯი</span> (დისტრიბუციის ხარჯი — დისტრიბუციის სვეტში).
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -230,39 +250,45 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                   <th className="pb-2 pr-3 text-right">ხარჯი</th>
                   <th className="pb-2 pr-3 text-right">ნეტო</th>
                   {BRANCHES.map((b) => (
-                    <th key={b} className="pb-2 pr-2 text-right text-[10px]" title="ნეტო ფილიალით">
+                    <th key={b} className="pb-2 pr-2 text-right text-[10px]">
                       {b}
+                      <br />
+                      <span className="text-zinc-600">ნეტო / ±</span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {history.map((row) => (
+                {history.map((row) => {
+                  const branchExpenseSum = row.byBranch.reduce((s, b) => s + b.expenses, 0);
+                  return (
                   <tr key={row.month} className="border-b border-zinc-800/50">
                     <td className="py-2 pr-3 font-medium">{row.month}</td>
                     <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(row.revenue)}</td>
-                    <td className="py-2 pr-3 text-right text-red-400">{formatMoney(row.expenses)}</td>
+                    <td className="py-2 pr-3 text-right text-red-400" title={
+                      branchExpenseSum > 0
+                        ? BRANCHES.map((b) => {
+                            const br = row.byBranch.find((x) => x.branch === b);
+                            return br?.expenses ? `${b}: ${formatMoney(br.expenses)}` : null;
+                          }).filter(Boolean).join(" · ")
+                        : undefined
+                    }>
+                      {formatMoney(row.expenses)}
+                    </td>
                     <td className={`py-2 pr-3 text-right ${row.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {formatMoney(row.net)}
                     </td>
                     {BRANCHES.map((b) => {
                       const br = row.byBranch.find((x) => x.branch === b);
                       return (
-                        <td
-                          key={b}
-                          className={`py-2 pr-2 text-right text-xs ${br && br.net < 0 ? "text-red-400" : "text-zinc-300"}`}
-                          title={
-                            br
-                              ? `შემოსავალი ${formatMoney(br.revenue)} · ხარჯი ${formatMoney(br.expenses)}`
-                              : undefined
-                          }
-                        >
-                          {br ? formatMoney(br.net) : "—"}
+                        <td key={b} className="py-2 pr-2 text-right align-top">
+                          <BranchMonthCell br={br} />
                         </td>
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
