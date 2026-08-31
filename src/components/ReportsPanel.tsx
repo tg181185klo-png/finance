@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
+import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
@@ -192,6 +193,16 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
 
       <ImportSalesPanel
         employees={employees}
+        unlocked={unlocked}
+        getAdminPin={getAdminPin}
+        onImported={onTransactionsUpdate}
+        onHistoryRefresh={() => {
+          loadHistory();
+          loadMonthlySnapshots();
+        }}
+      />
+
+      <ImportExpensesPanel
         unlocked={unlocked}
         getAdminPin={getAdminPin}
         onImported={onTransactionsUpdate}
