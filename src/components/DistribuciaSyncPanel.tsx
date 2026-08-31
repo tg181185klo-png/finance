@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import type { Transaction } from "@/lib/types";
 import { formatMoney, currentMonth, monthStartEnd } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -38,8 +37,7 @@ type Preview = {
 type Props = {
   unlocked: boolean;
   getAdminPin: () => string;
-  onSynced: (transactions: Transaction[]) => void;
-  onHistoryRefresh: () => void;
+  onSynced: () => void | Promise<void>;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -51,7 +49,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, onHistoryRefresh }: Props) {
+export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced }: Props) {
   const [fromDate, setFromDate] = useState("2026-03-01");
   const [viewMonth, setViewMonth] = useState(currentMonth());
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -103,8 +101,7 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced, 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      onSynced(data.transactions ?? []);
-      onHistoryRefresh();
+      await onSynced();
       await loadPreview();
       setMsg(
         `სინქრონიზაცია ✓ ${data.imported} ხაზი · ${formatMoney(data.revenue)} · ${data.days} დღე${data.removed ? ` (ჩანაცვლდა ${data.removed})` : ""}`

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, Transaction } from "@/lib/types";
+import type { Branch } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { formatMoney } from "@/lib/utils";
 
@@ -36,13 +36,6 @@ type Preview = {
   outOfMonth: number;
 };
 
-type Props = {
-  unlocked: boolean;
-  getAdminPin: () => string;
-  onImported: (transactions: Transaction[]) => void;
-  onHistoryRefresh: () => void;
-};
-
 function guessBranchFromFileName(name: string): Branch | null {
   const n = name.toLowerCase();
   if (/დისტრიბუც|distrib/.test(n)) return "დისტრიბუცია";
@@ -52,7 +45,13 @@ function guessBranchFromFileName(name: string): Branch | null {
   return null;
 }
 
-export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported, onHistoryRefresh }: Props) {
+type Props = {
+  unlocked: boolean;
+  getAdminPin: () => string;
+  onImported: () => void | Promise<void>;
+};
+
+export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [branch, setBranch] = useState<Branch>("ქუთაისი");
   const [month, setMonth] = useState(() => {
@@ -117,8 +116,7 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported,
         );
       } else {
         setPreview(null);
-        onImported(data.transactions ?? []);
-        onHistoryRefresh();
+        await onImported();
         const branchParts = Object.entries(data.byBranch ?? {})
           .map(([b, v]) => `${b}: ${formatMoney((v as { total: number }).total)}`)
           .join(" · ");

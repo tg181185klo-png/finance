@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Branch, FinancialSummaryRow } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { formatMoney, monthStartEnd } from "@/lib/utils";
@@ -20,7 +20,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 type Mode = "month" | "period" | "months";
 
-export default function FinancialSummaryPanel() {
+type Props = {
+  refreshSignal?: number;
+};
+
+export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
   const [mode, setMode] = useState<Mode>("month");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -38,7 +42,7 @@ export default function FinancialSummaryPanel() {
     setErr("");
     try {
       if (mode === "months") {
-        const res = await fetch(`/api/reports?mode=months&count=${monthCount}`);
+        const res = await fetch(`/api/reports?mode=months&count=${monthCount}`, { cache: "no-store" });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         const items = (data.months ?? []).map(
@@ -78,7 +82,8 @@ export default function FinancialSummaryPanel() {
       }
 
       const res = await fetch(
-        `/api/reports?from=${loadFrom}&to=${loadTo}&branch=${encodeURIComponent("ყველა")}`
+        `/api/reports?from=${loadFrom}&to=${loadTo}&branch=${encodeURIComponent("ყველა")}`,
+        { cache: "no-store" }
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -103,6 +108,11 @@ export default function FinancialSummaryPanel() {
       setBusy(false);
     }
   }, [mode, month, from, to, monthCount]);
+
+  useEffect(() => {
+    if (refreshSignal === 0 || rows.length === 0) return;
+    load();
+  }, [refreshSignal, load, rows.length]);
 
   function exportExcel() {
     if (mode === "months") {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, Employee, Transaction } from "@/lib/types";
+import type { Branch, Employee } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { formatMoney } from "@/lib/utils";
 
@@ -30,8 +30,7 @@ type Props = {
   employees: Employee[];
   unlocked: boolean;
   getAdminPin: () => string;
-  onImported: (transactions: Transaction[]) => void;
-  onHistoryRefresh: () => void;
+  onImported: () => void | Promise<void>;
 };
 
 export default function ImportSalesPanel({
@@ -39,7 +38,6 @@ export default function ImportSalesPanel({
   unlocked,
   getAdminPin,
   onImported,
-  onHistoryRefresh,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [branch, setBranch] = useState<Branch>("დისტრიბუცია");
@@ -103,8 +101,7 @@ export default function ImportSalesPanel({
         );
       } else {
         setPreview(null);
-        onImported(data.transactions ?? []);
-        onHistoryRefresh();
+        await onImported();
         setMsg(
           `იმპორტი ✓ ${data.products} პროდუქტი · ${formatMoney(data.total)}` +
             (data.mergeMode ? " · დაემატა არსებულ იმპორტს" : " · ჩანაცვლდა") +

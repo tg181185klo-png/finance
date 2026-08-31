@@ -99,7 +99,7 @@ type Props = {
   period: ResolvedPeriod;
   unlocked: boolean;
   getAdminPin: () => string;
-  onTransactionsUpdate: (transactions: Transaction[]) => void;
+  onTransactionsUpdate: () => void | Promise<void>;
 };
 
 export default function ReportsPanel({ employees, period, unlocked, getAdminPin, onTransactionsUpdate }: Props) {
@@ -111,13 +111,14 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
   const [repBranch, setRepBranch] = useState<Branch | "ყველა">("ყველა");
   const [monthBranch, setMonthBranch] = useState<Branch>("დიღომი");
   const [history, setHistory] = useState<MonthHistoryRow[]>([]);
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
   const [err, setErr] = useState("");
 
   const loadReport = useCallback(async (mode: string, from?: string, to?: string, branch?: Branch | "ყველა") => {
     const b = branch ?? repBranch;
     let url = `/api/reports?mode=${mode}&branch=${encodeURIComponent(b)}`;
     if (from && to) url += `&from=${from}&to=${to}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: "no-store" });
     const data = await res.json();
     if (data.error) {
       setErr(data.error);
@@ -128,7 +129,7 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
   }, [repBranch]);
 
   const loadHistory = useCallback(async () => {
-    const res = await fetch("/api/reports?mode=months&count=6");
+    const res = await fetch("/api/reports?mode=months&count=6", { cache: "no-store" });
     const data = await res.json();
     if (data.error) {
       setErr(data.error);
@@ -153,6 +154,21 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
   useEffect(() => {
     loadMonthlySnapshots();
   }, [loadMonthlySnapshots]);
+
+  const refreshAllReports = useCallback(async () => {
+    const [periodData] = await Promise.all([
+      loadReport("period", period.from, period.to),
+      loadHistory(),
+      loadMonthlySnapshots(),
+    ]);
+    if (periodData) setReport(periodData);
+    setSummaryRefresh((n) => n + 1);
+  }, [loadHistory, loadMonthlySnapshots, loadReport, period.from, period.to]);
+
+  const handleImportComplete = useCallback(async () => {
+    await onTransactionsUpdate();
+    await refreshAllReports();
+  }, [onTransactionsUpdate, refreshAllReports]);
 
   useEffect(() => {
     setRepFrom(period.from);
@@ -190,14 +206,8 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      onTransactionsUpdate(data.transactions);
-      if (report) {
-        const updated = {
-          ...report,
-          transactions: report.transactions.map((t) => (t.id === txId ? { ...t, recurrence } : t)),
-        };
-        setReport(updated);
-      }
+      await onTransactionsUpdate();
+      await refreshAllReports();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
     }
@@ -221,35 +231,23 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
       <DistribuciaSyncPanel
         unlocked={unlocked}
         getAdminPin={getAdminPin}
-        onSynced={onTransactionsUpdate}
-        onHistoryRefresh={() => {
-          loadHistory();
-          loadMonthlySnapshots();
-        }}
+        onSynced={handleImportComplete}
       />
 
       <ImportSalesPanel
         employees={employees}
         unlocked={unlocked}
         getAdminPin={getAdminPin}
-        onImported={onTransactionsUpdate}
-        onHistoryRefresh={() => {
-          loadHistory();
-          loadMonthlySnapshots();
-        }}
+        onImported={handleImportComplete}
       />
 
       <ImportExpensesPanel
         unlocked={unlocked}
         getAdminPin={getAdminPin}
-        onImported={onTransactionsUpdate}
-        onHistoryRefresh={() => {
-          loadHistory();
-          loadMonthlySnapshots();
-        }}
+        onImported={handleImportComplete}
       />
 
-      <FinancialSummaryPanel />
+      <FinancialSummaryPanel refreshSignal={summaryRefresh} />
 
       {history.length > 0 && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-5">

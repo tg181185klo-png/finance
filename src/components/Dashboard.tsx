@@ -1644,9 +1644,9 @@ export default function Dashboard() {
           period={period}
           unlocked={unlocked}
           getAdminPin={getAdminPin}
-          onTransactionsUpdate={(transactions) =>
-            setStore((prev) => (prev ? { ...prev, transactions } : prev))
-          }
+          onTransactionsUpdate={async () => {
+            await loadStore();
+          }}
         />
       )}
 
