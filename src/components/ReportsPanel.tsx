@@ -218,6 +218,9 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
             <h2 className="font-semibold text-emerald-200">ბოლო 6 თვე — კომპანია</h2>
             <button type="button" className={btnCls} onClick={loadHistory}>განახლება</button>
           </div>
+          <p className="mb-3 text-xs text-zinc-500">
+            ფილიალის სვეტები: ნეტო (შემოსავალი − ხარჯი) — ხარჯი ჩაწერილია იმ ფილიალზე, სადაც იმპორტში მიუთითებულია.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -227,7 +230,9 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                   <th className="pb-2 pr-3 text-right">ხარჯი</th>
                   <th className="pb-2 pr-3 text-right">ნეტო</th>
                   {BRANCHES.map((b) => (
-                    <th key={b} className="pb-2 pr-2 text-right text-[10px]">{b}</th>
+                    <th key={b} className="pb-2 pr-2 text-right text-[10px]" title="ნეტო ფილიალით">
+                      {b}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -243,8 +248,16 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                     {BRANCHES.map((b) => {
                       const br = row.byBranch.find((x) => x.branch === b);
                       return (
-                        <td key={b} className="py-2 pr-2 text-right text-xs text-zinc-400">
-                          {br ? formatMoney(br.revenue) : "—"}
+                        <td
+                          key={b}
+                          className={`py-2 pr-2 text-right text-xs ${br && br.net < 0 ? "text-red-400" : "text-zinc-300"}`}
+                          title={
+                            br
+                              ? `შემოსავალი ${formatMoney(br.revenue)} · ხარჯი ${formatMoney(br.expenses)}`
+                              : undefined
+                          }
+                        >
+                          {br ? formatMoney(br.net) : "—"}
                         </td>
                       );
                     })}
