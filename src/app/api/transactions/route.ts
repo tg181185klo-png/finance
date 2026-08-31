@@ -19,7 +19,7 @@ function removeTransaction(s: Store, id: string) {
       // მარაგის დაბრუნება არ უნდა დაბლოკოს წაშლა
     }
     reverseCreditOrderData(s, removed.id, removed);
-  } else {
+  } else if (removed.type === "expense") {
     reverseExpenseObligation(s, removed);
   }
 
@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
 
       if (t.type === "expense") {
         applyExpenseToStore(s, t as Expense);
+      } else if (t.type === "deposit") {
+        // შენატანი — ცალკე სალაროში, ვალდებულებას არ ეხება
       } else {
         const sale = t as Sale;
         if (sale.paymentStatus === "ბე (ავანსი)") {
@@ -148,7 +150,7 @@ export async function DELETE(req: NextRequest) {
               // ignore stock reverse errors
             }
             reverseCreditOrderData(s, t.id, t);
-          } else reverseExpenseObligation(s, t);
+          } else if (t.type === "expense") reverseExpenseObligation(s, t);
         }
         s.transactions = s.transactions.filter((t) => t.reportId !== reportId);
         s.branchReports = s.branchReports.filter((r) => r.id !== reportId);

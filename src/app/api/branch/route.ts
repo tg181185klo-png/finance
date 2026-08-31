@@ -376,7 +376,7 @@ export async function DELETE(req: NextRequest) {
       const removed = store.transactions.filter((t) => t.reportId === reportId);
       for (const t of removed) {
         if (t.type === "sale") store.inventory = applySaleToStock(store.inventory, t, 1);
-        else reverseExpenseObligation(store, t);
+        else if (t.type === "expense") reverseExpenseObligation(store, t);
       }
       store.transactions = store.transactions.filter((t) => t.reportId !== reportId);
 

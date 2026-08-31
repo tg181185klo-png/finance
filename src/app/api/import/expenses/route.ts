@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_PIN, BRANCHES } from "@/lib/constants";
 import {
+  buildImportDeposits,
   buildImportExpenses,
   detectDefaultBranchFromFileName,
+  isFileMonthDepositImport,
   isFileMonthExpenseImport,
   parseExpenseExcel,
   slugFromFileName,
+  summarizeDepositImport,
   summarizeExpenseImport,
+  type ParsedDepositRow,
   type ParsedExpenseRow,
 } from "@/lib/excel-expense-import";
 import { updateStore } from "@/lib/server-store";
-import type { Branch, Expense, Store } from "@/lib/types";
+import type { Branch, Deposit, Expense, Store } from "@/lib/types";
 import { applyExpenseToStore, reverseExpenseObligation } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +27,20 @@ function parseFiles(form: FormData): File[] {
 }
 
 function removeFileMonthImports(store: Store, month: string, slugs: string[]) {
-  const removed = store.transactions.filter(
+  const removedExp = store.transactions.filter(
     (t): t is Expense =>
       t.type === "expense" && slugs.some((slug) => isFileMonthExpenseImport(t, month, slug))
   );
-  for (const t of removed) {
+  for (const t of removedExp) {
     reverseExpenseObligation(store, t);
   }
-  store.transactions = store.transactions.filter((t) => !removed.some((r) => r.id === t.id));
-  return removed.length;
+  const removedDep = store.transactions.filter(
+    (t): t is Deposit =>
+      t.type === "deposit" && slugs.some((slug) => isFileMonthDepositImport(t, month, slug))
+  );
+  const removedIds = new Set([...removedExp, ...removedDep].map((t) => t.id));
+  store.transactions = store.transactions.filter((t) => !removedIds.has(t.id));
+  return removedExp.length + removedDep.length;
 }
 
 export async function POST(req: NextRequest) {
@@ -57,7 +66,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
     }
 
-    const batches: { fileName: string; slug: string; rows: ParsedExpenseRow[] }[] = [];
+    const batches: {
+      fileName: string;
+      slug: string;
+      rows: ParsedExpenseRow[];
+      deposits: ParsedDepositRow[];
+    }[] = [];
     let skipped = 0;
     let outOfMonth = 0;
 
@@ -73,13 +87,16 @@ export async function POST(req: NextRequest) {
         fileName: file.name,
         slug: slugFromFileName(file.name),
         rows: result.rows,
+        deposits: result.deposits,
       });
       skipped += result.skipped;
       outOfMonth += result.outOfMonth;
     }
 
     const parsedAll = batches.flatMap((b) => b.rows);
+    const depositsAll = batches.flatMap((b) => b.deposits);
     const summary = summarizeExpenseImport(parsedAll);
+    const depositSummary = summarizeDepositImport(depositsAll);
     const fileNames = batches.map((b) => b.fileName);
     const fileSlugs = batches.map((b) => b.slug);
 
@@ -88,7 +105,12 @@ export async function POST(req: NextRequest) {
         ok: true,
         preview: true,
         ...summary,
-        sample: parsedAll.slice(0, 10),
+        deposits: depositSummary.lines,
+        depositTotal: depositSummary.total,
+        founderDeposits: depositSummary.founder,
+        depositByBranch: depositSummary.byBranch,
+        sample: parsedAll.slice(0, 8),
+        depositSample: depositsAll.slice(0, 8),
         month,
         branch,
         fileNames,
@@ -99,6 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     let imported = 0;
+    let importedDeposits = 0;
     let removed = 0;
 
     const store = await updateStore((s) => {
@@ -106,7 +129,7 @@ export async function POST(req: NextRequest) {
         removed = removeFileMonthImports(s, month, fileSlugs);
       }
 
-      const expenses: Expense[] = [];
+      const newTx: (Expense | Deposit)[] = [];
       for (const batch of batches) {
         const batchExpenses = buildImportExpenses(batch.rows, {
           month,
@@ -116,19 +139,34 @@ export async function POST(req: NextRequest) {
         for (const exp of batchExpenses) {
           if (!replaceExisting && s.transactions.some((t) => t.id === exp.id)) continue;
           applyExpenseToStore(s, exp);
-          expenses.push(exp);
+          newTx.push(exp);
+        }
+
+        const batchDeposits = buildImportDeposits(batch.deposits, {
+          month,
+          fileLabel: batch.fileName,
+          fileSlug: batch.slug,
+        });
+        for (const dep of batchDeposits) {
+          if (!replaceExisting && s.transactions.some((t) => t.id === dep.id)) continue;
+          newTx.push(dep);
         }
       }
-      imported = expenses.length;
-      s.transactions = [...expenses, ...s.transactions];
+      imported = newTx.filter((t) => t.type === "expense").length;
+      importedDeposits = newTx.filter((t) => t.type === "deposit").length;
+      s.transactions = [...newTx, ...s.transactions];
     });
 
     return NextResponse.json({
       ok: true,
       imported,
+      importedDeposits,
       replaced: removed,
       total: summary.total,
+      depositTotal: depositSummary.total,
+      founderDeposits: depositSummary.founder,
       byBranch: summary.byBranch,
+      depositByBranch: depositSummary.byBranch,
       month,
       branch,
       fileNames,

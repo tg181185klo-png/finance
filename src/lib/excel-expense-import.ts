@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { Branch, Expense, ExpenseCategory } from "./types";
+import type { Branch, Deposit, DepositKind, Expense, ExpenseCategory } from "./types";
 import { resolveExpenseBranchFromText } from "./branch-allocation";
 
 export type ParsedExpenseRow = {
@@ -105,8 +105,31 @@ function fileSlug(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9\u10A0-\u10FF]+/g, "_").slice(0, 48);
 }
 
-export function importExpenseId(month: string, slug: string, rowIndex: number) {
-  return `import-exp-${month}-${slug}-${rowIndex}`;
+export type ParsedDepositRow = {
+  rowIndex: number;
+  date: string;
+  branch: Branch;
+  kind: DepositKind;
+  amount: number;
+  comment: string;
+  label: string;
+  account: string;
+};
+
+export function mapDepositKind(label: string, comment: string): DepositKind {
+  const text = `${label} ${comment}`.toLowerCase();
+  if (/დამფუძნებ|შენატან/i.test(text)) return "founder";
+  if (/ვალ.*დაბრუნ|სესხ/i.test(text)) return "loan_repayment";
+  if (/^შემოტან/i.test(label.trim())) return "founder";
+  return "other";
+}
+
+export function importDepositId(month: string, slug: string, rowIndex: number) {
+  return `import-dep-${month}-${slug}-${rowIndex}`;
+}
+
+export function isFileMonthDepositImport(deposit: Deposit, month: string, slug: string) {
+  return deposit.source === "import" && deposit.id.startsWith(`import-dep-${month}-${slug}-`);
 }
 
 export function isFileMonthExpenseImport(expense: Expense, month: string, slug: string) {
@@ -117,7 +140,12 @@ export function isFileMonthExpenseImport(expense: Expense, month: string, slug: 
 export function parseExpenseExcel(
   buffer: Buffer,
   opts: { defaultBranch: Branch; month: string; fileName: string }
-): { rows: ParsedExpenseRow[]; skipped: number; outOfMonth: number } {
+): {
+  rows: ParsedExpenseRow[];
+  deposits: ParsedDepositRow[];
+  skipped: number;
+  outOfMonth: number;
+} {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) throw new Error("Excel ფაილი ცარიელია");
@@ -139,6 +167,7 @@ export function parseExpenseExcel(
   if (labelCol < 0) throw new Error("ვერ მოიძებნა კატეგორიის სვეტი „სახელი“");
 
   const out: ParsedExpenseRow[] = [];
+  const deposits: ParsedDepositRow[] = [];
   let skipped = 0;
   let outOfMonth = 0;
 
@@ -147,22 +176,48 @@ export function parseExpenseExcel(
     if (!row?.length) continue;
 
     const txType = String(row[typeCol] ?? "").trim();
+    const rawAmount = num(row[amountCol]);
+    const amount = Math.round(Math.abs(rawAmount) * 100) / 100;
+    const label = String(row[labelCol] ?? "").trim();
+    const comment = commentCol >= 0 ? String(row[commentCol] ?? "").trim() : "";
+    const account = accountCol >= 0 ? String(row[accountCol] ?? "").trim() : "";
+    const date = parseExpenseDate(row[dateCol]);
+
+    if (txType === "მიღება") {
+      if (!amount || !date) {
+        skipped += 1;
+        continue;
+      }
+      if (date.slice(0, 7) !== opts.month) {
+        outOfMonth += 1;
+        continue;
+      }
+      const branch = resolveExpenseBranch(label, comment, opts.defaultBranch);
+      const kind = mapDepositKind(label, comment);
+      const fullComment = comment || label || account || kind;
+      deposits.push({
+        rowIndex: r,
+        date,
+        branch,
+        kind,
+        amount,
+        comment: fullComment,
+        label,
+        account,
+      });
+      continue;
+    }
+
     if (txType && txType !== "გაცემა") {
       skipped += 1;
       continue;
     }
 
-    const rawAmount = num(row[amountCol]);
-    const amount = Math.round(Math.abs(rawAmount) * 100) / 100;
     if (!amount) {
       skipped += 1;
       continue;
     }
 
-    const label = String(row[labelCol] ?? "").trim();
-    const comment = commentCol >= 0 ? String(row[commentCol] ?? "").trim() : "";
-    const account = accountCol >= 0 ? String(row[accountCol] ?? "").trim() : "";
-    const date = parseExpenseDate(row[dateCol]);
     if (!date) {
       skipped += 1;
       continue;
@@ -188,15 +243,52 @@ export function parseExpenseExcel(
     });
   }
 
-  if (!out.length) {
+  if (!out.length && !deposits.length) {
     throw new Error(
       outOfMonth > 0
-        ? `არჩეულ თვეში (${opts.month}) ხარჯის ხაზები ვერ მოიძებნა`
-        : "ვალიდური ხარჯის ხაზები ვერ მოიძებნა"
+        ? `არჩეულ თვეში (${opts.month}) ხარჯის/შენატანის ხაზები ვერ მოიძებნა`
+        : "ვალიდური ხარჯის ან შენატანის ხაზები ვერ მოიძებნა"
     );
   }
 
-  return { rows: out, skipped, outOfMonth };
+  return { rows: out, deposits, skipped, outOfMonth };
+}
+
+export function buildImportDeposits(
+  rows: ParsedDepositRow[],
+  opts: { month: string; fileLabel: string; fileSlug: string }
+): Deposit[] {
+  const commentPrefix = `Excel შენატანი · ${opts.month} · ${opts.fileLabel}`;
+
+  return rows.map((row) => ({
+    id: importDepositId(opts.month, opts.fileSlug, row.rowIndex),
+    type: "deposit" as const,
+    date: row.date,
+    branch: row.branch,
+    kind: row.kind,
+    amount: row.amount,
+    comment: row.comment ? `${row.comment} · ${commentPrefix}` : commentPrefix,
+    recurrence: "ერთჯერადი" as const,
+    source: "import" as const,
+    depositPaymentMethod: "ქეში (ნაღდი)" as const,
+  }));
+}
+
+export function summarizeDepositImport(rows: ParsedDepositRow[]) {
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  const founder = rows.filter((r) => r.kind === "founder").reduce((s, r) => s + r.amount, 0);
+  const byBranch = {} as Record<Branch, { count: number; total: number; founder: number }>;
+  for (const row of rows) {
+    if (!byBranch[row.branch]) byBranch[row.branch] = { count: 0, total: 0, founder: 0 };
+    byBranch[row.branch].count += 1;
+    byBranch[row.branch].total += row.amount;
+    if (row.kind === "founder") byBranch[row.branch].founder += row.amount;
+  }
+  return { lines: rows.length, total, founder, byBranch };
+}
+
+export function importExpenseId(month: string, slug: string, rowIndex: number) {
+  return `import-exp-${month}-${slug}-${rowIndex}`;
 }
 
 export function buildImportExpenses(

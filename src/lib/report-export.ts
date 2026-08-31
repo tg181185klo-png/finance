@@ -8,6 +8,7 @@ function txDescription(t: Transaction): string {
     const buyer = t.buyerName ? ` / ${t.buyerName}` : "";
     return `${t.productName} × ${t.quantity}${emp}${buyer}`;
   }
+  if (t.type === "deposit") return t.comment || t.kind;
   return t.comment ? `${t.category} — ${t.comment}` : t.category;
 }
 
@@ -34,9 +35,12 @@ export function buildReportWorkbook(
   const summaryRows = [
     { პარამეტრი: "პერიოდი", მნიშვნელობა: `${report.from} — ${report.to}` },
     { პარამეტრი: "ფილიალი", მნიშვნელობა: report.branch },
-    { პარამეტრი: "შემოსავალი", მნიშვნელობა: report.revenue },
+    { პარამეტრი: "შემოსავალი (გაყიდვა)", მნიშვნელობა: report.revenue },
+    { პარამეტრი: "დამფუძნებლის შენატანი", მნიშვნელობა: report.founderDeposits },
+    { პარამეტრი: "სულ შენატანი", მნიშვნელობა: report.deposits },
     { პარამეტრი: "ხარჯები", მნიშვნელობა: report.expenses },
-    { პარამეტრი: "ნეტო (მოგება/ზარალი)", მნიშვნელობა: report.net },
+    { პარამეტრი: "ოპ. ნეტო (გაყიდვა − ხარჯი)", მნიშვნელობა: report.net },
+    { პარამეტრი: "სალარო ნეტო (+ შენატანი)", მნიშვნელობა: report.cashFlowNet },
     { პარამეტრი: "ქეში პერიოდის ბოლოს", მნიშვნელობა: report.cashAtEnd },
     { პარამეტრი: "ბარათი პერიოდის ბოლოს", მნიშვნელობა: report.cardAtEnd },
     { პარამეტრი: "ანგარიში პერიოდის ბოლოს", მნიშვნელობა: report.bankAtEnd },
@@ -48,8 +52,11 @@ export function buildReportWorkbook(
   const branchRows: Record<string, string | number>[] = report.byBranch.map((b) => ({
     ფილიალი: b.branch,
     შემოსავალი: b.revenue,
+    "დამფ. შენატანი": b.founderDeposits,
+    "სულ შენატანი": b.deposits,
     ხარჯი: b.expenses,
-    "ნეტო (მოგება/ზარალი)": b.net,
+    "ოპ. ნეტო": b.net,
+    "სალარო ნეტო": b.cashFlowNet,
     "ქეში (დღის/პერიოდის ბოლოს)": b.cashAtEnd,
     ბარათი: b.cardAtEnd,
     "ანგარიშზე": b.bankAtEnd,
@@ -58,17 +65,22 @@ export function buildReportWorkbook(
     (acc, b) => ({
       revenue: acc.revenue + b.revenue,
       expenses: acc.expenses + b.expenses,
+      deposits: acc.deposits + b.deposits,
+      founderDeposits: acc.founderDeposits + b.founderDeposits,
       cash: acc.cash + b.cashAtEnd,
       card: acc.card + b.cardAtEnd,
       bank: acc.bank + b.bankAtEnd,
     }),
-    { revenue: 0, expenses: 0, cash: 0, card: 0, bank: 0 }
+    { revenue: 0, expenses: 0, deposits: 0, founderDeposits: 0, cash: 0, card: 0, bank: 0 }
   );
   branchRows.push({
     ფილიალი: "კომპანია (ჯამი)",
     შემოსავალი: companyTotal.revenue,
+    "დამფ. შენატანი": companyTotal.founderDeposits,
+    "სულ შენატანი": companyTotal.deposits,
     ხარჯი: companyTotal.expenses,
-    "ნეტო (მოგება/ზარალი)": companyTotal.revenue - companyTotal.expenses,
+    "ოპ. ნეტო": companyTotal.revenue - companyTotal.expenses,
+    "სალარო ნეტო": companyTotal.revenue - companyTotal.expenses + companyTotal.deposits,
     "ქეში (დღის/პერიოდის ბოლოს)": companyTotal.cash,
     ბარათი: companyTotal.card,
     "ანგარიშზე": companyTotal.bank,
@@ -112,12 +124,21 @@ export function buildReportWorkbook(
     თარიღი: t.date.slice(0, 10),
     დრო: t.date,
     ფილიალი: t.branch,
-    ტიპი: t.type === "sale" ? "შემოსავალი" : "ხარჯი",
+    ტიპი:
+      t.type === "sale"
+        ? "შემოსავალი"
+        : t.type === "deposit"
+          ? "შენატანი"
+          : "ხარჯი",
     აღწერა: txDescription(t),
     "გადახდის მეთოდი":
-      t.type === "sale" ? t.paymentMethod : (t.expensePaymentMethod ?? "ქეში (ნაღდი)"),
+      t.type === "sale"
+        ? t.paymentMethod
+        : t.type === "deposit"
+          ? (t.depositPaymentMethod ?? "ქეში (ნაღდი)")
+          : (t.expensePaymentMethod ?? "ქეში (ნაღდი)"),
     "ყოველთვიური/ერთჯერადი": t.recurrence ?? "ერთჯერადი",
-    თანხა: t.type === "sale" ? t.amount : -t.amount,
+    თანხა: t.type === "expense" ? -t.amount : t.amount,
     წყარო: t.source === "branch" ? "ფილიალი" : "ადმინი",
   }));
   XLSX.utils.book_append_sheet(

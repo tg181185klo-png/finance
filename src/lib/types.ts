@@ -85,7 +85,23 @@ export interface Expense {
   expensePaymentMethod?: ExpensePaymentMethod;
 }
 
-export type Transaction = Sale | Expense;
+export type DepositKind = "founder" | "loan_repayment" | "other";
+
+export interface Deposit {
+  id: string;
+  type: "deposit";
+  date: string;
+  branch: Branch;
+  amount: number;
+  kind: DepositKind;
+  comment: string;
+  recurrence?: TxRecurrence;
+  source?: TxSource;
+  reportId?: string;
+  depositPaymentMethod?: ExpensePaymentMethod;
+}
+
+export type Transaction = Sale | Expense | Deposit;
 
 export interface Obligation {
   id: string;
@@ -242,7 +258,10 @@ export interface BranchPeriodStats {
   branch: Branch;
   revenue: number;
   expenses: number;
+  deposits: number;
+  founderDeposits: number;
   net: number;
+  cashFlowNet: number;
   cashAtEnd: number;
   cardAtEnd: number;
   bankAtEnd: number;
@@ -263,7 +282,10 @@ export interface PeriodReport {
   branch: Branch | "ყველა";
   revenue: number;
   expenses: number;
+  deposits: number;
+  founderDeposits: number;
   net: number;
+  cashFlowNet: number;
   days: DayReport[];
   transactions: Transaction[];
   obligationTotal: number;
@@ -278,4 +300,19 @@ export interface PeriodReport {
   cashAtEnd: number;
   cardAtEnd: number;
   bankAtEnd: number;
+}
+
+/** თვის/პერიოდის ფი�nanancial შეჯამება */
+export interface FinancialSummaryRow {
+  month?: string;
+  from: string;
+  to: string;
+  revenue: number;
+  founderDeposits: number;
+  otherDeposits: number;
+  deposits: number;
+  expenses: number;
+  net: number;
+  cashFlowNet: number;
+  byBranch: BranchPeriodStats[];
 }

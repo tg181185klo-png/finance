@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Branch, BranchCash, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
-import { effectiveExpenseBranch } from "@/lib/branch-allocation";
+import { effectiveDepositBranch, effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { calcBalances, currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
 
 
@@ -34,9 +34,12 @@ function branchFlow(
     if (t.type === "sale") {
       if (t.branch !== branch) continue;
       revenue += t.amount;
-    } else {
+    } else if (t.type === "expense") {
       if (effectiveExpenseBranch(t) !== branch) continue;
       expenses += t.amount;
+    } else if (t.type === "deposit") {
+      if (effectiveDepositBranch(t) !== branch) continue;
+      // deposits not counted in revenue/expenses here
     }
   }
   return { revenue, expenses, net: revenue - expenses };

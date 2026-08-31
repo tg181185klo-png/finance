@@ -1,5 +1,5 @@
 import { BRANCHES } from "./constants";
-import { effectiveExpenseBranch, txMatchesBranchFilter } from "./branch-allocation";
+import { effectiveDepositBranch, effectiveExpenseBranch, effectiveTxBranch, txMatchesBranchFilter } from "./branch-allocation";
 import type {
   Branch,
   BranchCash,
@@ -120,23 +120,33 @@ function buildByBranchStats(
   return BRANCHES.map((br) => {
     let revenue = 0;
     let expenses = 0;
+    let deposits = 0;
+    let founderDeposits = 0;
     for (const t of tx) {
       const d = t.date.slice(0, 10);
       if (d < from || d > to) continue;
       if (t.type === "sale") {
         if (!matchBranch(t.branch, br)) continue;
         revenue += t.amount;
-      } else {
+      } else if (t.type === "expense") {
         if (effectiveExpenseBranch(t) !== br) continue;
         expenses += t.amount;
+      } else if (t.type === "deposit") {
+        if (effectiveDepositBranch(t) !== br) continue;
+        deposits += t.amount;
+        if (t.kind === "founder") founderDeposits += t.amount;
       }
     }
     const bal = calcBalancesUpToDate(tx, br, branchCash, to);
+    const net = revenue - expenses;
     return {
       branch: br,
       revenue,
       expenses,
-      net: revenue - expenses,
+      deposits,
+      founderDeposits,
+      net,
+      cashFlowNet: net + deposits,
       cashAtEnd: bal.cash,
       cardAtEnd: bal.card,
       bankAtEnd: bal.bank,
@@ -162,7 +172,8 @@ export function calcBalances(
   }
 
   for (const t of tx) {
-    if (!matchBranch(t.branch, branch)) continue;
+    const txBranch = effectiveTxBranch(t);
+    if (!matchBranch(txBranch, branch)) continue;
     if (t.type === "sale") {
       b.revenue += t.amount;
       if (isCreditOrder(t)) {
@@ -171,11 +182,15 @@ export function calcBalances(
       } else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
       else if (t.paymentMethod === "ბარათი") b.card += t.amount;
       else b.bank += t.amount;
-    } else {
+    } else if (t.type === "expense") {
       b.expenses += t.amount;
       if (t.expensePaymentMethod === "ბარათი") b.card -= t.amount;
       else if (t.expensePaymentMethod === "ანგარიშზე ჩარიცხვა") b.bank -= t.amount;
       else b.cash -= t.amount;
+    } else if (t.type === "deposit") {
+      if (t.depositPaymentMethod === "ბარათი") b.card += t.amount;
+      else if (t.depositPaymentMethod === "ანგარიშზე ჩარიცხვა") b.bank += t.amount;
+      else b.cash += t.amount;
     }
   }
 
@@ -579,6 +594,8 @@ export function buildPeriodReport(
 
   let revenue = 0;
   let expenses = 0;
+  let deposits = 0;
+  let founderDeposits = 0;
   const dayMap = new Map<string, { revenue: number; expenses: number }>();
 
   for (const t of filtered) {
@@ -587,9 +604,12 @@ export function buildPeriodReport(
     if (t.type === "sale") {
       revenue += t.amount;
       row.revenue += t.amount;
-    } else {
+    } else if (t.type === "expense") {
       expenses += t.amount;
       row.expenses += t.amount;
+    } else if (t.type === "deposit") {
+      deposits += t.amount;
+      if (t.kind === "founder") founderDeposits += t.amount;
     }
     dayMap.set(d, row);
   }
@@ -628,13 +648,17 @@ export function buildPeriodReport(
   const byBranch = buildByBranchStats(tx, from, to, branchCash);
   const endBal = calcBalancesUpToDate(tx, branch, branchCash, to);
 
+  const net = revenue - expenses;
   return {
     from,
     to,
     branch,
     revenue,
     expenses,
-    net: revenue - expenses,
+    deposits,
+    founderDeposits,
+    net,
+    cashFlowNet: net + deposits,
     days,
     transactions: [...filtered].sort((a, b) => b.date.localeCompare(a.date)),
     obligationTotal,

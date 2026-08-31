@@ -46,13 +46,20 @@ export function periodFlow(
 ) {
   let revenue = 0;
   let expenses = 0;
+  let deposits = 0;
+  let founderDeposits = 0;
   let count = 0;
   for (const t of transactions) {
     if (!txInPeriod(t.date, from, to)) continue;
     if (branch !== "ყველა" && !txMatchesBranchFilter(t, branch)) continue;
     count += 1;
     if (t.type === "sale") revenue += t.amount;
-    else expenses += t.amount;
+    else if (t.type === "expense") expenses += t.amount;
+    else if (t.type === "deposit") {
+      deposits += t.amount;
+      if (t.kind === "founder") founderDeposits += t.amount;
+    }
   }
-  return { revenue, expenses, net: revenue - expenses, count };
+  const net = revenue - expenses;
+  return { revenue, expenses, deposits, founderDeposits, net, cashFlowNet: net + deposits, count };
 }

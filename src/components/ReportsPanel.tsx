@@ -5,6 +5,7 @@ import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
+import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
 import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
@@ -52,26 +53,41 @@ function MiniReport({ title, report }: { title: string; report: PeriodReport | n
   );
 }
 
-type MonthBranchStat = { branch: Branch; revenue: number; expenses: number; net: number };
+type MonthBranchStat = {
+  branch: Branch;
+  revenue: number;
+  expenses: number;
+  deposits: number;
+  founderDeposits: number;
+  net: number;
+  cashFlowNet: number;
+};
 
 type MonthHistoryRow = {
   month: string;
   revenue: number;
   expenses: number;
+  deposits: number;
+  founderDeposits: number;
   net: number;
+  cashFlowNet: number;
   byBranch: MonthBranchStat[];
 };
 
 function BranchMonthCell({ br }: { br?: MonthBranchStat }) {
   if (!br) return <span className="text-zinc-600">—</span>;
-  const hasExpense = br.expenses > 0;
+  const hasExtra = br.expenses > 0 || br.founderDeposits > 0;
   return (
     <div className="min-w-[4.5rem] space-y-0.5">
       <div className={`font-medium ${br.net >= 0 ? "text-zinc-200" : "text-red-400"}`}>{formatMoney(br.net)}</div>
-      {hasExpense && (
+      {hasExtra && (
         <>
-          <div className="text-[10px] leading-tight text-emerald-500/80">+{formatMoney(br.revenue)}</div>
-          <div className="text-[10px] leading-tight text-red-400">−{formatMoney(br.expenses)}</div>
+          {br.founderDeposits > 0 && (
+            <div className="text-[10px] leading-tight text-sky-400">+{formatMoney(br.founderDeposits)}</div>
+          )}
+          {br.expenses > 0 && (
+            <div className="text-[10px] leading-tight text-red-400">−{formatMoney(br.expenses)}</div>
+          )}
         </>
       )}
     </div>
@@ -192,6 +208,9 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
       const emp = t.employeeName ? ` (${t.employeeName})` : "";
       return `${t.productName} × ${t.quantity}${emp}`;
     }
+    if (t.type === "deposit") {
+      return t.kind === "founder" ? "დამფუძნებლის შენატანი" : "შენატანი";
+    }
     return t.category;
   }
 
@@ -230,6 +249,8 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
         }}
       />
 
+      <FinancialSummaryPanel />
+
       {history.length > 0 && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -237,9 +258,9 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
             <button type="button" className={btnCls} onClick={loadHistory}>განახლება</button>
           </div>
           <p className="mb-3 text-xs text-zinc-500">
-            ფილიალის სვეტებში: <span className="text-zinc-300">ნეტო</span>, ქვემოთ{" "}
-            <span className="text-emerald-500">+შემოსავალი</span> და{" "}
-            <span className="text-red-400">−ხარჯი</span> (დისტრიბუციის ხარჯი — დისტრიბუციის სვეტში).
+            ფილიალის სვეტებში: <span className="text-zinc-300">ოპ. ნეტო</span> (გაყიდვა − ხარჯი).
+            ხარჯის/შენატანის ქვემოთ — <span className="text-sky-400">+დამფ. შენატანი</span>,{" "}
+            <span className="text-red-400">−ხარჯი</span>.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -247,8 +268,10 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pr-3">თვე</th>
                   <th className="pb-2 pr-3 text-right">შემოსავალი</th>
+                  <th className="pb-2 pr-2 text-right text-sky-400/80">დამფ. შენატანი</th>
                   <th className="pb-2 pr-3 text-right">ხარჯი</th>
-                  <th className="pb-2 pr-3 text-right">ნეტო</th>
+                  <th className="pb-2 pr-3 text-right">ოპ. ნეტო</th>
+                  <th className="pb-2 pr-3 text-right">სალარო ნეტო</th>
                   {BRANCHES.map((b) => (
                     <th key={b} className="pb-2 pr-2 text-right text-[10px]">
                       {b}
@@ -265,18 +288,29 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                   <tr key={row.month} className="border-b border-zinc-800/50">
                     <td className="py-2 pr-3 font-medium">{row.month}</td>
                     <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(row.revenue)}</td>
-                    <td className="py-2 pr-3 text-right text-red-400" title={
-                      branchExpenseSum > 0
-                        ? BRANCHES.map((b) => {
-                            const br = row.byBranch.find((x) => x.branch === b);
-                            return br?.expenses ? `${b}: ${formatMoney(br.expenses)}` : null;
-                          }).filter(Boolean).join(" · ")
-                        : undefined
-                    }>
+                    <td className="py-2 pr-2 text-right text-sky-400">{formatMoney(row.founderDeposits ?? 0)}</td>
+                    <td
+                      className="py-2 pr-3 text-right text-red-400"
+                      title={
+                        branchExpenseSum > 0
+                          ? BRANCHES.map((b) => {
+                              const br = row.byBranch.find((x) => x.branch === b);
+                              return br?.expenses ? `${b}: ${formatMoney(br.expenses)}` : null;
+                            })
+                              .filter(Boolean)
+                              .join(" · ")
+                          : undefined
+                      }
+                    >
                       {formatMoney(row.expenses)}
                     </td>
                     <td className={`py-2 pr-3 text-right ${row.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {formatMoney(row.net)}
+                    </td>
+                    <td
+                      className={`py-2 pr-3 text-right ${(row.cashFlowNet ?? row.net) >= 0 ? "text-teal-300" : "text-red-400"}`}
+                    >
+                      {formatMoney(row.cashFlowNet ?? row.net + (row.deposits ?? 0))}
                     </td>
                     {BRANCHES.map((b) => {
                       const br = row.byBranch.find((x) => x.branch === b);

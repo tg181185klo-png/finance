@@ -16,10 +16,16 @@ export function txLabel(t: Transaction) {
     const emp = t.employeeName ? ` (${t.employeeName})` : "";
     return `${t.productName} × ${t.quantity}${emp}`;
   }
+  if (t.type === "deposit") {
+    const kind =
+      t.kind === "founder" ? "დამფუძნებლის შენატანი" : t.kind === "loan_repayment" ? "ვალის დაბრუნება" : "შენატანი";
+    return kind;
+  }
   return t.category;
 }
 
 export function txDetail(t: Transaction) {
+  if (t.type === "deposit") return t.comment;
   if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) {
     const moneyLeft = saleCreditRemaining(t);
     const qtyLeft = saleQuantityRemaining(t);
@@ -104,14 +110,20 @@ export default function TransactionTable({
           {rows.map((t) => (
             <tr key={t.id} className="border-b border-zinc-800/50">
               <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
-              <td className={`py-2 pr-3 ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
+              <td
+                className={`py-2 pr-3 ${
+                  t.type === "sale" ? "text-emerald-400" : t.type === "deposit" ? "text-sky-400" : "text-red-400"
+                }`}
+              >
                 {t.type === "sale"
                   ? t.orderCompletedAt
                     ? "გაყიდვა"
                     : t.paymentStatus === "ბე (ავანსი)"
                       ? "ბე"
                       : "გაყიდვა"
-                  : "ხარჯი"}
+                  : t.type === "deposit"
+                    ? "შენატანი"
+                    : "ხარჯი"}
                 {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
                 {t.source === "import" && <span className="ml-1 text-xs text-zinc-500">📊</span>}
                 {t.source === "distribucia" && <span className="ml-1 text-xs text-zinc-500" title="polimeri აპი">🚐</span>}
@@ -120,9 +132,11 @@ export default function TransactionTable({
               <td className="py-2 pr-3">{txLabel(t)}</td>
               <td className="py-2 pr-3 text-zinc-500">{t.comment || txDetail(t)}</td>
               <td
-                className={`py-2 pr-3 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}
+                className={`py-2 pr-3 text-right font-medium ${
+                  t.type === "sale" ? "text-emerald-400" : t.type === "deposit" ? "text-sky-400" : "text-red-400"
+                }`}
               >
-                {t.type === "sale" ? "+" : "-"}
+                {t.type === "sale" ? "+" : t.type === "deposit" ? "+" : "-"}
                 {formatMoney(t.amount)}
               </td>
               <td className="py-2">

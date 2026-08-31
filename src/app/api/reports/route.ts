@@ -50,12 +50,18 @@ export async function GET(req: NextRequest) {
         month: m,
         revenue: company.revenue,
         expenses: company.expenses,
+        deposits: company.deposits,
+        founderDeposits: company.founderDeposits,
         net: company.net,
+        cashFlowNet: company.cashFlowNet,
         byBranch: company.byBranch.map((b) => ({
           branch: b.branch,
           revenue: b.revenue,
           expenses: b.expenses,
+          deposits: b.deposits,
+          founderDeposits: b.founderDeposits,
           net: b.net,
+          cashFlowNet: b.cashFlowNet,
         })),
       };
     });

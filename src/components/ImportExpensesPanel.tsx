@@ -111,6 +111,7 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported,
           .join(" · ");
         setMsg(
           `პრევიუ: ${data.lines} ხარჯი · ${formatMoney(data.total)}` +
+            (data.deposits ? ` · ${data.deposits} შენატანი · ${formatMoney(data.depositTotal)} (დამფ. ${formatMoney(data.founderDeposits)})` : "") +
             (branchParts ? ` · ${branchParts}` : "") +
             (data.replaceMode ? " · ჩაანაცვლებს" : " · დაემატება")
         );
@@ -122,7 +123,8 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported,
           .map(([b, v]) => `${b}: ${formatMoney((v as { total: number }).total)}`)
           .join(" · ");
         setMsg(
-          `ხარჯის იმპორტი ✓ ${data.imported} ხაზი · ${formatMoney(data.total)}` +
+          `იმპორტი ✓ ${data.imported} ხარჯი · ${formatMoney(data.total)}` +
+            (data.importedDeposits ? ` · ${data.importedDeposits} შენატანი · ${formatMoney(data.depositTotal)} (დამფ. ${formatMoney(data.founderDeposits)})` : "") +
             (branchParts ? ` · ${branchParts}` : "") +
             (data.replaced ? ` (${data.replaced} ძველი ჩანაწერი)` : "")
         );
@@ -138,7 +140,7 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported,
     <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-5">
       <h2 className="mb-1 font-semibold text-amber-200">Excel იმპორტი — ხარჯები</h2>
       <p className="mb-4 text-xs text-zinc-500">
-        ფორმატი: სახელი, ტიპი, კომენტარი, თანხა, თარიღი, სახელი (კატეგორია).
+        Excel „გაცემა“ = ხარჯი, „მიღება“ = დამფუძნებლის/სალაროს შენატანი (ცალკე შემოსავალი).
         ფილიალი ირჩევა ფაილის სახელიდან (მაგ. kuTaisi) — თუ კატეგორიის ან კომენტარის ველში წერია{" "}
         <span className="text-zinc-400">დისტრიბუცია</span>, <span className="text-zinc-400">ლილო</span> ან{" "}
         <span className="text-zinc-400">დიღომი</span>, ხარჯი შესაბამის ფილიალზე გადაეწერება.
