@@ -5,6 +5,7 @@ import type { Branch, BranchCash, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
+import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { calcBalances, formatMoney } from "@/lib/utils";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
@@ -61,7 +62,7 @@ export default function OverviewPanel({
       const flow = periodFlow(transactions, branch, from, to);
       const txs = transactions.filter(
         (t) =>
-          t.branch === branch &&
+          effectiveTxBranch(t) === branch &&
           txInPeriod(t.date, from, to) &&
           !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t))
       );
@@ -89,10 +90,10 @@ export default function OverviewPanel({
     return transactions
       .filter((t) => {
         if (!txInPeriod(t.date, from, to)) return false;
-        if (branchFilter !== "ყველა" && t.branch !== branchFilter && t.branch !== "საერთო") return false;
+        if (branchFilter !== "ყველა" && !txMatchesBranchFilter(t, branchFilter)) return false;
         if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) return false;
         if (scope === "company") return true;
-        return t.branch === scope;
+        return effectiveTxBranch(t) === scope;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, scope, from, to, branchFilter]);

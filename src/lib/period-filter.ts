@@ -1,4 +1,5 @@
 import type { Branch, Transaction } from "./types";
+import { txMatchesBranchFilter } from "./branch-allocation";
 import { currentMonth, monthStartEnd } from "./utils";
 
 export type PeriodMode = "month" | "today" | "custom";
@@ -48,7 +49,7 @@ export function periodFlow(
   let count = 0;
   for (const t of transactions) {
     if (!txInPeriod(t.date, from, to)) continue;
-    if (branch !== "ყველა" && t.branch !== branch && t.branch !== "საერთო") continue;
+    if (branch !== "ყველა" && !txMatchesBranchFilter(t, branch)) continue;
     count += 1;
     if (t.type === "sale") revenue += t.amount;
     else expenses += t.amount;

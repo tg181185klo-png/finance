@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Branch, Expense, ExpenseCategory } from "./types";
+import { resolveExpenseBranchFromText } from "./branch-allocation";
 
 export type ParsedExpenseRow = {
   rowIndex: number;
@@ -47,19 +48,8 @@ export function detectDefaultBranchFromFileName(fileName: string): Branch | null
   return null;
 }
 
-const BRANCH_KEYWORDS: { branch: Branch; pattern: RegExp }[] = [
-  { branch: "დისტრიბუცია", pattern: /დისტრიბუც/i },
-  { branch: "ლილო", pattern: /ლილო/i },
-  { branch: "დიღომი", pattern: /დიღომ/i },
-  { branch: "ქუთაისი", pattern: /ქუთაის/i },
-];
-
 export function resolveExpenseBranch(label: string, comment: string, defaultBranch: Branch): Branch {
-  const text = `${label} ${comment}`;
-  for (const { branch, pattern } of BRANCH_KEYWORDS) {
-    if (pattern.test(text)) return branch;
-  }
-  return defaultBranch;
+  return resolveExpenseBranchFromText(label, comment, defaultBranch);
 }
 
 export function mapExpenseCategory(label: string, comment: string): ExpenseCategory {

@@ -1,4 +1,5 @@
 import { BRANCHES } from "./constants";
+import { effectiveExpenseBranch, txMatchesBranchFilter } from "./branch-allocation";
 import type {
   Branch,
   BranchCash,
@@ -122,9 +123,13 @@ function buildByBranchStats(
     for (const t of tx) {
       const d = t.date.slice(0, 10);
       if (d < from || d > to) continue;
-      if (!matchBranch(t.branch, br)) continue;
-      if (t.type === "sale") revenue += t.amount;
-      else expenses += t.amount;
+      if (t.type === "sale") {
+        if (!matchBranch(t.branch, br)) continue;
+        revenue += t.amount;
+      } else {
+        if (effectiveExpenseBranch(t) !== br) continue;
+        expenses += t.amount;
+      }
     }
     const bal = calcBalancesUpToDate(tx, br, branchCash, to);
     return {
@@ -569,7 +574,7 @@ export function buildPeriodReport(
   const filtered = tx.filter((t) => {
     const d = t.date.slice(0, 10);
     if (d < from || d > to) return false;
-    return matchBranch(t.branch, branch);
+    return txMatchesBranchFilter(t, branch);
   });
 
   let revenue = 0;
