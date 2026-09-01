@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Branch, FinancialSummaryRow } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
+import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import { formatMoney, monthStartEnd } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -32,7 +33,7 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
   });
   const [from, setFrom] = useState(() => monthStartEnd().from);
   const [to, setTo] = useState(() => monthStartEnd().to);
-  const [monthCount, setMonthCount] = useState(6);
+  const [monthCount, setMonthCount] = useState(REPORT_HISTORY_MONTHS);
   const [rows, setRows] = useState<FinancialSummaryRow[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -189,7 +190,7 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
               max={24}
               className={inputCls}
               value={monthCount}
-              onChange={(e) => setMonthCount(Math.min(24, Math.max(1, parseInt(e.target.value, 10) || 6)))}
+              onChange={(e) => setMonthCount(Math.min(24, Math.max(1, parseInt(e.target.value, 10) || REPORT_HISTORY_MONTHS)))}
             />
           </Field>
         )}

@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types";
 import ReportsPanel from "@/components/ReportsPanel";
 import OverviewPanel from "@/components/OverviewPanel";
+import ExpensesPanel from "@/components/ExpensesPanel";
 import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import {
@@ -84,7 +85,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "overview" | "clients" | "obligations" | "reports" | "branches" | "inventory" | "employees";
+type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "inventory" | "employees";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -1012,6 +1013,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <button type="button" className={tabCls(tab === "overview")} onClick={() => setTab("overview")}>
           მიმოხილვა
         </button>
+        <button type="button" className={tabCls(tab === "expenses")} onClick={() => setTab("expenses")}>
+          ხარჯები
+        </button>
         <button type="button" className={tabCls(tab === "clients")} onClick={() => setTab("clients")}>
           კლიენტები
         </button>
@@ -1400,6 +1404,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchCash={activeStore.branchCash}
           period={period}
           branchFilter={filter}
+          onDelete={deleteTx}
+        />
+      )}
+
+      {tab === "expenses" && !loading && (
+        <ExpensesPanel
+          expenses={tx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
         />
       )}

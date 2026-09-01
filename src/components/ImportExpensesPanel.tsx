@@ -57,7 +57,7 @@ export default function ImportExpensesPanel({ onImported }: Props) {
     d.setMonth(d.getMonth() - 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [replaceExisting, setReplaceExisting] = useState(true);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -169,7 +169,7 @@ export default function ImportExpensesPanel({ onImported }: Props) {
 
       <label className="mt-3 flex items-center gap-2 text-sm text-amber-200">
         <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
-        იმავე ფაილის წინა იმპორტის ჩანაცვლება
+        იმავე ფაილის წინა იმპორტის ჩანაცვლება (გამორთული = ახალი ხაზები დაემატება, ძველი რჩება)
       </label>
 
       {files.length > 0 && (

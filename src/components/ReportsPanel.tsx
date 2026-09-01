@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
 import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
+import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
@@ -127,7 +128,7 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
   }, [repBranch]);
 
   const loadHistory = useCallback(async () => {
-    const res = await fetch("/api/reports?mode=months&count=6", { cache: "no-store" });
+    const res = await fetch(`/api/reports?mode=months&count=${REPORT_HISTORY_MONTHS}`, { cache: "no-store" });
     const data = await res.json();
     if (data.error) {
       setErr(data.error);
@@ -232,7 +233,7 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
       {history.length > 0 && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold text-emerald-200">ბოლო 6 თვე — კომპანია</h2>
+            <h2 className="font-semibold text-emerald-200">ბოლო {REPORT_HISTORY_MONTHS} თვე — კომპანია</h2>
             <button type="button" className={btnCls} onClick={loadHistory}>განახლება</button>
           </div>
           <p className="mb-3 text-xs text-zinc-500">
