@@ -206,6 +206,7 @@ export interface BranchClientSale {
   driverEmployeeId?: string;
   driverEmployeeName?: string;
   paymentMethod: PaymentMethod;
+  comment?: string;
   products: BranchSaleLine[];
 }
 

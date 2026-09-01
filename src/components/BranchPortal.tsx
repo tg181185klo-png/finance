@@ -35,12 +35,11 @@ type CompletedSale = {
   personalId?: string;
   companyName?: string;
   companyId?: string;
-  contactFirstName?: string;
-  contactLastName?: string;
   contactPhone?: string;
   driverEmployeeId?: string;
   driverEmployeeName?: string;
   paymentMethod: PaymentMethod;
+  comment?: string;
   items: CartItem[];
 };
 
@@ -101,35 +100,33 @@ export default function BranchPortal({ token }: { token: string }) {
   const [personType, setPersonType] = useState<CustomerPersonType>("physical");
   const [companyName, setCompanyName] = useState("");
   const [companyId, setCompanyId] = useState("");
-  const [contactFirstName, setContactFirstName] = useState("");
-  const [contactLastName, setContactLastName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [customerComment, setCustomerComment] = useState("");
   const [driverEmployeeId, setDriverEmployeeId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
 
   const [productSearch, setProductSearch] = useState("");
   const [showProductList, setShowProductList] = useState(false);
+  const [showProductCatalog, setShowProductCatalog] = useState(false);
   const [pickedProduct, setPickedProduct] = useState<Product | null>(null);
   const [addQty, setAddQty] = useState("1");
   const [addPrice, setAddPrice] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/branch?token=${token}`, { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/products", { cache: "no-store" }).then((r) => r.json()),
-    ])
-      .then(([branchData, productData]) => {
+    fetch(`/api/branch?token=${token}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((branchData) => {
         if (branchData.error) setErr(branchData.error);
         else {
           setBranch(branchData.branch);
           const list: Employee[] = branchData.employees ?? [];
           setEmployees(list);
           if (list.length === 1) setSelectedEmployeeId(list[0].id);
-        }
-        setProducts((productData.products ?? []) as Product[]);
-        if (productData.warning) setProductWarning(String(productData.warning));
-        else if (productData.error && !(productData.products ?? []).length) {
-          setProductWarning(String(productData.error));
+          setProducts((branchData.products ?? []) as Product[]);
+          if (branchData.productsWarning) setProductWarning(String(branchData.productsWarning));
+          else if (!branchData.products?.length) {
+            setProductWarning("პროდუქტების სია ცარიელია");
+          }
         }
       })
       .catch(() => setErr("კავშირის შეცდომა"))
@@ -239,12 +236,11 @@ export default function BranchPortal({ token }: { token: string }) {
         personalId: personalId.trim() || undefined,
         companyName: companyName.trim() || undefined,
         companyId: companyId.trim() || undefined,
-        contactFirstName: contactFirstName.trim() || undefined,
-        contactLastName: contactLastName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         driverEmployeeId: driverEmployeeId || selectedEmployeeId,
         driverEmployeeName: driverEmployee?.name,
         paymentMethod,
+        comment: customerComment.trim() || undefined,
         items: cart.map((i) => ({ ...i })),
       },
     ]);
@@ -255,9 +251,8 @@ export default function BranchPortal({ token }: { token: string }) {
     setPersonalId("");
     setCompanyName("");
     setCompanyId("");
-    setContactFirstName("");
-    setContactLastName("");
     setContactPhone("");
+    setCustomerComment("");
     setPaymentMethod("ქეში (ნაღდი)");
   }
 
@@ -286,15 +281,14 @@ export default function BranchPortal({ token }: { token: string }) {
     const allSales = asZero ? [] : [...completedSales];
     const validClients = allSales.map((c) => ({
       personType: c.personType,
-      customerFirstName: c.personType === "legal" ? c.contactFirstName || "" : c.firstName,
-      customerLastName: c.personType === "legal" ? c.contactLastName || "" : c.lastName,
+      customerFirstName: c.personType === "legal" ? "" : c.firstName,
+      customerLastName: c.personType === "legal" ? "" : c.lastName,
       personalId: c.personalId,
-      phone: c.personType === "legal" ? c.contactPhone || c.phone : c.phone,
+      phone: c.personType === "legal" ? c.contactPhone || "" : c.phone,
       companyName: c.companyName,
       companyId: c.companyId,
-      contactFirstName: c.contactFirstName,
-      contactLastName: c.contactLastName,
       contactPhone: c.contactPhone,
+      comment: c.comment,
       driverEmployeeId: c.driverEmployeeId,
       driverEmployeeName: c.driverEmployeeName,
       paymentMethod: c.paymentMethod,
@@ -482,19 +476,23 @@ export default function BranchPortal({ token }: { token: string }) {
                 placeholder="საიდენტიფიკაციო კოდი"
                 inputMode="numeric"
               />
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <input className={inputCls} value={contactFirstName} onChange={(e) => setContactFirstName(e.target.value)} placeholder="საკონტაქტო სახელი" />
-                <input className={inputCls} value={contactLastName} onChange={(e) => setContactLastName(e.target.value)} placeholder="საკონტაქტო გვარი" />
-              </div>
               <input
                 className={`${inputCls} mt-2`}
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
-                placeholder="საკონტაქტო ტელეფონი"
+                placeholder="ტელეფონი"
                 inputMode="tel"
               />
             </>
           )}
+
+          <textarea
+            className={`${inputCls} mt-3 min-h-[4rem] resize-y text-sm`}
+            value={customerComment}
+            onChange={(e) => setCustomerComment(e.target.value)}
+            placeholder="კომენტარი (არასავალდებულო)"
+            rows={2}
+          />
 
           <div className="mt-3">
             <label className="mb-1 block text-xs text-zinc-500">მომზიდავი თანამშრომელი</label>
@@ -536,6 +534,39 @@ export default function BranchPortal({ token }: { token: string }) {
             3. პროდუქტები → კალათა
           </p>
           {productWarning && <p className="mb-2 text-xs text-amber-300">{productWarning}</p>}
+          {products.length > 0 && (
+            <p className="mb-2 text-xs text-zinc-500">{products.length} პროდუქტი ხელმისაწვდომია</p>
+          )}
+
+          <button
+            type="button"
+            className="mb-3 flex w-full items-center justify-between rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            onClick={() => setShowProductCatalog((v) => !v)}
+          >
+            <span>პროდუქტების ჩამონათვალი</span>
+            <span className="text-zinc-500">{showProductCatalog ? "▲" : "▼"}</span>
+          </button>
+          {showProductCatalog && (
+            <ul className="mb-3 max-h-56 overflow-auto rounded-xl border border-zinc-700 bg-zinc-950/60">
+              {matchProducts(products, productSearch, 200).map((p) => (
+                <li key={p.code}>
+                  <button
+                    type="button"
+                    className="w-full border-b border-zinc-800 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                    onClick={() => pickProductForCart(p)}
+                  >
+                    <span className="font-medium text-emerald-400">{p.code}</span>
+                    <span className="mx-1 text-zinc-600">|</span>
+                    <span>{p.name}</span>
+                    <span className="float-right text-zinc-400">{formatMoney(p.price)}</span>
+                  </button>
+                </li>
+              ))}
+              {products.length === 0 && (
+                <li className="px-3 py-2 text-xs text-zinc-500">პროდუქტები ვერ ჩაიტვირთა</li>
+              )}
+            </ul>
+          )}
 
           <div className="relative">
             <input
@@ -696,6 +727,7 @@ export default function BranchPortal({ token }: { token: string }) {
                             : `${sale.phone}${sale.personalId ? ` · პ/n: ${sale.personalId}` : ""}`}{" "}
                           · {payLabel}
                           {sale.driverEmployeeName ? ` · მომზიდავი: ${sale.driverEmployeeName}` : ""}
+                          {sale.comment ? ` · ${sale.comment}` : ""}
                         </p>
                       </div>
                       <div className="text-right">

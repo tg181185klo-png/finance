@@ -9,6 +9,7 @@ import {
   reverseExpenseObligation,
   wageForShift,
 } from "@/lib/utils";
+import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import type {
@@ -124,7 +125,8 @@ async function submitBranchReport(body: SubmitBody) {
         .map((c) => {
           const name = branchSaleBuyerName(c);
           const prods = c.products.map((p) => `${p.productName} ×${p.quantity}`).join(", ");
-          return `${name}: ${prods}`;
+          const note = c.comment?.trim();
+          return note ? `${name}: ${prods} (${note})` : `${name}: ${prods}`;
         })
         .join("; ")
     : incomes.length
@@ -181,6 +183,7 @@ async function submitBranchReport(body: SubmitBody) {
         : "",
       client.phone?.trim() ? `ტელ: ${client.phone.trim()}` : client.contactPhone?.trim() ? `ტელ: ${client.contactPhone.trim()}` : "",
       client.personalId?.trim() ? `პირადი: ${client.personalId.trim()}` : "",
+      client.comment?.trim() ? `კომენტარი: ${client.comment.trim()}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -314,6 +317,8 @@ export async function GET(req: NextRequest) {
   const branch = branchByToken(store, token);
   if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
 
+  const { products, error: productsError } = await fetchProductsFromGoogleSheets();
+
   return NextResponse.json(
     {
       branch,
@@ -323,6 +328,9 @@ export async function GET(req: NextRequest) {
       attendance: (store.attendance ?? []).filter(
         (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
       ),
+      products,
+      productsWarning: productsError,
+      productsCount: products.length,
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   );
