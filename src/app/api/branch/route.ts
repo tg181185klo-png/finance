@@ -12,6 +12,7 @@ import {
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
+import { buildClientSaleMeta } from "@/lib/branch-sales-sync";
 import type {
   Branch,
   BranchClientSale,
@@ -92,6 +93,9 @@ async function submitBranchReport(body: SubmitBody) {
     }
     return Boolean(c.customerFirstName?.trim() && c.customerLastName?.trim() && c.phone?.trim());
   });
+  for (const c of clientSales) {
+    if (!c.clientSaleId) c.clientSaleId = uid();
+  }
   const now = new Date().toISOString();
   const incomes = body.incomes ?? [];
   const legacySales = body.sales ?? [];
@@ -175,18 +179,7 @@ async function submitBranchReport(body: SubmitBody) {
 
   for (const client of clientSales) {
     const buyerName = branchSaleBuyerName(client);
-    const meta = [
-      client.personType === "legal"
-        ? client.companyId?.trim()
-          ? `ს/კ: ${client.companyId.trim()}`
-          : ""
-        : "",
-      client.phone?.trim() ? `ტელ: ${client.phone.trim()}` : client.contactPhone?.trim() ? `ტელ: ${client.contactPhone.trim()}` : "",
-      client.personalId?.trim() ? `პირადი: ${client.personalId.trim()}` : "",
-      client.comment?.trim() ? `კომენტარი: ${client.comment.trim()}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const meta = buildClientSaleMeta(client);
 
     for (const p of client.products) {
       if (!p.productCode || !p.quantity || p.amount <= 0) continue;
@@ -206,6 +199,7 @@ async function submitBranchReport(body: SubmitBody) {
         buyerName,
         source: "branch",
         reportId,
+        clientSaleId: client.clientSaleId,
         employeeName: submittedBy,
       });
     }

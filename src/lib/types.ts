@@ -57,6 +57,7 @@ export interface Sale {
   recurrence?: TxRecurrence;
   source?: TxSource;
   reportId?: string;
+  clientSaleId?: string;
   employeeName?: string;
   /** მყიდველი / კომპანია (ბე შეკვეთისას) */
   buyerName?: string;
@@ -193,6 +194,7 @@ export interface BranchSaleLine {
 
 /** ფილიალის რეპორტში კლიენტის გაყიდვა */
 export interface BranchClientSale {
+  clientSaleId?: string;
   personType: CustomerPersonType;
   customerFirstName: string;
   customerLastName: string;

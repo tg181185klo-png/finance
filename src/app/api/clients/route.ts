@@ -6,6 +6,7 @@ import {
   parseCustomersExcel,
 } from "@/lib/customers";
 import { updateStore, readStore } from "@/lib/server-store";
+import type { Customer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,15 @@ export async function POST(req: NextRequest) {
     customerId?: string;
     driverEmployeeId?: string;
     driverEmployeeName?: string;
+    personType?: Customer["personType"];
+    firstName?: string;
+    lastName?: string;
+    personalId?: string;
+    phone?: string;
+    companyName?: string;
+    companyId?: string;
+    contactPhone?: string;
+    branch?: Customer["branch"];
   };
 
   if (body.action === "updateDriver") {
@@ -69,6 +79,44 @@ export async function POST(req: NextRequest) {
       return store;
     });
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "update") {
+    if (!body.customerId) {
+      return NextResponse.json({ error: "customerId საჭიროა" }, { status: 400 });
+    }
+    const store = await updateStore((s) => {
+      const list = s.customers ?? [];
+      const idx = list.findIndex((c) => c.id === body.customerId);
+      if (idx < 0) throw new Error("კლიენტი ვერ მოიძებნა");
+      const cur = list[idx];
+      list[idx] = {
+        ...cur,
+        personType: body.personType ?? cur.personType,
+        firstName: body.firstName?.trim() ?? cur.firstName,
+        lastName: body.lastName?.trim() ?? cur.lastName,
+        personalId: body.personalId?.trim() ?? cur.personalId,
+        phone: body.phone?.trim() ?? cur.phone,
+        companyName: body.companyName?.trim() ?? cur.companyName,
+        companyId: body.companyId?.trim() ?? cur.companyId,
+        contactPhone: body.contactPhone?.trim() ?? cur.contactPhone,
+        branch: body.branch ?? cur.branch,
+        driverEmployeeId: body.driverEmployeeId ?? cur.driverEmployeeId,
+        driverEmployeeName: body.driverEmployeeName ?? cur.driverEmployeeName,
+      };
+      s.customers = list;
+    });
+    return NextResponse.json({ ok: true, customers: store.customers });
+  }
+
+  if (body.action === "delete") {
+    if (!body.customerId) {
+      return NextResponse.json({ error: "customerId საჭიროა" }, { status: 400 });
+    }
+    const store = await updateStore((s) => {
+      s.customers = (s.customers ?? []).filter((c) => c.id !== body.customerId);
+    });
+    return NextResponse.json({ ok: true, customers: store.customers });
   }
 
   return NextResponse.json({ error: "უცნობი მოქმედება" }, { status: 400 });

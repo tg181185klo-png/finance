@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { Branch, Customer, Employee, Transaction } from "@/lib/types";
+import type { Branch, BranchDailyReport, Customer, Employee, Transaction } from "@/lib/types";
+import EmployeeSalesPanel from "@/components/EmployeeSalesPanel";
 import { buildClientReport, buildClientSaleLines } from "@/lib/client-report";
 import { customerDisplayName } from "@/lib/customers";
 import type { ResolvedPeriod } from "@/lib/period-filter";
@@ -13,7 +14,7 @@ const tabBtn = (on: boolean) =>
 const inputCls = "rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm";
 const btnCls = "rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium hover:bg-sky-500 disabled:opacity-40";
 
-type MainView = "registry" | "sales";
+type MainView = "registry" | "sales" | "employee-sales";
 type StatusFilter = "ყველა" | "ახალი" | "ძველი";
 type TypeFilter = "ყველა" | "ფიზიკური" | "იურიდიული";
 
@@ -21,6 +22,7 @@ type Props = {
   customers: Customer[];
   employees: Employee[];
   transactions: Transaction[];
+  branchReports: BranchDailyReport[];
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
   onRefresh: () => Promise<unknown>;
@@ -30,6 +32,7 @@ export default function ClientsPanel({
   customers,
   employees,
   transactions,
+  branchReports,
   period,
   branchFilter,
   onRefresh,
@@ -43,6 +46,8 @@ export default function ClientsPanel({
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<Customer>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const scopedTx = useMemo(() => {
@@ -148,6 +153,75 @@ export default function ClientsPanel({
     }
   }
 
+  function openEditCustomer(c: Customer) {
+    setEditingCustomer(c);
+    setEditDraft({ ...c });
+    setErr("");
+  }
+
+  function closeEditCustomer() {
+    setEditingCustomer(null);
+    setEditDraft({});
+  }
+
+  async function saveCustomer() {
+    if (!editingCustomer) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const emp = employees.find((e) => e.id === editDraft.driverEmployeeId);
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          customerId: editingCustomer.id,
+          personType: editDraft.personType,
+          firstName: editDraft.firstName,
+          lastName: editDraft.lastName,
+          personalId: editDraft.personalId,
+          phone: editDraft.phone,
+          companyName: editDraft.companyName,
+          companyId: editDraft.companyId,
+          contactPhone: editDraft.contactPhone,
+          branch: editDraft.branch,
+          driverEmployeeId: editDraft.driverEmployeeId,
+          driverEmployeeName: emp?.name ?? editDraft.driverEmployeeName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      await onRefresh();
+      setMsg("კლიენტი განახლდა ✓");
+      closeEditCustomer();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCustomer(c: Customer) {
+    if (!confirm(`წავშალოთ კლიენტი „${customerDisplayName(c)}"?`)) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", customerId: c.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      await onRefresh();
+      setMsg("კლიენტი წაიშალა");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
@@ -161,6 +235,9 @@ export default function ClientsPanel({
           </button>
           <button type="button" className={tabBtn(mainView === "sales")} onClick={() => setMainView("sales")}>
             გაყიდვების რეპორტი
+          </button>
+          <button type="button" className={tabBtn(mainView === "employee-sales")} onClick={() => setMainView("employee-sales")}>
+            თანამშრომლის გაყიდვები
           </button>
         </div>
       </div>
@@ -236,7 +313,8 @@ export default function ClientsPanel({
                     <th className="pb-2 pr-3">საკონტაქტო</th>
                     <th className="pb-2 pr-3">მომზიდავი</th>
                     <th className="pb-2 pr-3">ფილიალი</th>
-                    <th className="pb-2">რეგისტრაცია</th>
+                    <th className="pb-2 pr-3">რეგისტრაცია</th>
+                    <th className="pb-2">მოქმედება</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,11 +329,7 @@ export default function ClientsPanel({
                       <td className="py-2 pr-3 font-medium">{customerDisplayName(c)}</td>
                       <td className="py-2 pr-3 text-zinc-400">{c.personType === "legal" ? c.companyId ?? "—" : c.personalId ?? "—"}</td>
                       <td className="py-2 pr-3 text-zinc-400">{c.phone || c.contactPhone || "—"}</td>
-                      <td className="py-2 pr-3 text-zinc-500">
-                        {c.personType === "legal"
-                          ? `${c.contactFirstName ?? ""} ${c.contactLastName ?? ""}`.trim() || "—"
-                          : "—"}
-                      </td>
+                      <td className="py-2 pr-3 text-zinc-500">—</td>
                       <td className="py-2 pr-3">
                         <select
                           className="max-w-[140px] rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
@@ -269,7 +343,13 @@ export default function ClientsPanel({
                         </select>
                       </td>
                       <td className="py-2 pr-3">{c.branch ?? "—"}</td>
-                      <td className="py-2 whitespace-nowrap text-xs text-zinc-500">{formatDate(c.registeredAt)}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap text-xs text-zinc-500">{formatDate(c.registeredAt)}</td>
+                      <td className="py-2 whitespace-nowrap">
+                        <button type="button" className="mr-2 text-xs text-sky-400 hover:text-sky-300" onClick={() => openEditCustomer(c)}>რედაქტირება</button>
+                        {!c.isLegacy && (
+                          <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteCustomer(c)} disabled={busy}>წაშლა</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -385,6 +465,54 @@ export default function ClientsPanel({
             </div>
           )}
         </>
+      )}
+
+      {mainView === "employee-sales" && (
+        <EmployeeSalesPanel
+          branchReports={branchReports}
+          employees={employees}
+          period={period}
+          branchFilter={branchFilter}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      {editingCustomer && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-700 bg-zinc-950 p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">კლიენტის რედაქტირება</h3>
+              <button type="button" className="text-zinc-500" onClick={closeEditCustomer}>✕</button>
+            </div>
+            {editDraft.personType === "legal" ? (
+              <div className="space-y-2">
+                <input className={`${inputCls} w-full`} value={editDraft.companyName ?? ""} onChange={(e) => setEditDraft({ ...editDraft, companyName: e.target.value })} placeholder="კომპანია" />
+                <input className={`${inputCls} w-full`} value={editDraft.companyId ?? ""} onChange={(e) => setEditDraft({ ...editDraft, companyId: e.target.value })} placeholder="ს/კ" />
+                <input className={`${inputCls} w-full`} value={editDraft.contactPhone ?? editDraft.phone ?? ""} onChange={(e) => setEditDraft({ ...editDraft, contactPhone: e.target.value, phone: e.target.value })} placeholder="ტელეფონი" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input className={inputCls} value={editDraft.firstName ?? ""} onChange={(e) => setEditDraft({ ...editDraft, firstName: e.target.value })} placeholder="სახელი" />
+                  <input className={inputCls} value={editDraft.lastName ?? ""} onChange={(e) => setEditDraft({ ...editDraft, lastName: e.target.value })} placeholder="გვარი" />
+                </div>
+                <input className={`${inputCls} w-full`} value={editDraft.personalId ?? ""} onChange={(e) => setEditDraft({ ...editDraft, personalId: e.target.value })} placeholder="პირადი №" />
+                <input className={`${inputCls} w-full`} value={editDraft.phone ?? ""} onChange={(e) => setEditDraft({ ...editDraft, phone: e.target.value })} placeholder="ტელეფონი" />
+              </div>
+            )}
+            <div className="mt-3">
+              <label className="mb-1 block text-xs text-zinc-500">ფილიალი</label>
+              <select className={`${inputCls} w-full`} value={editDraft.branch ?? ""} onChange={(e) => setEditDraft({ ...editDraft, branch: e.target.value as Branch })}>
+                <option value="">—</option>
+                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-lg border border-zinc-600 px-4 py-2 text-sm" onClick={closeEditCustomer}>გაუქმება</button>
+              <button type="button" className={btnCls} disabled={busy} onClick={() => void saveCustomer()}>შენახვა</button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

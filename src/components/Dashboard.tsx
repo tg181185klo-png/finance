@@ -1282,6 +1282,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           customers={activeStore.customers ?? []}
           employees={activeStore.employees ?? []}
           transactions={tx}
+          branchReports={activeStore.branchReports ?? []}
           period={period}
           branchFilter={filter}
           onRefresh={refresh}
