@@ -48,37 +48,31 @@ function DeleteRow({
   onDelete,
 }: {
   id: string;
-  onDelete: (id: string, pin: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
 }) {
-  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
 
   return (
-    <input
-      type="password"
-      className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs focus:border-red-500 focus:outline-none disabled:opacity-40"
-      placeholder="PIN ↵"
-      value={pin}
+    <button
+      type="button"
+      className="rounded border border-red-900/60 px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 disabled:opacity-40"
       disabled={busy}
-      autoComplete="off"
-      onChange={(e) => setPin(e.target.value)}
-      onKeyDown={async (e) => {
-        if (e.key !== "Enter" || !pin.trim() || busy) return;
-        e.preventDefault();
+      onClick={async () => {
+        if (!confirm("წავშალოთ ეს ჩანაწერი?")) return;
         setBusy(true);
-        const ok = await onDelete(id, pin.trim());
-        if (ok) setPin("");
+        await onDelete(id);
         setBusy(false);
       }}
-      title="შეიყვანეთ ადმინ კოდი და Enter — წაშლა"
-    />
+    >
+      წაშლა
+    </button>
   );
 }
 
 type Props = {
   rows: Transaction[];
   showBranch?: boolean;
-  onDelete: (id: string, pin: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
   emptyText?: string;
 };
 

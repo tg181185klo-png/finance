@@ -1,6 +1,7 @@
 import { readFile } from "fs/promises";
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { requireAdminSession } from "@/lib/require-admin";
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { env } from "@/lib/env";
 import type { Product } from "@/lib/types";
@@ -33,6 +34,9 @@ async function fetchFromExcel() {
 }
 
 export async function GET() {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   try {
     const { products, error } = await fetchProductsFromGoogleSheets();
 

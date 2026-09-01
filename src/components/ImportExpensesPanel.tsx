@@ -46,12 +46,10 @@ function guessBranchFromFileName(name: string): Branch | null {
 }
 
 type Props = {
-  unlocked: boolean;
-  getAdminPin: () => string;
   onImported: () => void | Promise<void>;
 };
 
-export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported }: Props) {
+export default function ImportExpensesPanel({ onImported }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [branch, setBranch] = useState<Branch>("ქუთაისი");
   const [month, setMonth] = useState(() => {
@@ -75,10 +73,6 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported 
       setErr("აირჩიეთ Excel ფაილი");
       return;
     }
-    if (!previewOnly && !unlocked) {
-      setErr("იმპორტისთვის შეიყვანეთ ადმინ კოდი");
-      return;
-    }
     setBusy(true);
     setErr("");
     setMsg("");
@@ -90,8 +84,6 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported 
       form.append("replaceExisting", String(replaceExisting));
       if (previewOnly) {
         form.append("preview", "true");
-      } else {
-        form.append("pin", getAdminPin());
       }
       const res = await fetch("/api/import/expenses", { method: "POST", body: form });
       const data = await res.json();
@@ -191,14 +183,13 @@ export default function ImportExpensesPanel({ unlocked, getAdminPin, onImported 
         <button
           type="button"
           className={`${btnCls} bg-orange-600 hover:bg-orange-500`}
-          disabled={!files.length || busy || !unlocked}
+          disabled={!files.length || busy}
           onClick={() => runImport(false)}
         >
           იმპორტი
         </button>
       </div>
 
-      {!unlocked && <p className="mt-2 text-xs text-amber-400">იმპორტისთვის საჭიროა ადმინ კოდი.</p>}
       {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
 

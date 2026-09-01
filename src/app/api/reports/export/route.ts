@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/require-admin";
 import { buildPeriodReport, currentMonth } from "@/lib/utils";
 import { readStore } from "@/lib/server-store";
 import { buildReportWorkbook, reportExportFilename } from "@/lib/report-export";
@@ -28,6 +29,9 @@ function resolveRange(
 }
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const p = new URL(req.url).searchParams;
   const mode = p.get("mode") ?? "period";
   const fromParam = p.get("from");

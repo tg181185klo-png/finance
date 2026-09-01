@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import { applyCreditDelivery, applyCreditPayment } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { PaymentMethod } from "@/lib/types";
@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const body = (await req.json()) as {
-      pin: string;
       action: "pay" | "deliver";
       saleId: string;
       amount?: number;
@@ -17,10 +19,6 @@ export async function POST(req: NextRequest) {
       note?: string;
       paymentMethod?: PaymentMethod;
     };
-
-    if (body.pin !== ADMIN_PIN) {
-      return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-    }
 
     if (!body.saleId || !body.action) {
       return NextResponse.json({ error: "saleId და action საჭიროა" }, { status: 400 });

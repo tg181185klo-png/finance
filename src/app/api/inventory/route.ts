@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import { updateStore } from "@/lib/server-store";
 import { emptyBranchCash } from "@/lib/utils";
 import type { Branch, Store } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-function checkPin(pin?: string) {
-  return pin === ADMIN_PIN;
-}
 
 function safeNum(value: unknown, fallback: number) {
   const n = typeof value === "number" ? value : parseFloat(String(value ?? ""));
@@ -22,8 +18,10 @@ function ensureBranchBuckets(s: Store, branch: Branch) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const body = (await req.json()) as {
-      pin: string;
       action: "setStock" | "adjustStock" | "setCash";
       branch: Branch;
       productCode?: string;
@@ -33,10 +31,6 @@ export async function POST(req: NextRequest) {
       card?: number;
       bank?: number;
     };
-
-    if (!checkPin(body.pin)) {
-      return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-    }
 
     const branch = body.branch;
 

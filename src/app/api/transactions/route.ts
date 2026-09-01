@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, Sale, Store, Transaction } from "@/lib/types";
@@ -28,19 +28,18 @@ function removeTransaction(s: Store, id: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const body = (await req.json()) as {
       transaction?: Transaction;
       migrate?: Transaction[];
       action?: "delete" | "updateRecurrence";
       id?: string;
-      pin?: string;
       recurrence?: string;
     };
 
     if (body.action === "delete") {
-      if (body.pin !== ADMIN_PIN) {
-        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-      }
       if (!body.id) {
         return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
       }
@@ -58,9 +57,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === "updateRecurrence") {
-      if (body.pin !== ADMIN_PIN) {
-        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-      }
       if (!body.id || !body.recurrence) {
         return NextResponse.json({ error: "id და recurrence საჭიროა" }, { status: 400 });
       }
@@ -129,14 +125,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
-  const pin = searchParams.get("pin");
   const reportId = searchParams.get("reportId");
-
-  if (pin !== ADMIN_PIN) {
-    return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-  }
 
   try {
     const store = await updateStore((s) => {

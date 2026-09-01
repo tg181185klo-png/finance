@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import { addEmployeeAttendance, removeEmployeeAttendance, uid } from "@/lib/utils";
 import { branchByToken, readStore, updateStore } from "@/lib/server-store";
 import type { Branch, WorkShift } from "@/lib/types";
@@ -7,6 +7,9 @@ import type { Branch, WorkShift } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const store = await readStore();
   return NextResponse.json({
     employees: store.employees ?? [],
@@ -16,9 +19,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const body = (await req.json()) as {
       action: "addEmployee" | "updateEmployee" | "deleteEmployee" | "checkin" | "deleteAttendance";
-      pin?: string;
       token?: string;
       name?: string;
       branch?: Branch;
@@ -28,13 +33,6 @@ export async function POST(req: NextRequest) {
       date?: string;
       shift?: WorkShift;
     };
-
-    const adminAction = body.action !== "checkin" || !body.token;
-    if (adminAction) {
-      if (body.pin !== ADMIN_PIN) {
-        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-      }
-    }
 
     if (body.action === "addEmployee") {
       if (!body.name || !body.branch) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/require-admin";
 import {
   buildFinancialSummaryWorkbook,
   financialSummaryFromReport,
@@ -10,6 +11,9 @@ import { readStore } from "@/lib/server-store";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const p = new URL(req.url).searchParams;
   const mode = p.get("mode") ?? "period";
   const store = await readStore();

@@ -53,8 +53,6 @@ import {
   isCreditOrderActive,
   uid,
 } from "@/lib/utils";
-import { PinModal, usePin } from "@/components/PinModal";
-import { clearSessionPin, getSessionPin, setSessionPin } from "@/lib/pin-session";
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
 import { type PeriodMode, resolvePeriod, periodFlow } from "@/lib/period-filter";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
@@ -117,20 +115,11 @@ async function apiTx(method: string, body?: object, qs = "") {
   return data;
 }
 
-async function verifyPin(pin: string) {
-  const res = await fetch("/api/auth", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin }),
-  });
-  const data = await res.json();
-  return res.ok && data.ok;
-}
+type DashboardProps = {
+  onLogout?: () => void | Promise<void>;
+};
 
-export default function Dashboard() {
-  const pin = usePin();
-  const adminPinRef = useRef("");
-  const [unlocked, setUnlocked] = useState(false);
+export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [tab, setTab] = useState<Tab>("main");
   const [store, setStore] = useState<Store | null>(null);
   const [storeWarning, setStoreWarning] = useState("");
@@ -144,7 +133,6 @@ export default function Dashboard() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [pinInput, setPinInput] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const skipCashAutoSave = useRef(true);
   const skipStockAutoSave = useRef(true);
@@ -204,32 +192,15 @@ export default function Dashboard() {
   const [cashForm, setCashForm] = useState<BranchCash>({ cash: 0, card: 0, bank: 0 });
   const [invFilter, setInvFilter] = useState<Branch | "ყველა">("ყველა");
 
-  function getAdminPin() {
-    return adminPinRef.current || getSessionPin();
+  function runWithPin(action: () => void | Promise<void>) {
+    void action();
   }
 
-  function rememberPin(pinCode: string) {
-    adminPinRef.current = pinCode;
-    setSessionPin(pinCode);
-    setUnlocked(true);
-  }
-
-  function runWithPin(action: (pinCode: string) => void | Promise<void>) {
-    const saved = getAdminPin();
-    if (unlocked && saved) {
-      void action(saved);
-      return;
-    }
-    pin.requestPin(action);
-  }
-
-  const saveInventory = useCallback(async (body: object, pinCode?: string) => {
-    const pin = pinCode || getAdminPin();
-    if (!pin) throw new Error("გახსენით ადმინი PIN კოდით");
+  const saveInventory = useCallback(async (body: object) => {
     const res = await fetch("/api/inventory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, pin }),
+      body: JSON.stringify(body),
       cache: "no-store",
     });
     const data = await res.json();
@@ -290,9 +261,6 @@ export default function Dashboard() {
       }
       await loadStore();
       await loadProducts().catch(() => setError("პროდუქტების ჩატვირთვა ვერ მოხერხდა"));
-      const savedPin = getSessionPin();
-      if (savedPin && (await verifyPin(savedPin))) rememberPin(savedPin);
-      else clearSessionPin();
       setLoading(false);
     })();
   }, [loadStore, loadProducts]);
@@ -403,8 +371,8 @@ export default function Dashboard() {
   const recurringList = activeStore.recurringObligations;
 
   useEffect(() => {
-    if (unlocked && tab === "obligations") refresh();
-  }, [obMonth, unlocked, tab]);
+    if (tab === "obligations") refresh();
+  }, [obMonth, tab]);
 
   const branchReports = activeStore.branchReports;
   const inventory = activeStore.inventory;
@@ -440,7 +408,6 @@ export default function Dashboard() {
   }, [activeStore.branchCash, invBranch]);
 
   useEffect(() => {
-    if (!unlocked || !getAdminPin()) return;
     if (skipCashAutoSave.current) {
       skipCashAutoSave.current = false;
       return;
@@ -465,10 +432,10 @@ export default function Dashboard() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [cashForm, invBranch, unlocked, saveInventory]);
+  }, [cashForm, invBranch, saveInventory]);
 
   useEffect(() => {
-    if (!unlocked || !getAdminPin() || !invSelected) return;
+    if (!invSelected) return;
     const quantity = parseFloat(invQty);
     if (Number.isNaN(quantity) || quantity < 0) return;
     if (skipStockAutoSave.current) {
@@ -494,21 +461,21 @@ export default function Dashboard() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [invQty, invBranch, invSelected, unlocked, saveInventory]);
+  }, [invQty, invBranch, invSelected, saveInventory]);
 
   function setStock(e: React.FormEvent) {
     e.preventDefault();
     if (!invSelected) return;
     const quantity = parseFloat(invQty);
     if (Number.isNaN(quantity) || quantity < 0) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const data = await saveInventory({
           action: "setStock",
           branch: invBranch,
           productCode: invSelected.code,
           quantity,
-        }, pinCode);
+        });
         setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
         setError("");
         setSaveMsg("მარაგი შენახულია ✓");
@@ -524,7 +491,7 @@ export default function Dashboard() {
 
   function saveBranchCash(e: React.FormEvent) {
     e.preventDefault();
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const data = await saveInventory({
           action: "setCash",
@@ -532,7 +499,7 @@ export default function Dashboard() {
           cash: cashForm.cash,
           card: cashForm.card,
           bank: cashForm.bank,
-        }, pinCode);
+        });
         setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
         setError("");
         setSaveMsg("შენახულია ✓");
@@ -650,13 +617,12 @@ export default function Dashboard() {
   function addCreditPayment(saleId: string) {
     const amount = parseFloat(creditPayInputs[saleId] ?? "");
     if (!amount || amount <= 0) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/credit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pin: pinCode,
             action: "pay",
             saleId,
             amount,
@@ -688,12 +654,12 @@ export default function Dashboard() {
   function addCreditDelivery(saleId: string) {
     const quantity = parseFloat(creditDeliverInputs[saleId] ?? "");
     if (!quantity || quantity <= 0) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/credit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pin: pinCode, action: "deliver", saleId, quantity }),
+          body: JSON.stringify({ action: "deliver", saleId, quantity }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -717,7 +683,7 @@ export default function Dashboard() {
     });
   }
 
-  async function deleteTxWithPin(id: string, pinCode: string): Promise<boolean> {
+  async function deleteTx(id: string): Promise<boolean> {
     if (!id) {
       setError("ჩანაწერის ID ვერ მოიძებნა");
       return false;
@@ -727,12 +693,11 @@ export default function Dashboard() {
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", id, pin: pinCode }),
+        body: JSON.stringify({ action: "delete", id }),
         cache: "no-store",
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
-      if (await verifyPin(pinCode)) rememberPin(pinCode);
       setStore((prev) =>
         prev
           ? {
@@ -754,9 +719,9 @@ export default function Dashboard() {
   }
 
   function deleteReport(reportId: string) {
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
-        const res = await fetch(`/api/branch?reportId=${reportId}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
+        const res = await fetch(`/api/branch?reportId=${reportId}`, { method: "DELETE" });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
         await refresh();
@@ -800,12 +765,9 @@ export default function Dashboard() {
   }
 
   function deleteRecurring(recurringId: string) {
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
-        const res = await fetch(
-          `/api/obligations?recurringId=${recurringId}&pin=${encodeURIComponent(pinCode)}`,
-          { method: "DELETE" }
-        );
+        const res = await fetch(`/api/obligations?recurringId=${recurringId}`, { method: "DELETE" });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
         await refresh();
@@ -817,9 +779,9 @@ export default function Dashboard() {
   }
 
   function deleteObligation(id: string) {
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
-        const res = await fetch(`/api/obligations?id=${id}&month=${obMonth}&pin=${encodeURIComponent(pinCode)}`, { method: "DELETE" });
+        const res = await fetch(`/api/obligations?id=${id}&month=${obMonth}`, { method: "DELETE" });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
         await refresh();
@@ -832,14 +794,13 @@ export default function Dashboard() {
   function payObligation(obId: string) {
     const amount = parseFloat(obPayInputs[obId] ?? "");
     if (!amount || amount <= 0) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/obligations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "pay",
-            pin: pinCode,
             obligationId: obId,
             month: obMonth,
             amount,
@@ -871,14 +832,13 @@ export default function Dashboard() {
   async function addEmployee(e: React.FormEvent) {
     e.preventDefault();
     if (!empName.trim()) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "addEmployee",
-            pin: pinCode,
             name: empName.trim(),
             branch: empBranch,
             dailyWage: parseFloat(empWage) || 0,
@@ -899,14 +859,13 @@ export default function Dashboard() {
 
   function saveEmployee(employee: Employee) {
     const dailyWage = parseFloat(empWageEdits[employee.id] ?? String(employee.dailyWage));
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "updateEmployee",
-            pin: pinCode,
             employeeId: employee.id,
             dailyWage: Number.isFinite(dailyWage) ? dailyWage : employee.dailyWage,
           }),
@@ -922,12 +881,12 @@ export default function Dashboard() {
   }
 
   function deleteEmployee(employeeId: string) {
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deleteEmployee", pin: pinCode, employeeId }),
+          body: JSON.stringify({ action: "deleteEmployee", employeeId }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -943,14 +902,13 @@ export default function Dashboard() {
   function addWorkDay(e: React.FormEvent) {
     e.preventDefault();
     if (!empWorkEmployee || !empWorkDate) return;
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "checkin",
-            pin: pinCode,
             employeeId: empWorkEmployee,
             date: empWorkDate,
             shift: "დღის",
@@ -976,12 +934,12 @@ export default function Dashboard() {
   }
 
   function deleteWorkDay(attendanceId: string) {
-    runWithPin(async (pinCode) => {
+    runWithPin(async () => {
       try {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deleteAttendance", pin: pinCode, attendanceId }),
+          body: JSON.stringify({ action: "deleteAttendance", attendanceId }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -1001,29 +959,8 @@ export default function Dashboard() {
     });
   }
 
-  async function unlockAdmin(pinCode: string) {
-    const ok = await verifyPin(pinCode);
-    if (ok) {
-      rememberPin(pinCode);
-      setPinInput("");
-      setError("");
-      return true;
-    }
-    return false;
-  }
-
-  async function handlePinConfirm(pinCode: string) {
-    const ok = await verifyPin(pinCode);
-    if (!ok) return false;
-    rememberPin(pinCode);
-    await pin.flushPending(pinCode);
-    return true;
-  }
-
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-4 py-6">
-      <PinModal open={pin.open} onConfirm={handlePinConfirm} onCancel={pin.cancel} />
-
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">ფინანსური Dashboard</h1>
@@ -1058,6 +995,15 @@ export default function Dashboard() {
             </>
           )}
           <span className="hidden text-xs text-zinc-500 sm:inline">{period.label}</span>
+          {onLogout && (
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              onClick={() => void onLogout()}
+            >
+              გასვლა
+            </button>
+          )}
         </div>
       </header>
 
@@ -1077,21 +1023,6 @@ export default function Dashboard() {
         <button type="button" className={tabCls(tab === "employees")} onClick={() => setTab("employees")}>
           თანამშრომლები
         </button>
-        {!unlocked && (
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              placeholder="ადმინ კოდი"
-              className={`${inputCls} w-28`}
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && unlockAdmin(pinInput)}
-            />
-            <button type="button" className="text-xs text-zinc-500 hover:text-zinc-300" onClick={() => unlockAdmin(pinInput)}>
-              გახსნა
-            </button>
-          </div>
-        )}
       </nav>
 
       {error && (
@@ -1125,7 +1056,7 @@ export default function Dashboard() {
             <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
 
-          {unlocked && obSummary.total > 0 && (
+          {obSummary.total > 0 && (
             <section className="mb-6 rounded-xl border border-violet-900/50 bg-violet-950/20 p-4">
               <h3 className="mb-2 text-sm font-semibold text-violet-300">თვის ვალდებულებები ({obMonth})</h3>
               <div className="flex flex-wrap gap-4 text-sm">
@@ -1357,8 +1288,7 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {unlocked && (
-                      <div className="grid gap-3 border-t border-zinc-800/80 pt-3 sm:grid-cols-2">
+                    <div className="grid gap-3 border-t border-zinc-800/80 pt-3 sm:grid-cols-2">
                         <div className={`rounded-lg border p-3 ${moneyDone ? "border-emerald-900/40 bg-emerald-950/20" : "border-amber-900/40 bg-amber-950/10"}`}>
                           <p className="mb-2 text-xs font-medium text-amber-300">თანხის დამატება</p>
                           {moneyDone ? (
@@ -1416,7 +1346,6 @@ export default function Dashboard() {
                           )}
                         </div>
                       </div>
-                    )}
                   </div>
                 );
               })}
@@ -1471,7 +1400,7 @@ export default function Dashboard() {
           branchCash={activeStore.branchCash}
           period={period}
           branchFilter={filter}
-          onDelete={deleteTxWithPin}
+          onDelete={deleteTx}
         />
       )}
 
@@ -1480,12 +1409,6 @@ export default function Dashboard() {
       )}
 
       {tab === "obligations" && (
-        !unlocked ? (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-            <h2 className="mb-2 text-lg font-semibold">ვალდებულებები</h2>
-            <p className="text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ.</p>
-          </section>
-        ) : (
         <section className="space-y-6">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="თვე">
@@ -1635,15 +1558,12 @@ export default function Dashboard() {
             )}
           </div>
         </section>
-        )
       )}
 
       {tab === "reports" && (
         <ReportsPanel
           employees={activeStore.employees ?? []}
           period={period}
-          unlocked={unlocked}
-          getAdminPin={getAdminPin}
           onTransactionsUpdate={async () => {
             await loadStore();
           }}
@@ -1652,13 +1572,6 @@ export default function Dashboard() {
 
       {tab === "inventory" && !loading && (
         <section className="space-y-6">
-          {!unlocked && (
-            <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
-              ნახვა ხელმისაწვდომია. რედაქტირებისთვის შეიყვანეთ ადმინ კოდი ზემოთ.
-            </div>
-          )}
-
-          {unlocked && (
           <div className="grid gap-4 lg:grid-cols-2">
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
@@ -1717,7 +1630,6 @@ export default function Dashboard() {
               <button type="submit" className={`${btnCls} mt-4`} disabled={!invSelected}>ახლავე შენახვა</button>
             </form>
           </div>
-          )}
 
           <div>
             <h3 className="mb-3 text-sm font-medium text-zinc-400">საწყისი ნაშთები (ფილიალის ბალანსი)</h3>
@@ -1808,20 +1720,12 @@ export default function Dashboard() {
           branchReports={branchReports}
           employees={activeStore.employees ?? []}
           branchTokens={activeStore.branchTokens}
-          unlocked={unlocked}
-          getAdminPin={getAdminPin}
           onRefresh={refresh}
           onDeleteReport={deleteReport}
         />
       )}
 
       {tab === "employees" && (
-        !unlocked ? (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-            <h2 className="mb-2 text-lg font-semibold">თანამშრომლები</h2>
-            <p className="text-sm text-zinc-500">შეიყვანეთ ადმინ კოდი ზემოთ.</p>
-          </section>
-        ) : (
         <section className="space-y-6">
           <form onSubmit={addEmployee} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
             <h2 className="mb-4 text-lg font-semibold text-teal-300">ახალი თანამშრომელი</h2>
@@ -1970,7 +1874,6 @@ export default function Dashboard() {
             })()}
           </div>
         </section>
-        )
       )}
     </div>
   );

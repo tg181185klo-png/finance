@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import {
   DISTRIBUCIA_SYNC_FROM,
   buildDistribuciaPreview,
@@ -21,6 +21,9 @@ function parseFromDate(raw: string | null) {
 
 export async function GET(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const fromDate = parseFromDate(new URL(req.url).searchParams.get("from"));
     const orders = await fetchDistribuciaOrders();
     const preview = buildDistribuciaPreview(orders, fromDate);
@@ -33,10 +36,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { pin?: string; from?: string; replace?: boolean };
-    if (body.pin !== ADMIN_PIN) {
-      return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-    }
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
+    const body = (await req.json()) as { from?: string; replace?: boolean };
     const fromDate = parseFromDate(body.from ?? null);
     const orders = await fetchDistribuciaOrders();
     const preview = buildDistribuciaPreview(orders, fromDate);

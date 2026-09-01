@@ -43,7 +43,7 @@ type Props = {
   branchCash: Record<Branch, BranchCash>;
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
-  onDelete: (id: string, pin: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
 };
 
 export default function OverviewPanel({

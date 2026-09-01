@@ -97,12 +97,10 @@ function BranchMonthCell({ br }: { br?: MonthBranchStat }) {
 type Props = {
   employees: Employee[];
   period: ResolvedPeriod;
-  unlocked: boolean;
-  getAdminPin: () => string;
   onTransactionsUpdate: () => void | Promise<void>;
 };
 
-export default function ReportsPanel({ employees, period, unlocked, getAdminPin, onTransactionsUpdate }: Props) {
+export default function ReportsPanel({ employees, period, onTransactionsUpdate }: Props) {
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [monthBranchReport, setMonthBranchReport] = useState<PeriodReport | null>(null);
   const [monthCompanyReport, setMonthCompanyReport] = useState<PeriodReport | null>(null);
@@ -189,10 +187,6 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
   }
 
   async function setRecurrence(txId: string, recurrence: TxRecurrence) {
-    if (!unlocked) {
-      setErr("PIN-ით შესვლა საჭიროა");
-      return;
-    }
     try {
       const res = await fetch("/api/transactions", {
         method: "POST",
@@ -201,7 +195,6 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
           action: "updateRecurrence",
           id: txId,
           recurrence,
-          pin: getAdminPin(),
         }),
       });
       const data = await res.json();
@@ -228,24 +221,11 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
 
   return (
     <section className="space-y-6">
-      <DistribuciaSyncPanel
-        unlocked={unlocked}
-        getAdminPin={getAdminPin}
-        onSynced={handleImportComplete}
-      />
+      <DistribuciaSyncPanel onSynced={handleImportComplete} />
 
-      <ImportSalesPanel
-        employees={employees}
-        unlocked={unlocked}
-        getAdminPin={getAdminPin}
-        onImported={handleImportComplete}
-      />
+      <ImportSalesPanel employees={employees} onImported={handleImportComplete} />
 
-      <ImportExpensesPanel
-        unlocked={unlocked}
-        getAdminPin={getAdminPin}
-        onImported={handleImportComplete}
-      />
+      <ImportExpensesPanel onImported={handleImportComplete} />
 
       <FinancialSummaryPanel refreshSignal={summaryRefresh} />
 
@@ -566,7 +546,7 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
           {report.transactions.length > 0 ? (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h4 className="mb-2 text-sm font-semibold text-zinc-300">
-                ტრანზაქციები {unlocked ? "— დააკონფიგურირეთ ყოველთვიური/ერთჯერადი" : ""}
+                ტრანზაქციები — დააკონფიგურირეთ ყოველთვიური/ერთჯერადი
               </h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -590,21 +570,17 @@ export default function ReportsPanel({ employees, period, unlocked, getAdminPin,
                         </td>
                         <td className="py-2 pr-3">{txLabel(t)}</td>
                         <td className="py-2 pr-3">
-                          {unlocked ? (
-                            <select
-                              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
-                              value={txRecurrence(t)}
-                              onChange={(e) => setRecurrence(t.id, e.target.value as TxRecurrence)}
-                            >
-                              {TX_RECURRENCE.map((r) => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-xs text-zinc-500">{txRecurrence(t)}</span>
-                          )}
+                          <select
+                            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                            value={txRecurrence(t)}
+                            onChange={(e) => setRecurrence(t.id, e.target.value as TxRecurrence)}
+                          >
+                            {TX_RECURRENCE.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className={`py-2 text-right font-medium ${t.type === "sale" ? "text-emerald-400" : "text-red-400"}`}>
                           {t.type === "sale" ? "+" : "-"}

@@ -35,8 +35,6 @@ type Preview = {
 };
 
 type Props = {
-  unlocked: boolean;
-  getAdminPin: () => string;
   onSynced: () => void | Promise<void>;
 };
 
@@ -49,7 +47,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced }: Props) {
+export default function DistribuciaSyncPanel({ onSynced }: Props) {
   const [fromDate, setFromDate] = useState("2026-03-01");
   const [viewMonth, setViewMonth] = useState(currentMonth());
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -86,10 +84,6 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced }
   }, [loadPreview]);
 
   async function runSync() {
-    if (!unlocked) {
-      setErr("სინქრონიზაციისთვის შეიყვანეთ ადმინ კოდი");
-      return;
-    }
     setBusy(true);
     setErr("");
     setMsg("");
@@ -97,7 +91,7 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced }
       const res = await fetch("/api/distribucia/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: getAdminPin(), from: fromDate }),
+        body: JSON.stringify({ from: fromDate }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
@@ -149,14 +143,13 @@ export default function DistribuciaSyncPanel({ unlocked, getAdminPin, onSynced }
         <button
           type="button"
           className={`${btnCls} bg-violet-600 hover:bg-violet-500`}
-          disabled={busy || !unlocked}
+          disabled={busy}
           onClick={runSync}
         >
           სინქრონიზაცია Dashboard-ში
         </button>
       </div>
 
-      {!unlocked && <p className="mb-2 text-xs text-amber-400">Dashboard-ში ჩამოსატვირთად საჭიროა ადმინ კოდი.</p>}
       {err && <p className="mb-2 text-sm text-red-400">{err}</p>}
       {msg && <p className="mb-2 text-sm text-emerald-400">{msg}</p>}
 

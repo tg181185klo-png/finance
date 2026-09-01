@@ -28,15 +28,11 @@ type Preview = {
 
 type Props = {
   employees: Employee[];
-  unlocked: boolean;
-  getAdminPin: () => string;
   onImported: () => void | Promise<void>;
 };
 
 export default function ImportSalesPanel({
   employees,
-  unlocked,
-  getAdminPin,
   onImported,
 }: Props) {
   const [files, setFiles] = useState<File[]>([]);
@@ -65,10 +61,6 @@ export default function ImportSalesPanel({
       setErr("აირჩიეთ ერთი ან რამდენიმე Excel ფაილი");
       return;
     }
-    if (!previewOnly && !unlocked) {
-      setErr("იმპორტისთვის შეიყვანეთ ადმინ კოდი");
-      return;
-    }
     setBusy(true);
     setErr("");
     setMsg("");
@@ -81,8 +73,6 @@ export default function ImportSalesPanel({
       if (selectedEmployee) form.append("employeeName", selectedEmployee.name);
       if (previewOnly) {
         form.append("preview", "true");
-      } else {
-        form.append("pin", getAdminPin());
       }
       const res = await fetch("/api/import/sales", { method: "POST", body: form });
       const data = await res.json();
@@ -175,14 +165,13 @@ export default function ImportSalesPanel({
         <button
           type="button"
           className={`${btnCls} bg-sky-600 hover:bg-sky-500`}
-          disabled={!files.length || busy || !unlocked}
+          disabled={!files.length || busy}
           onClick={() => runImport(false)}
         >
           იმპორტი
         </button>
       </div>
 
-      {!unlocked && <p className="mt-2 text-xs text-amber-400">იმპორტისთვის საჭიროა ადმინ კოდი.</p>}
       {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
 

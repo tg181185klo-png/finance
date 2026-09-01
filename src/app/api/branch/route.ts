@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import {
   uid,
   addEmployeeAttendance,
@@ -310,9 +310,9 @@ export async function POST(req: NextRequest) {
     };
 
     if (body.action === "adminRestore") {
-      if (body.pin !== ADMIN_PIN) {
-        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-      }
+      const authError = await requireAdminSession();
+      if (authError) return authError;
+
       if (!body.branch || !body.submittedEmployeeId || !body.date) {
         return NextResponse.json(
           { error: "branch, submittedEmployeeId და date საჭიროა" },
@@ -362,13 +362,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const { searchParams } = new URL(req.url);
   const reportId = searchParams.get("reportId");
-  const pin = searchParams.get("pin");
-
-  if (pin !== ADMIN_PIN) {
-    return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-  }
 
   try {
     await updateStore((store) => {

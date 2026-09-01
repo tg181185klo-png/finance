@@ -29,8 +29,6 @@ type Props = {
   branchReports: BranchDailyReport[];
   employees: Employee[];
   branchTokens: Record<Branch, string>;
-  unlocked: boolean;
-  getAdminPin: () => string;
   onRefresh: () => Promise<unknown>;
   onDeleteReport: (reportId: string) => void;
 };
@@ -39,8 +37,6 @@ export default function BranchesPanel({
   branchReports,
   employees,
   branchTokens,
-  unlocked,
-  getAdminPin,
   onRefresh,
   onDeleteReport,
 }: Props) {
@@ -119,7 +115,6 @@ export default function BranchesPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "adminRestore",
-          pin: getAdminPin(),
           branch: restoreBranch,
           date: restoreDate,
           submittedEmployeeId: restoreEmployeeId,
@@ -174,8 +169,7 @@ export default function BranchesPanel({
         })}
       </div>
 
-      {unlocked && (
-        <form onSubmit={adminRestore} className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-5">
+      <form onSubmit={adminRestore} className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-5">
           <h2 className="mb-2 font-semibold text-amber-200">რეპორტის აღდგენა (ადმინი)</h2>
           <p className="mb-4 text-xs text-zinc-500">
             თუ თანამშრომელმა დაავიწყა გაგზავნა — აირჩიეთ დღე და ვინ იმუშავა. შეიქმნება ნულოვანი რეპორტი + ხელფასის ხარჯი + სამუშაო დღე.
@@ -230,7 +224,6 @@ export default function BranchesPanel({
           {restoreMsg && <p className="mt-2 text-sm text-emerald-400">{restoreMsg}</p>}
           {restoreErr && <p className="mt-2 text-sm text-red-400">{restoreErr}</p>}
         </form>
-      )}
 
       <div className="rounded-xl border border-zinc-800 p-5">
         <h2 className="mb-4 font-semibold">ფილიალის ანგარიშები</h2>
@@ -372,15 +365,13 @@ export default function BranchesPanel({
                   </div>
                 ) : null}
 
-                {unlocked && (
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-red-400 hover:text-red-300"
-                    onClick={() => onDeleteReport(r.id)}
-                  >
-                    წაშლა (ხელახლა შეავსონ / აღადგინოთ)
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="mt-2 text-xs text-red-400 hover:text-red-300"
+                  onClick={() => onDeleteReport(r.id)}
+                >
+                  წაშლა (ხელახლა შეავსონ / აღადგინოთ)
+                </button>
               </div>
             ))}
           </div>

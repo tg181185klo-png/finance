@@ -7,7 +7,7 @@ import TransactionTable from "@/components/TransactionTable";
 type Props = {
   transactions: Transaction[];
   filter: Branch | "ყველა";
-  onDelete: (id: string, pin: string) => Promise<boolean>;
+  onDelete: (id: string) => Promise<boolean>;
 };
 
 export default function TransactionsPanel({

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN, BRANCHES } from "@/lib/constants";
+import { BRANCHES } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import { addRecurringObligation, currentMonth, ensureMonthObligations, uid } from "@/lib/utils";
 import { readStore, updateStore } from "@/lib/server-store";
 import type { Expense, Obligation, PaymentMethod, ExpenseBranch } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const month = new URL(req.url).searchParams.get("month") ?? currentMonth();
   const store = await readStore();
   ensureMonthObligations(store, month);
@@ -18,11 +22,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const body = (await req.json()) as {
       obligation?: Omit<Obligation, "id" | "paid">;
       recurring?: boolean;
       action?: "pay";
-      pin?: string;
       obligationId?: string;
       month?: string;
       amount?: number;
@@ -32,9 +38,6 @@ export async function POST(req: NextRequest) {
     };
 
     if (body.action === "pay") {
-      if (body.pin !== ADMIN_PIN) {
-        return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-      }
       const month = body.month || currentMonth();
       const amount = Number(body.amount);
       if (!amount || amount <= 0 || !body.obligationId) {
@@ -147,15 +150,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const authError = await requireAdminSession();
+  if (authError) return authError;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const month = searchParams.get("month") ?? currentMonth();
-  const pin = searchParams.get("pin");
   const recurringId = searchParams.get("recurringId");
-
-  if (pin !== ADMIN_PIN) {
-    return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
-  }
 
   try {
     await updateStore((store) => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_PIN, BRANCHES } from "@/lib/constants";
+import { BRANCHES } from "@/lib/constants";
+import { requireAdminSession } from "@/lib/require-admin";
 import {
   buildImportDeposits,
   buildImportExpenses,
@@ -45,9 +46,11 @@ function removeFileMonthImports(store: Store, month: string, slugs: string[]) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authError = await requireAdminSession();
+    if (authError) return authError;
+
     const form = await req.formData();
     const files = parseFiles(form);
-    const pin = String(form.get("pin") ?? "");
     const branch = String(form.get("branch") ?? "") as Branch;
     const month = String(form.get("month") ?? "");
     const replaceExisting = form.get("replaceExisting") === "true";
@@ -61,9 +64,6 @@ export async function POST(req: NextRequest) {
     }
     if (!files.length) {
       return NextResponse.json({ error: "Excel ფაილი საჭიროა" }, { status: 400 });
-    }
-    if (!previewOnly && pin !== ADMIN_PIN) {
-      return NextResponse.json({ error: "არასწორი კოდი" }, { status: 403 });
     }
 
     const batches: {
