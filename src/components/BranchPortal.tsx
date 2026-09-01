@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  CustomerPersonType,
   Employee,
   ExpenseCategory,
   ExpensePaymentMethod,
@@ -27,10 +28,18 @@ type CartItem = {
 
 type CompletedSale = {
   id: string;
+  personType: CustomerPersonType;
   firstName: string;
   lastName: string;
   phone: string;
   personalId?: string;
+  companyName?: string;
+  companyId?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactPhone?: string;
+  driverEmployeeId?: string;
+  driverEmployeeName?: string;
   paymentMethod: PaymentMethod;
   items: CartItem[];
 };
@@ -88,6 +97,14 @@ export default function BranchPortal({ token }: { token: string }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  const [personalId, setPersonalId] = useState("");
+  const [personType, setPersonType] = useState<CustomerPersonType>("physical");
+  const [companyName, setCompanyName] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [contactFirstName, setContactFirstName] = useState("");
+  const [contactLastName, setContactLastName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [driverEmployeeId, setDriverEmployeeId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
 
   const [productSearch, setProductSearch] = useState("");
@@ -120,6 +137,11 @@ export default function BranchPortal({ token }: { token: string }) {
   }, [token]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+  const driverEmployee = employees.find((e) => e.id === (driverEmployeeId || selectedEmployeeId));
+
+  useEffect(() => {
+    if (selectedEmployeeId && !driverEmployeeId) setDriverEmployeeId(selectedEmployeeId);
+  }, [selectedEmployeeId, driverEmployeeId]);
   const cartSum = useMemo(() => cartTotal(cart), [cart]);
   const daySalesTotal = useMemo(
     () => completedSales.reduce((s, sale) => s + cartTotal(sale.items), 0),
@@ -190,9 +212,16 @@ export default function BranchPortal({ token }: { token: string }) {
   }
 
   function finishSale() {
-    if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
-      setErr("შეავსეთ კლიენტის სახელი, გვარი და ტელეფონი");
-      return;
+    if (personType === "physical") {
+      if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
+        setErr("შეავსეთ სახელი, გვარი და ტელეფონი");
+        return;
+      }
+    } else {
+      if (!companyName.trim() || !companyId.trim()) {
+        setErr("შეავსეთ კომპანიის დასახელება და საიდენტიფიკაციო კოდი");
+        return;
+      }
     }
     if (cart.length === 0) {
       setErr("კალათა ცარიელია — დაამატეთ მინიმუმ ერთი პროდუქტი");
@@ -203,9 +232,18 @@ export default function BranchPortal({ token }: { token: string }) {
       ...sales,
       {
         id: uid(),
+        personType,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim(),
+        personalId: personalId.trim() || undefined,
+        companyName: companyName.trim() || undefined,
+        companyId: companyId.trim() || undefined,
+        contactFirstName: contactFirstName.trim() || undefined,
+        contactLastName: contactLastName.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        driverEmployeeId: driverEmployeeId || selectedEmployeeId,
+        driverEmployeeName: driverEmployee?.name,
         paymentMethod,
         items: cart.map((i) => ({ ...i })),
       },
@@ -214,6 +252,12 @@ export default function BranchPortal({ token }: { token: string }) {
     setFirstName("");
     setLastName("");
     setPhone("");
+    setPersonalId("");
+    setCompanyName("");
+    setCompanyId("");
+    setContactFirstName("");
+    setContactLastName("");
+    setContactPhone("");
     setPaymentMethod("ქეში (ნაღდი)");
   }
 
@@ -241,9 +285,18 @@ export default function BranchPortal({ token }: { token: string }) {
 
     const allSales = asZero ? [] : [...completedSales];
     const validClients = allSales.map((c) => ({
-      customerFirstName: c.firstName,
-      customerLastName: c.lastName,
-      phone: c.phone,
+      personType: c.personType,
+      customerFirstName: c.personType === "legal" ? c.contactFirstName || "" : c.firstName,
+      customerLastName: c.personType === "legal" ? c.contactLastName || "" : c.lastName,
+      personalId: c.personalId,
+      phone: c.personType === "legal" ? c.contactPhone || c.phone : c.phone,
+      companyName: c.companyName,
+      companyId: c.companyId,
+      contactFirstName: c.contactFirstName,
+      contactLastName: c.contactLastName,
+      contactPhone: c.contactPhone,
+      driverEmployeeId: c.driverEmployeeId,
+      driverEmployeeName: c.driverEmployeeName,
       paymentMethod: c.paymentMethod,
       products: c.items.map((p) => ({
         productCode: p.productCode,
@@ -375,27 +428,86 @@ export default function BranchPortal({ token }: { token: string }) {
         {/* 2. Customer */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">2. კლიენტი</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              className={inputCls}
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="სახელი"
-            />
-            <input
-              className={inputCls}
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="გვარი"
-            />
+
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`rounded-xl border px-3 py-2 text-sm ${personType === "physical" ? "border-emerald-500 bg-emerald-950/40 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}
+              onClick={() => setPersonType("physical")}
+            >
+              ფიზიკური პირი
+            </button>
+            <button
+              type="button"
+              className={`rounded-xl border px-3 py-2 text-sm ${personType === "legal" ? "border-emerald-500 bg-emerald-950/40 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}
+              onClick={() => setPersonType("legal")}
+            >
+              იურიდიული პირი
+            </button>
           </div>
-          <input
-            className={`${inputCls} mt-2`}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="ტელეფონი (5xxxxxxxx)"
-            inputMode="tel"
-          />
+
+          {personType === "physical" ? (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="სახელი" />
+                <input className={inputCls} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="გვარი" />
+              </div>
+              <input
+                className={`${inputCls} mt-2`}
+                value={personalId}
+                onChange={(e) => setPersonalId(e.target.value)}
+                placeholder="პირადი ნომერი"
+                inputMode="numeric"
+              />
+              <input
+                className={`${inputCls} mt-2`}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="ტელეფონი (5xxxxxxxx)"
+                inputMode="tel"
+              />
+            </>
+          ) : (
+            <>
+              <input
+                className={inputCls}
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="კომპანიის დასახელება"
+              />
+              <input
+                className={`${inputCls} mt-2`}
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                placeholder="საიდენტიფიკაციო კოდი"
+                inputMode="numeric"
+              />
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input className={inputCls} value={contactFirstName} onChange={(e) => setContactFirstName(e.target.value)} placeholder="საკონტაქტო სახელი" />
+                <input className={inputCls} value={contactLastName} onChange={(e) => setContactLastName(e.target.value)} placeholder="საკონტაქტო გვარი" />
+              </div>
+              <input
+                className={`${inputCls} mt-2`}
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="საკონტაქტო ტელეფონი"
+                inputMode="tel"
+              />
+            </>
+          )}
+
+          <div className="mt-3">
+            <label className="mb-1 block text-xs text-zinc-500">მომზიდავი თანამშრომელი</label>
+            <select
+              className={inputCls}
+              value={driverEmployeeId || selectedEmployeeId}
+              onChange={(e) => setDriverEmployeeId(e.target.value)}
+            >
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          </div>
 
           <p className="mb-2 mt-4 text-xs text-zinc-500">გადახდის ტიპი</p>
           <div className="grid grid-cols-3 gap-2">
@@ -573,10 +685,17 @@ export default function BranchPortal({ token }: { token: string }) {
                     <div className="mb-1 flex items-start justify-between">
                       <div>
                         <p className="font-medium">
-                          {i + 1}. {sale.firstName} {sale.lastName}
+                          {i + 1}.{" "}
+                          {sale.personType === "legal"
+                            ? sale.companyName
+                            : `${sale.firstName} ${sale.lastName}`}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          {sale.phone} · {payLabel}
+                          {sale.personType === "legal"
+                            ? `ს/კ: ${sale.companyId}${sale.contactPhone ? ` · ${sale.contactPhone}` : ""}`
+                            : `${sale.phone}${sale.personalId ? ` · პ/n: ${sale.personalId}` : ""}`}{" "}
+                          · {payLabel}
+                          {sale.driverEmployeeName ? ` · მომზიდავი: ${sale.driverEmployeeName}` : ""}
                         </p>
                       </div>
                       <div className="text-right">

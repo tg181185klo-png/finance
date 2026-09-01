@@ -1416,7 +1416,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "clients" && !loading && (
-        <ClientsPanel transactions={tx} period={period} branchFilter={filter} />
+        <ClientsPanel
+          customers={activeStore.customers ?? []}
+          employees={activeStore.employees ?? []}
+          transactions={tx}
+          period={period}
+          branchFilter={filter}
+          onRefresh={refresh}
+        />
       )}
 
       {tab === "obligations" && (

@@ -7,6 +7,32 @@ export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარ
 export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
 export type TxSource = "admin" | "branch" | "import" | "distribucia";
 export type WorkShift = "დღის" | "საღამოს" | "ღამის";
+export type CustomerPersonType = "physical" | "legal";
+export type CustomerRegistrySource = "import" | "employee";
+
+/** კლიენტების რეგისტრი — იმპორტი ან თანამშრომლის მიერ რეგისტრაცია */
+export interface Customer {
+  id: string;
+  personType: CustomerPersonType;
+  /** true = ძველი (Excel/ისტორია), false = ახალი (თანამშრომლის რეგისტრაცია) */
+  isLegacy: boolean;
+  firstName?: string;
+  lastName?: string;
+  personalId?: string;
+  phone?: string;
+  companyName?: string;
+  companyId?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactPhone?: string;
+  driverEmployeeId?: string;
+  driverEmployeeName?: string;
+  registeredByEmployeeId?: string;
+  registeredByEmployeeName?: string;
+  branch?: Branch;
+  registeredAt: string;
+  source: CustomerRegistrySource;
+}
 
 export interface Product {
   code: string;
@@ -167,10 +193,18 @@ export interface BranchSaleLine {
 
 /** ფილიალის რეპორტში კლიენტის გაყიდვა */
 export interface BranchClientSale {
+  personType: CustomerPersonType;
   customerFirstName: string;
   customerLastName: string;
   personalId?: string;
   phone: string;
+  companyName?: string;
+  companyId?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactPhone?: string;
+  driverEmployeeId?: string;
+  driverEmployeeName?: string;
   paymentMethod: PaymentMethod;
   products: BranchSaleLine[];
 }
@@ -234,6 +268,7 @@ export interface Store {
   creditDeliveries: CreditDelivery[];
   employees: Employee[];
   attendance: AttendanceRecord[];
+  customers: Customer[];
 }
 
 export interface Balances {

@@ -10,6 +10,7 @@ import {
   wageForShift,
 } from "@/lib/utils";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
+import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import type {
   Branch,
   BranchClientSale,
@@ -81,13 +82,15 @@ async function submitBranchReport(body: SubmitBody) {
     };
   }
 
-  const clientSales = (body.clientSales ?? []).filter(
-    (c) =>
-      c.customerFirstName?.trim() &&
-      c.customerLastName?.trim() &&
-      c.phone?.trim() &&
-      (c.products?.length ?? 0) > 0
-  );
+  const clientSales = (body.clientSales ?? []).filter((c) => {
+    const hasProducts = (c.products?.length ?? 0) > 0;
+    if (!hasProducts) return false;
+    const personType = c.personType ?? "physical";
+    if (personType === "legal") {
+      return Boolean(c.companyName?.trim() && c.companyId?.trim());
+    }
+    return Boolean(c.customerFirstName?.trim() && c.customerLastName?.trim() && c.phone?.trim());
+  });
   const now = new Date().toISOString();
   const incomes = body.incomes ?? [];
   const legacySales = body.sales ?? [];
@@ -119,7 +122,7 @@ async function submitBranchReport(body: SubmitBody) {
   const salesNote = clientSales.length
     ? clientSales
         .map((c) => {
-          const name = `${c.customerFirstName} ${c.customerLastName}`.trim();
+          const name = branchSaleBuyerName(c);
           const prods = c.products.map((p) => `${p.productName} ×${p.quantity}`).join(", ");
           return `${name}: ${prods}`;
         })
@@ -169,9 +172,14 @@ async function submitBranchReport(body: SubmitBody) {
   const txDate = `${day}T20:00:00.000Z`;
 
   for (const client of clientSales) {
-    const buyerName = `${client.customerFirstName.trim()} ${client.customerLastName.trim()}`.trim();
+    const buyerName = branchSaleBuyerName(client);
     const meta = [
-      client.phone?.trim() ? `ტელ: ${client.phone.trim()}` : "",
+      client.personType === "legal"
+        ? client.companyId?.trim()
+          ? `ს/კ: ${client.companyId.trim()}`
+          : ""
+        : "",
+      client.phone?.trim() ? `ტელ: ${client.phone.trim()}` : client.contactPhone?.trim() ? `ტელ: ${client.contactPhone.trim()}` : "",
       client.personalId?.trim() ? `პირადი: ${client.personalId.trim()}` : "",
     ]
       .filter(Boolean)
@@ -274,6 +282,25 @@ async function submitBranchReport(body: SubmitBody) {
 
     store.branchReports = [report, ...store.branchReports];
     store.transactions = [...txs, ...store.transactions];
+
+    if (!store.customers) store.customers = [];
+    for (const client of clientSales) {
+      const saleWithDriver: BranchClientSale = {
+        ...client,
+        personType: client.personType ?? "physical",
+        driverEmployeeId: client.driverEmployeeId ?? reportingEmployee.id,
+        driverEmployeeName: client.driverEmployeeName ?? reportingEmployee.name,
+      };
+      upsertCustomer(
+        store,
+        customerFromBranchSale(saleWithDriver, {
+          branch,
+          registeredByEmployeeId: reportingEmployee.id,
+          registeredByEmployeeName: reportingEmployee.name,
+          registeredAt: now,
+        })
+      );
+    }
   });
 
   return { ok: true as const, report };
