@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
+import { mergeEmployeeImport, parseEmployeesExcel } from "@/lib/employees-import";
 import { addEmployeeAttendance, removeEmployeeAttendance, uid } from "@/lib/utils";
 import { branchByToken, readStore, updateStore } from "@/lib/server-store";
 import type { Branch, WorkShift } from "@/lib/types";
@@ -21,6 +22,31 @@ export async function POST(req: NextRequest) {
   try {
     const authError = await requireAdminSession();
     if (authError) return authError;
+
+    const contentType = req.headers.get("content-type") ?? "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const file = form.get("file");
+      if (!(file instanceof File)) {
+        return NextResponse.json({ error: "Excel ფაილი საჭიროა" }, { status: 400 });
+      }
+      const defaultBranch = (String(form.get("branch") ?? "ქუთაისი") as Branch) || "ქუთაისი";
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const incoming = parseEmployeesExcel(buffer, defaultBranch);
+      let added = 0;
+      const store = await updateStore((s) => {
+        const result = mergeEmployeeImport(s.employees ?? [], incoming);
+        s.employees = result.merged;
+        added = result.added;
+      });
+      return NextResponse.json({
+        ok: true,
+        imported: incoming.length,
+        added,
+        total: store.employees?.length ?? 0,
+      });
+    }
 
     const body = (await req.json()) as {
       action: "addEmployee" | "updateEmployee" | "deleteEmployee" | "checkin" | "deleteAttendance";

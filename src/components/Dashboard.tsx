@@ -22,6 +22,7 @@ import type {
 import ReportsPanel from "@/components/ReportsPanel";
 import OverviewPanel from "@/components/OverviewPanel";
 import ExpensesPanel from "@/components/ExpensesPanel";
+import EmployeesPanel from "@/components/EmployeesPanel";
 import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import {
@@ -175,15 +176,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obPayInputs, setObPayInputs] = useState<Record<string, string>>({});
   const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
-
-  // Employee form
-  const [empName, setEmpName] = useState("");
-  const [empBranch, setEmpBranch] = useState<Branch>("ქუთაისი");
-  const [empWage, setEmpWage] = useState("");
-  const [empMonthFilter, setEmpMonthFilter] = useState(currentMonth());
-  const [empWageEdits, setEmpWageEdits] = useState<Record<string, string>>({});
-  const [empWorkEmployee, setEmpWorkEmployee] = useState("");
-  const [empWorkDate, setEmpWorkDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Inventory
   const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
@@ -824,136 +816,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         setObPayInputs((m) => ({ ...m, [obId]: "" }));
         setSaveMsg("ვალდებულება გასტუმრდა ✓");
         setError("");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
-  }
-
-  async function addEmployee(e: React.FormEvent) {
-    e.preventDefault();
-    if (!empName.trim()) return;
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "addEmployee",
-            name: empName.trim(),
-            branch: empBranch,
-            dailyWage: parseFloat(empWage) || 0,
-          }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
-        setEmpName("");
-        setEmpWage("");
-        setSaveMsg("თანამშრომელი დამატებულია ✓");
-        setError("");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
-  }
-
-  function saveEmployee(employee: Employee) {
-    const dailyWage = parseFloat(empWageEdits[employee.id] ?? String(employee.dailyWage));
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "updateEmployee",
-            employeeId: employee.id,
-            dailyWage: Number.isFinite(dailyWage) ? dailyWage : employee.dailyWage,
-          }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
-        setSaveMsg("ანაზღაურება განახლდა ✓");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
-  }
-
-  function deleteEmployee(employeeId: string) {
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deleteEmployee", employeeId }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) => prev ? { ...prev, employees: d.employees ?? prev.employees } : prev);
-        if (empWorkEmployee === employeeId) setEmpWorkEmployee("");
-        setSaveMsg("თანამშრომელი წაიშალა");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
-  }
-
-  function addWorkDay(e: React.FormEvent) {
-    e.preventDefault();
-    if (!empWorkEmployee || !empWorkDate) return;
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "checkin",
-            employeeId: empWorkEmployee,
-            date: empWorkDate,
-            shift: "დღის",
-          }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) =>
-          prev
-            ? {
-                ...prev,
-                attendance: d.attendance ?? prev.attendance,
-                obligations: d.obligations ?? prev.obligations,
-              }
-            : prev
-        );
-        setSaveMsg("სამუშაო დღე და დღიური ხელფასი დაერიცხა ✓");
-        setError("");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
-  }
-
-  function deleteWorkDay(attendanceId: string) {
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "deleteAttendance", attendanceId }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) =>
-          prev
-            ? {
-                ...prev,
-                attendance: d.attendance ?? prev.attendance,
-                obligations: d.obligations ?? prev.obligations,
-              }
-            : prev
-        );
-        setSaveMsg("სამუშაო დღე წაიშალა");
       } catch (e) {
         setError(e instanceof Error ? e.message : "შეცდომა");
       }
@@ -1743,155 +1605,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         />
       )}
 
-      {tab === "employees" && (
-        <section className="space-y-6">
-          <form onSubmit={addEmployee} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
-            <h2 className="mb-4 text-lg font-semibold text-teal-300">ახალი თანამშრომელი</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="სახელი და გვარი"><input className={inputCls} value={empName} onChange={(e) => setEmpName(e.target.value)} placeholder="მაგ: ნინო მაისურაძე" required /></Field>
-              <Field label="ფილიალი">
-                <select className={inputCls} value={empBranch} onChange={(e) => setEmpBranch(e.target.value as Branch)}>
-                  {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </Field>
-              <Field label="დღიური ხელფასი (₾)">
-                <input className={inputCls} type="number" min={0} step={0.01} value={empWage} onChange={(e) => setEmpWage(e.target.value)} placeholder="მაგ: 40" />
-              </Field>
-              <div className="flex items-end">
-                <button type="submit" className={`${btnCls} w-full`}>დამატება</button>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-teal-300">
-              ყველა ფილიალში დღიური ხელფასი ერთხელ ერიცხება რეპორტის გაგზავნისას (ცვლები აღარ მოქმედებს).
-            </p>
-          </form>
-
-          <div className="rounded-xl border border-zinc-800 p-5">
-            <h3 className="mb-4 font-semibold">თანამშრომლების სია</h3>
-            {activeStore.employees.length === 0 ? (
-              <p className="text-sm text-zinc-500">თანამშრომლები არ არის დამატებული</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                      <th className="pb-2 pr-3">სახელი და გვარი</th>
-                      <th className="pb-2 pr-3">ფილიალი</th>
-                      <th className="pb-2 pr-3">დღიური ხელფასი</th>
-                      <th className="pb-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeStore.employees.map((emp: Employee) => (
-                      <tr key={emp.id} className="border-b border-zinc-800/50">
-                        <td className="py-2 pr-3 font-medium">{emp.name}</td>
-                        <td className="py-2 pr-3">{emp.branch}</td>
-                        <td className="py-2 pr-3">
-                          <input
-                            className={`${inputCls} max-w-32`}
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={empWageEdits[emp.id] ?? String(emp.dailyWage)}
-                            onChange={(e) => setEmpWageEdits((values) => ({ ...values, [emp.id]: e.target.value }))}
-                          />
-                        </td>
-                        <td className="py-2 whitespace-nowrap">
-                          <button type="button" className="mr-3 text-xs text-emerald-400 hover:text-emerald-300" onClick={() => saveEmployee(emp)}>
-                            შენახვა
-                          </button>
-                          <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => deleteEmployee(emp.id)}>
-                            წაშლა
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <form onSubmit={addWorkDay} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
-            <h3 className="mb-4 font-semibold text-teal-300">სამუშაო დღის დამატება</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="თანამშრომელი">
-                <select className={inputCls} value={empWorkEmployee} onChange={(e) => setEmpWorkEmployee(e.target.value)} required>
-                  <option value="">აირჩიეთ...</option>
-                  {activeStore.employees.map((emp: Employee) => <option key={emp.id} value={emp.id}>{emp.name} · {emp.branch}</option>)}
-                </select>
-              </Field>
-              <Field label="თარიღი">
-                <input className={inputCls} type="date" value={empWorkDate} onChange={(e) => setEmpWorkDate(e.target.value)} required />
-              </Field>
-              <div className="flex items-end">
-                <button type="submit" className={`${btnCls} w-full`} disabled={!empWorkEmployee}>დამატება</button>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-teal-300">დამატებისას დღიური ხელფასი ერთხელ დაემატება. ფილიალის ლინკიდან რეპორტის გაგზავნაც იმავეს აკეთებს.</p>
-          </form>
-
-          <div className="rounded-xl border border-zinc-800 p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="font-semibold">სამუშაო დღეები / მოპწიჩკვა</h3>
-              <Field label="თვე">
-                <input type="month" className={inputCls} value={empMonthFilter} onChange={(e) => setEmpMonthFilter(e.target.value)} />
-              </Field>
-            </div>
-            {(() => {
-              const monthAttendance = activeStore.attendance.filter(
-                (a: AttendanceRecord) => a.date.startsWith(empMonthFilter)
-              );
-              const empMap = new Map<string, { name: string; branch: Branch; records: AttendanceRecord[]; wage: number }>();
-              for (const emp of activeStore.employees) {
-                empMap.set(emp.id, { name: emp.name, branch: emp.branch, records: [], wage: emp.dailyWage });
-              }
-              for (const a of monthAttendance) {
-                let row = empMap.get(a.employeeId);
-                if (!row) {
-                  row = { name: a.employeeName, branch: a.branch, records: [], wage: a.wageAmount ?? 0 };
-                  empMap.set(a.employeeId, row);
-                }
-                row.records.push(a);
-              }
-              const rows = [...empMap.entries()].map(([id, data]) => ({
-                id,
-                ...data,
-                total: data.records.reduce(
-                  (sum, record) => sum + (record.wageAmount ?? data.wage),
-                  0
-                ),
-              }));
-              return rows.length === 0 ? (
-                <p className="text-sm text-zinc-500">აქტიური თანამშრომლები არ არის</p>
-              ) : (
-                <div className="space-y-3">
-                  {rows.map((r) => (
-                    <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">{r.name} · <span className="text-zinc-400">{r.branch}</span></span>
-                        <span className="text-sm text-teal-400">{r.records.length} დღე · {formatMoney(r.total)}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {r.records.sort((a, b) => a.date.localeCompare(b.date)).map((record) => (
-                          <span key={record.id} className="inline-flex items-center gap-2 rounded bg-teal-900/30 px-2 py-1 text-xs text-teal-300">
-                            {record.date.slice(5)} · {formatMoney(record.wageAmount ?? r.wage)}
-                            <button type="button" className="text-red-400 hover:text-red-300" onClick={() => deleteWorkDay(record.id)}>✕</button>
-                          </span>
-                        ))}
-                        {r.records.length === 0 && <span className="text-xs text-zinc-500">არ მუშაობდა</span>}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="rounded-lg border border-teal-900/40 bg-teal-950/10 p-3 text-sm">
-                    <span className="font-medium text-teal-300">ჯამი ხელფასი ({empMonthFilter}):</span>{" "}
-                    <span className="text-teal-400">{formatMoney(rows.reduce((s, r) => s + r.total, 0))}</span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </section>
+      {tab === "employees" && !loading && (
+        <EmployeesPanel
+          employees={activeStore.employees ?? []}
+          attendance={activeStore.attendance ?? []}
+          onRefresh={refresh}
+        />
       )}
     </div>
   );
