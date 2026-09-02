@@ -204,9 +204,17 @@ export function buildReportTransactions(
   return txs;
 }
 
+export function withoutAutoDailyWageExpenses(expenses: BranchExpenseLine[]): BranchExpenseLine[] {
+  return expenses.filter(
+    (e) => !(e.category === "ხელფასი" && e.comment.includes("დღიური ხელფასი"))
+  );
+}
+
 export function syncReportTransactions(store: Store, reportId: string): BranchDailyReport {
   const report = store.branchReports.find((r) => r.id === reportId);
   if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
+
+  report.expenses = withoutAutoDailyWageExpenses(report.expenses ?? []);
 
   const oldTxs = store.transactions.filter((t) => t.reportId === reportId);
   for (const t of oldTxs) {
@@ -246,8 +254,7 @@ export function appendToBranchReport(
     expenses: BranchExpenseLine[];
     incomes?: BranchIncomeLine[];
     legacySales?: BranchSaleLine[];
-    reportingEmployee: { id: string; name: string };
-    wageLine: BranchExpenseLine | null;
+    reportingEmployee: { id: string; name: string; dailyWage?: number };
     now: string;
   }
 ): BranchDailyReport {
@@ -268,27 +275,17 @@ export function appendToBranchReport(
     report.sales = [...(report.sales ?? []), ...payload.legacySales];
   }
 
-  const mergedExpenses = [...(report.expenses ?? [])];
-  for (const e of payload.expenses) {
-    const dupWage =
-      e.category === "ხელფასი" &&
-      mergedExpenses.some(
-        (x) => x.category === "ხელფასი" && x.comment.includes(payload.reportingEmployee.name)
-      );
-    if (dupWage) continue;
-    mergedExpenses.push(e);
-  }
-  if (
-    payload.wageLine &&
-    !mergedExpenses.some(
-      (e) => e.category === "ხელფასი" && e.comment.includes(payload.reportingEmployee.name)
-    )
-  ) {
-    mergedExpenses.push(payload.wageLine);
-  }
+  const mergedExpenses = withoutAutoDailyWageExpenses([
+    ...(report.expenses ?? []),
+    ...withoutAutoDailyWageExpenses(payload.expenses),
+  ]);
   report.expenses = mergedExpenses;
 
-  const wageAmount = payload.wageLine?.amount ?? 0;
+  const dailyWage =
+    payload.reportingEmployee.dailyWage ??
+    store.employees?.find((e) => e.id === payload.reportingEmployee.id)?.dailyWage ??
+    0;
+  const wageAmount = Math.max(0, dailyWage);
   if (wageAmount > 0) {
     const worked = report.workedEmployees ?? [];
     if (!worked.some((w) => w.employeeId === payload.reportingEmployee.id)) {

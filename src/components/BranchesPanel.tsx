@@ -172,7 +172,7 @@ export default function BranchesPanel({
       <form onSubmit={adminRestore} className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-5">
           <h2 className="mb-2 font-semibold text-amber-200">რეპორტის აღდგენა (ადმინი)</h2>
           <p className="mb-4 text-xs text-zinc-500">
-            თუ თანამშრომელმა დაავიწყა გაგზავნა — აირჩიეთ დღე და ვინ იმუშავა. შეიქმნება ნულოვანი რეპორტი + ხელფასის ხარჯი + სამუშაო დღე.
+            თუ თანამშრომელმა დაავიწყა გაგზავნა — აირჩიეთ დღე და ვინ იმუშავა. შეიქმნება ნულოვანი რეპორტი + სამუშაო დღე (ხელფასი ვალდებულებებში დაიგროვება).
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="ფილიალი">

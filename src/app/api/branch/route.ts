@@ -12,7 +12,7 @@ import {
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
-import { buildClientSaleMeta, appendToBranchReport } from "@/lib/branch-sales-sync";
+import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses } from "@/lib/branch-sales-sync";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import type {
   Branch,
@@ -69,17 +69,6 @@ function parseClientSales(body: SubmitBody) {
   return clientSales;
 }
 
-function buildWageExpenseLine(employee: Employee, branch: Branch): BranchExpenseLine | null {
-  const amount = wageForShift(employee.dailyWage, "დღის", branch);
-  if (amount <= 0) return null;
-  return {
-    category: "ხელფასი",
-    amount,
-    paymentMethod: "ქეში (ნაღდი)",
-    comment: `${employee.name} — დღიური ხელფასი`,
-  };
-}
-
 async function submitBranchReport(body: SubmitBody) {
   const preview = await readStore();
   const branch = branchByToken(preview, body.token);
@@ -110,10 +99,10 @@ async function submitBranchReport(body: SubmitBody) {
   const now = new Date().toISOString();
   const incomes = body.incomes ?? [];
   const legacySales = body.sales ?? [];
-  const wageLine = buildWageExpenseLine(reportingEmployee, branch);
+  const wageAmount = wageForShift(reportingEmployee.dailyWage, "დღის", branch);
 
   if (existingReport) {
-    const mergeExpenses: BranchExpenseLine[] = [...(body.expenses ?? [])];
+    const mergeExpenses = withoutAutoDailyWageExpenses(body.expenses ?? []);
     if (
       !clientSales.length &&
       !mergeExpenses.length &&
@@ -141,8 +130,11 @@ async function submitBranchReport(body: SubmitBody) {
         expenses: mergeExpenses,
         incomes,
         legacySales,
-        reportingEmployee,
-        wageLine,
+        reportingEmployee: {
+          id: reportingEmployee.id,
+          name: reportingEmployee.name,
+          dailyWage: reportingEmployee.dailyWage,
+        },
         now,
       });
 
@@ -169,10 +161,7 @@ async function submitBranchReport(body: SubmitBody) {
     return { ok: true as const, report: mergedReport!, merged: true as const };
   }
 
-  const expenses: BranchExpenseLine[] = [...(body.expenses ?? [])];
-  if (wageLine && !expenses.some((e) => e.category === "ხელფასი" && e.comment.includes(reportingEmployee.name))) {
-    expenses.push(wageLine);
-  }
+  const expenses = withoutAutoDailyWageExpenses(body.expenses ?? []);
 
   const flatSalesFromClients: BranchSaleLine[] = clientSales.flatMap((c) =>
     c.products.map((p) => ({
@@ -211,9 +200,8 @@ async function submitBranchReport(body: SubmitBody) {
   const expensesNote =
     expenses.length > 0
       ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
-      : body.expensesNote?.trim() || `დღის ხარჯი — ${branch}`;
+      : body.expensesNote?.trim() || (body.zeroReport ? "" : "");
 
-  const wageAmount = wageLine?.amount ?? 0;
   const reportId = uid();
   const report: BranchDailyReport = {
     id: reportId,

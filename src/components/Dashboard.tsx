@@ -1449,6 +1449,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <Stat label="დარჩენილი" value={formatMoney(obSummary.remaining)} accent="text-amber-400" />
           </div>
 
+          <p className="text-xs text-zinc-500">
+            ფილიალის რეპორტიდან დღიური ხელფასი აქ ემატება ავტომატურად (თანამშრომლის სახელით). ხარჯებში ჩაიწერება მხოლოდ მაშინ, როცა ხელით გაასტუმრებთ.
+          </p>
+
           <div className="rounded-xl border border-zinc-800 p-5">
             <h3 className="mb-4 font-semibold">სია</h3>
             {obSummary.items.length === 0 ? (
