@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import {
   buildCustomersWorkbook,
+  dedupeCustomersList,
   mergeCustomerImport,
   parseCustomersExcel,
 } from "@/lib/customers";
@@ -117,6 +118,21 @@ export async function POST(req: NextRequest) {
       s.customers = (s.customers ?? []).filter((c) => c.id !== body.customerId);
     });
     return NextResponse.json({ ok: true, customers: store.customers });
+  }
+
+  if (body.action === "dedupe") {
+    let removed = 0;
+    const store = await updateStore((s) => {
+      const result = dedupeCustomersList(s.customers ?? []);
+      s.customers = result.customers;
+      removed = result.removed;
+    });
+    return NextResponse.json({
+      ok: true,
+      removed,
+      total: store.customers?.length ?? 0,
+      customers: store.customers,
+    });
   }
 
   return NextResponse.json({ error: "უცნობი მოქმედება" }, { status: 400 });

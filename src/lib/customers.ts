@@ -98,6 +98,46 @@ export function mergeCustomerImport(existing: Customer[], incoming: Customer[]):
   return { merged, added };
 }
 
+function fallbackCustomerKey(c: Customer): string {
+  if (c.personType === "legal") {
+    const id = normalizeId(c.companyId ?? "");
+    if (id.length >= 7) return `legal:${id}`;
+    const name = (c.companyName ?? "").trim().toLowerCase();
+    if (name) return `legal:name:${name}`;
+  }
+  const pid = normalizeId(c.personalId ?? "");
+  if (pid.length >= 9) return `physical:pid:${pid}`;
+  const phone = normalizePhone(c.phone ?? c.contactPhone ?? "");
+  if (phone.length >= 9) return `physical:phone:${phone}`;
+  return `physical:name:${customerDisplayName(c).toLowerCase()}`;
+}
+
+/** დუბლიკატების მოცილება — პირველი რეგისტრაცია რჩება */
+export function dedupeCustomersList(customers: Customer[]): { customers: Customer[]; removed: number } {
+  const byKey = new Map<string, Customer>();
+
+  for (const c of customers) {
+    const key = customerDedupeKey(c) ?? fallbackCustomerKey(c);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, c);
+      continue;
+    }
+    const keep =
+      c.registeredAt < existing.registeredAt
+        ? c
+        : c.registeredAt > existing.registeredAt
+          ? existing
+          : c.isLegacy && !existing.isLegacy
+            ? c
+            : existing;
+    byKey.set(key, keep);
+  }
+
+  const merged = [...byKey.values()];
+  return { customers: merged, removed: customers.length - merged.length };
+}
+
 type ParsedRow = { name: string; companyId: string };
 
 function parseRegistrySheet(rows: unknown[][]): ParsedRow[] {

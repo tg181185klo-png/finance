@@ -222,6 +222,27 @@ export default function ClientsPanel({
     }
   }
 
+  async function dedupeCustomers() {
+    if (!confirm("დუბლიკატები წაიშლება — დარჩება მხოლოდ პირველი რეგისტრაცია. გავაგრძელოთ?")) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dedupe" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      await onRefresh();
+      setMsg(`დუბლიკატები წაიშალა ✓ ამოღებული ${data.removed} · დარჩა ${data.total}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
@@ -295,6 +316,9 @@ export default function ClientsPanel({
               <a href="/api/clients/export" className={`${btnCls} bg-teal-700 hover:bg-teal-600`}>
                 ჩამოტვირთვა
               </a>
+              <button type="button" className={`${btnCls} bg-amber-700 hover:bg-amber-600`} disabled={busy} onClick={() => void dedupeCustomers()}>
+                დუბლიკატების გაწმენდა
+              </button>
             </div>
           </div>
 
