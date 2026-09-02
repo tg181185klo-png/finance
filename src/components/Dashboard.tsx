@@ -1712,9 +1712,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "bank" && !loading && (
         <BankAccountPanel
-          transactions={tx}
+          transactions={operationalTx}
           branchCash={activeStore.branchCash}
           onUpdatePayment={updateTxPayment}
+          onRefresh={async () => {
+            await refresh();
+          }}
         />
       )}
 
