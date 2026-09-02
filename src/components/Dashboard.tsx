@@ -310,10 +310,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, [products, search]);
 
   const saleIsOther = isOtherSaleProduct(selected);
-  const saleQuickProducts = useMemo(
-    () => [...products.slice(0, 5), OTHER_SALE_PRODUCT],
-    [products]
-  );
 
   const balances = useMemo(
     () => calcBalances(operationalTx, filter, activeStore.branchCash),
@@ -1113,29 +1109,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                       autoComplete="off"
                     />
                   </Field>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {saleQuickProducts.map((p) => {
-                      const isOther = p.code === OTHER_SALE_PRODUCT.code;
-                      const picked = isOther ? saleIsOther : selected?.code === p.code;
-                      return (
-                        <button
-                          key={p.code}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => pickProduct(p)}
-                          className={`rounded-lg border px-2.5 py-1 text-xs transition ${
-                            picked
-                              ? isOther
-                                ? "border-amber-500 bg-amber-950/40 text-amber-200"
-                                : "border-emerald-600 bg-emerald-950/40 text-emerald-200"
-                              : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                          }`}
-                        >
-                          {isOther ? "სხვა" : `${p.code} · ${p.name}`}
-                        </button>
-                      );
-                    })}
-                  </div>
                   {saleProductListOpen && filteredProducts.length > 0 && (
                     <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
                       {filteredProducts.map((p) => (
