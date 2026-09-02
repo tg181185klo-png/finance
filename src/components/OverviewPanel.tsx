@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Branch, BranchCash, BranchDailyReport, PaymentMethod, Transaction } from "@/lib/types";
-import { BRANCHES } from "@/lib/dashboard-data";
+import { BRANCHES, KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
@@ -22,10 +22,71 @@ const filterBtn = (on: boolean) =>
 
 const inputCls = "rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm focus:border-emerald-500";
 
+type ViewScope = "company" | Branch | typeof KUTAISI_DISTRIB_LABEL;
+type RangeMode = "period" | "day";
+
 function dayBefore(iso: string) {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+function txMatchesScope(t: Transaction, scope: ViewScope) {
+  if (scope === "company") return true;
+  if (scope === KUTAISI_DISTRIB_LABEL) {
+    const br = effectiveTxBranch(t);
+    return br === "ქუთაისი" || br === "დისტრიბუცია";
+  }
+  return effectiveTxBranch(t) === scope;
+}
+
+function buildGroupStats(
+  transactions: Transaction[],
+  branchCash: Record<Branch, BranchCash>,
+  branches: Branch[],
+  from: string,
+  to: string,
+  rangeMode: RangeMode,
+  selectedDay: string
+) {
+  let revenue = 0;
+  let expenses = 0;
+  let count = 0;
+  let cash = 0;
+  let card = 0;
+  let bank = 0;
+  let opening: { cash: number; card: number; bank: number } | null = null;
+
+  for (const branch of branches) {
+    const flow = periodFlow(transactions, branch, from, to);
+    revenue += flow.revenue;
+    expenses += flow.expenses;
+    count += flow.count;
+
+    const closing = calcBalancesUpToDate(transactions, branch, branchCash, to);
+    cash += closing.cash;
+    card += closing.card;
+    bank += closing.bank;
+
+    if (rangeMode === "day" && selectedDay > OPERATIONAL_DATA_FROM) {
+      const op = calcBalancesUpToDate(transactions, branch, branchCash, dayBefore(selectedDay));
+      if (!opening) opening = { cash: 0, card: 0, bank: 0 };
+      opening.cash += op.cash;
+      opening.card += op.card;
+      opening.bank += op.bank;
+    }
+  }
+
+  return {
+    revenue,
+    expenses,
+    net: revenue - expenses,
+    count,
+    cash,
+    card,
+    bank,
+    opening,
+  };
 }
 
 function StatCard({
@@ -51,9 +112,6 @@ function StatCard({
     </div>
   );
 }
-
-type ViewScope = "company" | Branch;
-type RangeMode = "period" | "day";
 
 type Props = {
   transactions: Transaction[];
@@ -112,6 +170,20 @@ export default function OverviewPanel({
     });
   }, [transactions, branchCash, from, to, rangeMode, selectedDay]);
 
+  const kutaisiDistribStats = useMemo(
+    () =>
+      buildGroupStats(
+        transactions,
+        branchCash,
+        KUTAISI_DISTRIB_BRANCHES,
+        from,
+        to,
+        rangeMode,
+        selectedDay
+      ),
+    [transactions, branchCash, from, to, rangeMode, selectedDay]
+  );
+
   const companyFlow = useMemo(() => {
     const flow = periodFlow(transactions, "ყველა", from, to);
     const txs = transactions.filter(
@@ -138,13 +210,16 @@ export default function OverviewPanel({
         if (!txInPeriod(t.date, from, to)) return false;
         if (branchFilter !== "ყველა" && !txMatchesBranchFilter(t, branchFilter)) return false;
         if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) return false;
-        if (scope === "company") return true;
-        return effectiveTxBranch(t) === scope;
+        return txMatchesScope(t, scope);
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, scope, from, to, branchFilter]);
 
-  const activeBranch = scope === "company" ? null : branchStats.find((b) => b.branch === scope);
+  const activeBranch =
+    scope === "company" || scope === KUTAISI_DISTRIB_LABEL
+      ? null
+      : branchStats.find((b) => b.branch === scope);
+  const activeGroup = scope === KUTAISI_DISTRIB_LABEL ? kutaisiDistribStats : null;
   const balanceHint =
     rangeMode === "day"
       ? `${formatDate(to)}-ის ბოლომდე`
@@ -212,6 +287,13 @@ export default function OverviewPanel({
               {b}
             </button>
           ))}
+          <button
+            type="button"
+            className={scopeBtn(scope === KUTAISI_DISTRIB_LABEL)}
+            onClick={() => setScope(KUTAISI_DISTRIB_LABEL)}
+          >
+            {KUTAISI_DISTRIB_LABEL}
+          </button>
         </div>
       </div>
 
@@ -280,6 +362,24 @@ export default function OverviewPanel({
                   <p className="text-xs text-zinc-500">{b.count} ჩანაწერი</p>
                 </button>
               ))}
+              <button
+                type="button"
+                className="rounded-xl border border-violet-900/50 bg-violet-950/30 p-4 text-left hover:border-violet-700/50"
+                onClick={() => setScope(KUTAISI_DISTRIB_LABEL)}
+              >
+                <p className="mb-2 font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</p>
+                <p className="text-sm text-emerald-400">+{formatMoney(kutaisiDistribStats.revenue)}</p>
+                <p className="text-sm text-red-400">-{formatMoney(kutaisiDistribStats.expenses)}</p>
+                <p
+                  className={`text-sm font-medium ${kutaisiDistribStats.net >= 0 ? "text-emerald-300" : "text-red-300"}`}
+                >
+                  ნეტო: {formatMoney(kutaisiDistribStats.net)}
+                </p>
+                <p className="mt-1 text-xs text-emerald-400/80">ქეში: {formatMoney(kutaisiDistribStats.cash)}</p>
+                <p className="text-[10px] text-sky-400/70">ბარათი: {formatMoney(kutaisiDistribStats.card)}</p>
+                <p className="text-[10px] text-violet-400/70">ანგარიში: {formatMoney(kutaisiDistribStats.bank)}</p>
+                <p className="text-xs text-zinc-500">{kutaisiDistribStats.count} ჩანაწერი</p>
+              </button>
             </div>
           </div>
         </>
@@ -323,6 +423,45 @@ export default function OverviewPanel({
             <StatCard label="🏦 ანგარიში" value={formatMoney(activeBranch.bank)} accent="text-violet-400" hint={balanceHint} />
           </div>
         </div>
+      {activeGroup && (
+        <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
+          <h3 className="mb-3 text-xl font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</h3>
+          <p className="mb-3 text-xs text-violet-300/70">ქუთაისი და დისტრიბუცია ერთად</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="შემოსავალი" value={formatMoney(activeGroup.revenue)} accent="text-emerald-400" />
+            <StatCard label="ხარჯი" value={formatMoney(activeGroup.expenses)} accent="text-red-400" />
+            <StatCard
+              label="ნეტო"
+              value={formatMoney(activeGroup.net)}
+              accent={activeGroup.net >= 0 ? "text-emerald-400" : "text-red-400"}
+            />
+            <StatCard label="ჩანაწერები" value={String(activeGroup.count)} />
+          </div>
+          {activeGroup.opening && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <StatCard
+                label="💵 ქეში (დღის დასაწყისი)"
+                value={formatMoney(activeGroup.opening.cash)}
+                accent="text-zinc-400"
+              />
+              <StatCard
+                label="💳 ბარათი (დღის დასაწყისი)"
+                value={formatMoney(activeGroup.opening.card)}
+                accent="text-zinc-400"
+              />
+              <StatCard
+                label="🏦 ანგარიში (დღის დასაწყისი)"
+                value={formatMoney(activeGroup.opening.bank)}
+                accent="text-zinc-400"
+              />
+            </div>
+          )}
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <StatCard label="💵 ქეში" value={formatMoney(activeGroup.cash)} accent="text-emerald-300" hint={balanceHint} />
+            <StatCard label="💳 ბარათი" value={formatMoney(activeGroup.card)} accent="text-sky-400" hint={balanceHint} />
+            <StatCard label="🏦 ანგარიში" value={formatMoney(activeGroup.bank)} accent="text-violet-400" hint={balanceHint} />
+          </div>
+        </div>
       )}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
@@ -334,7 +473,7 @@ export default function OverviewPanel({
         </h3>
         <TransactionTable
           rows={tableRows}
-          showBranch={scope === "company"}
+          showBranch={scope === "company" || scope === KUTAISI_DISTRIB_LABEL}
           onDelete={onDelete}
           onUpdatePayment={onUpdatePayment}
         />
