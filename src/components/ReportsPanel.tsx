@@ -7,7 +7,6 @@ import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
-import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
 
@@ -222,8 +221,6 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
 
   return (
     <section className="space-y-6">
-      <DistribuciaSyncPanel onSynced={handleImportComplete} />
-
       <ImportSalesPanel employees={employees} onImported={handleImportComplete} />
 
       <ImportExpensesPanel onImported={handleImportComplete} />

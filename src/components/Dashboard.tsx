@@ -26,6 +26,7 @@ import EmployeesPanel from "@/components/EmployeesPanel";
 import EmployeeBonusPanel from "@/components/EmployeeBonusPanel";
 import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
+import DistribucionPanel from "@/components/DistribucionPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -88,7 +89,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "inventory" | "employees" | "employee-bonus";
+type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "distribution" | "inventory" | "employees" | "employee-bonus";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -889,6 +890,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         </button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
+        <button type="button" className={tabCls(tab === "distribution")} onClick={() => setTab("distribution")}>
+          დისტრიბუცია
+        </button>
         <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
           ვალდებულებები
         </button>
@@ -1621,6 +1625,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchTokens={activeStore.branchTokens}
           onRefresh={refresh}
           onDeleteReport={deleteReport}
+        />
+      )}
+
+      {tab === "distribution" && !loading && (
+        <DistribucionPanel
+          transactions={activeStore.transactions}
+          onRefresh={async () => {
+            await refresh();
+          }}
         />
       )}
 

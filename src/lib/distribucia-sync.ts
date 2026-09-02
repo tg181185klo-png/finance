@@ -1,5 +1,5 @@
 import { env } from "./sheets-config";
-import type { Branch, Sale } from "./types";
+import type { Branch, PaymentMethod, Sale, Transaction } from "./types";
 
 export const DISTRIBUCIA_APP_URL = env.distribuciaApiUrl.replace(/\/$/, "");
 
@@ -85,11 +85,48 @@ export function isDistribuciaSaleId(id: string) {
   return id.startsWith("dist-");
 }
 
+export function isDistribuciaSale(t: Pick<Transaction, "id" | "source" | "type">) {
+  return t.type === "sale" && (t.source === "distribucia" || isDistribuciaSaleId(t.id));
+}
+
+export type DistribuciaPaymentMap = {
+  bySaleId: Map<string, PaymentMethod>;
+  byOrderId: Map<string, PaymentMethod>;
+};
+
+export function buildDistribuciaPaymentMap(transactions: Transaction[]): DistribuciaPaymentMap {
+  const bySaleId = new Map<string, PaymentMethod>();
+  const byOrderId = new Map<string, PaymentMethod>();
+  for (const t of transactions) {
+    if (!isDistribuciaSale(t) || t.type !== "sale") continue;
+    bySaleId.set(t.id, t.paymentMethod);
+    if (t.distribuciaOrderId) byOrderId.set(t.distribuciaOrderId, t.paymentMethod);
+  }
+  return { bySaleId, byOrderId };
+}
+
+export function resolveDistribuciaPaymentMethod(
+  saleId: string,
+  orderId: string,
+  paymentMap?: DistribuciaPaymentMap
+): PaymentMethod {
+  return (
+    paymentMap?.bySaleId.get(saleId) ??
+    paymentMap?.byOrderId.get(orderId) ??
+    "ქეში (ნაღდი)"
+  );
+}
+
 export function ordersFromDate(orders: DistribuciaOrder[], fromDate: string) {
   return orders.filter((o) => !o.deleted && o.saleDate >= fromDate);
 }
 
-export function ordersToSales(orders: DistribuciaOrder[], fromDate: string, branch: Branch = "დისტრიბუცია"): Sale[] {
+export function ordersToSales(
+  orders: DistribuciaOrder[],
+  fromDate: string,
+  branch: Branch = "დისტრიბუცია",
+  paymentMap?: DistribuciaPaymentMap
+): Sale[] {
   const sales: Sale[] = [];
   for (const order of ordersFromDate(orders, fromDate)) {
     if (!order.items?.length) continue;
@@ -97,8 +134,9 @@ export function ordersToSales(orders: DistribuciaOrder[], fromDate: string, bran
       const quantity = Number(item.quantity) || 0;
       const amount = Number(item.total) || quantity * Number(item.unitPrice || 0);
       if (quantity <= 0 || amount <= 0) return;
+      const saleId = distribuciaSaleId(order.id, index);
       sales.push({
-        id: distribuciaSaleId(order.id, index),
+        id: saleId,
         type: "sale",
         date: saleIsoDate(order),
         branch,
@@ -108,7 +146,7 @@ export function ordersToSales(orders: DistribuciaOrder[], fromDate: string, bran
         unitPrice: Number(item.unitPrice) || amount / quantity,
         amount,
         paymentStatus: "სრულად გადახდილი",
-        paymentMethod: "ანგარიშზე ჩარიცხვა",
+        paymentMethod: resolveDistribuciaPaymentMethod(saleId, order.id, paymentMap),
         comment: customerComment(order),
         buyerName: order.storeName,
         recurrence: "ერთჯერადი",
