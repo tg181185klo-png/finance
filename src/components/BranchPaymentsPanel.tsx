@@ -13,7 +13,7 @@ import {
 } from "@/lib/branch-payments";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import { currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
-import { OpeningBalanceStrip } from "@/components/OpeningBalancesSummary";
+import { CurrentBalanceStrip } from "@/components/OpeningBalancesSummary";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -229,7 +229,7 @@ export default function BranchPaymentsPanel({
 
         {branchCash && (
           <div className="mb-4">
-            <OpeningBalanceStrip branchCash={branchCash} branch={branch} />
+            <CurrentBalanceStrip branchCash={branchCash} transactions={transactions} branch={branch} />
           </div>
         )}
 

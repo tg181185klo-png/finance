@@ -10,7 +10,7 @@ import { OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { calcBalances, emptyBranchCash, formatMoney } from "@/lib/utils";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
-import OpeningBalancesSummary, { OpeningBalanceStrip } from "@/components/OpeningBalancesSummary";
+import OpeningBalancesSummary, { CurrentBalanceStrip } from "@/components/OpeningBalancesSummary";
 
 const scopeBtn = (on: boolean) =>
   `rounded-xl px-4 py-2 text-sm font-medium transition ${
@@ -164,9 +164,8 @@ export default function OverviewPanel({
                     ნეტო: {formatMoney(b.net)}
                   </p>
                   <p className="mt-1 text-xs text-emerald-400/80">ქეში: {formatMoney(b.cash)}</p>
-                  <p className="text-[10px] text-zinc-600">
-                    საწყისი: {formatMoney(b.opening.cash)}
-                  </p>
+                  <p className="text-[10px] text-sky-400/70">ბარათი: {formatMoney(b.card)}</p>
+                  <p className="text-[10px] text-violet-400/70">ანგარიში: {formatMoney(b.bank)}</p>
                   <p className="text-xs text-zinc-500">{b.count} ჩანაწერი</p>
                 </button>
               ))}
@@ -178,7 +177,7 @@ export default function OverviewPanel({
       {activeBranch && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
           <h3 className="mb-3 text-xl font-bold text-emerald-200">{activeBranch.branch}</h3>
-          <OpeningBalanceStrip branchCash={branchCash} branch={activeBranch.branch} />
+          <CurrentBalanceStrip transactions={transactions} branchCash={branchCash} branch={activeBranch.branch} />
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="შემოსავალი" value={formatMoney(activeBranch.revenue)} accent="text-emerald-400" />
             <StatCard label="ხარჯი" value={formatMoney(activeBranch.expenses)} accent="text-red-400" />
