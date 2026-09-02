@@ -423,6 +423,8 @@ export default function OverviewPanel({
             <StatCard label="🏦 ანგარიში" value={formatMoney(activeBranch.bank)} accent="text-violet-400" hint={balanceHint} />
           </div>
         </div>
+      )}
+
       {activeGroup && (
         <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
           <h3 className="mb-3 text-xl font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</h3>
