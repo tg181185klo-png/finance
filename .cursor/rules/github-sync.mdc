@@ -8,11 +8,13 @@ alwaysApply: true
 Repository: https://github.com/tg181185klo-png/finance
 Production: https://finance-eight-ruddy-60.vercel.app
 
-After completing any code change in this project:
-1. Run `git add -A`
+After completing ANY code change in this project — always automatically, without waiting to be asked:
+1. Run `git add` on changed source files (never tmp/debug artifacts)
 2. Commit with a clear message describing what changed
-3. Run `git push origin main`
+3. Run `git push origin main` immediately
 4. Vercel auto-deploys from `main` (Git connected to `lasha-s-projects1/finance`)
+
+Changes must appear on production links within minutes. Do not leave work uncommitted.
 
 Do not commit: `.env.local`, `node_modules`, `.next`, `data/store.json` (local business data).
 
