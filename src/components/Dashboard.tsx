@@ -29,6 +29,7 @@ import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
+import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import {
