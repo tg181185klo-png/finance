@@ -13,7 +13,7 @@ import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import { buildClientSaleMeta } from "@/lib/branch-sales-sync";
-import { branchDriverEmployees, branchReportEmployees } from "@/lib/branch-drivers";
+import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import type {
   Branch,
   BranchClientSale,
@@ -312,9 +312,16 @@ export async function GET(req: NextRequest) {
   const branch = branchByToken(store, token);
   if (!branch) return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
 
-  const { products, error: productsError } = await fetchProductsFromGoogleSheets();
+  let allEmployees = store.employees ?? [];
+  const ensured = ensureConfiguredDriverEmployees(allEmployees);
+  if (ensured.length !== allEmployees.length) {
+    await updateStore((s) => {
+      s.employees = ensured;
+    });
+    allEmployees = ensured;
+  }
 
-  const allEmployees = store.employees ?? [];
+  const { products, error: productsError } = await fetchProductsFromGoogleSheets();
 
   return NextResponse.json(
     {

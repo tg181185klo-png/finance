@@ -6,6 +6,8 @@ const EXTRA_DRIVER_NAMES: Partial<Record<Branch, string[]>> = {
   დიღომი: ["ლაშა ქაშაკაშვილი", "სალომე ბარდაველიძე", "ბუბა ორჯონიკიძე"],
 };
 
+const ALL_EXTRA_DRIVER_NAMES = [...new Set(Object.values(EXTRA_DRIVER_NAMES).flat())];
+
 /** ალტერნატიული სახელები (რეგისტრში სხვა ფორმით თუა) */
 const DRIVER_NAME_ALIASES: Record<string, string[]> = {
   "სალომე ბარდაველიძე": ["ლაშა ბარდაველიძე"],
@@ -53,4 +55,25 @@ export function branchDriverEmployees(branch: Branch, all: Employee[]): Employee
   }
 
   return [...base, ...extras];
+}
+
+/** თუ კონფიგურაციაში ჩამოთვლილი მომზიდავი რეგისტრში არ არის — დაამატე (ქუთაისი, მხოლოდ მომზიდავისთვის) */
+export function ensureConfiguredDriverEmployees(all: Employee[]): Employee[] {
+  const list = [...(all ?? [])];
+  const ids = new Set(list.map((e) => e.id));
+
+  for (const name of ALL_EXTRA_DRIVER_NAMES) {
+    if (findEmployeeByName(list, name)) continue;
+    const emp: Employee = {
+      id: `driver-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      branch: "ქუთაისი",
+      dailyWage: 0,
+      active: true,
+    };
+    list.push(emp);
+    ids.add(emp.id);
+  }
+
+  return list;
 }
