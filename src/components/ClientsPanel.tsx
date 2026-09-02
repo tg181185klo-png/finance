@@ -227,7 +227,7 @@ export default function ClientsPanel({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
         <h2 className="mb-1 text-lg font-semibold">კლიენტები</h2>
         <p className="text-xs text-zinc-500">
-          რეგისტრი ინახავს ყველა კლიენტს — Excel იმპორტიდან და თანამშრომლის რეგისტრაციიდან. დუბლიკატზე უპირატესობა აქვს პირველ რეგისტრაციას.
+          რეგისტრი ინახავს ყველა კლიენტს — Excel იმპორტიდან და თანამშრომლის რეგისტრაციიდან. ნებისმიერი კლიენტის რედაქტირება და წაშლა შესაძლებელია.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={tabBtn(mainView === "registry")} onClick={() => setMainView("registry")}>
@@ -346,9 +346,7 @@ export default function ClientsPanel({
                       <td className="py-2 pr-3 whitespace-nowrap text-xs text-zinc-500">{formatDate(c.registeredAt)}</td>
                       <td className="py-2 whitespace-nowrap">
                         <button type="button" className="mr-2 text-xs text-sky-400 hover:text-sky-300" onClick={() => openEditCustomer(c)}>რედაქტირება</button>
-                        {!c.isLegacy && (
-                          <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteCustomer(c)} disabled={busy}>წაშლა</button>
-                        )}
+                        <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteCustomer(c)} disabled={busy}>წაშლა</button>
                       </td>
                     </tr>
                   ))}
@@ -484,6 +482,22 @@ export default function ClientsPanel({
               <h3 className="text-lg font-semibold">კლიენტის რედაქტირება</h3>
               <button type="button" className="text-zinc-500" onClick={closeEditCustomer}>✕</button>
             </div>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className={`rounded-lg border px-3 py-2 text-sm ${editDraft.personType !== "legal" ? "border-sky-500 text-sky-300" : "border-zinc-700 text-zinc-400"}`}
+                onClick={() => setEditDraft({ ...editDraft, personType: "physical" })}
+              >
+                ფიზიკური
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg border px-3 py-2 text-sm ${editDraft.personType === "legal" ? "border-sky-500 text-sky-300" : "border-zinc-700 text-zinc-400"}`}
+                onClick={() => setEditDraft({ ...editDraft, personType: "legal" })}
+              >
+                იურიდიული
+              </button>
+            </div>
             {editDraft.personType === "legal" ? (
               <div className="space-y-2">
                 <input className={`${inputCls} w-full`} value={editDraft.companyName ?? ""} onChange={(e) => setEditDraft({ ...editDraft, companyName: e.target.value })} placeholder="კომპანია" />
@@ -500,6 +514,26 @@ export default function ClientsPanel({
                 <input className={`${inputCls} w-full`} value={editDraft.phone ?? ""} onChange={(e) => setEditDraft({ ...editDraft, phone: e.target.value })} placeholder="ტელეფონი" />
               </div>
             )}
+            <div className="mt-3">
+              <label className="mb-1 block text-xs text-zinc-500">მომზიდავი თანამშრომელი</label>
+              <select
+                className={`${inputCls} w-full`}
+                value={editDraft.driverEmployeeId ?? ""}
+                onChange={(e) => {
+                  const emp = employees.find((x) => x.id === e.target.value);
+                  setEditDraft({
+                    ...editDraft,
+                    driverEmployeeId: e.target.value || undefined,
+                    driverEmployeeName: emp?.name,
+                  });
+                }}
+              >
+                <option value="">—</option>
+                {employees.filter((e) => e.active).map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="mt-3">
               <label className="mb-1 block text-xs text-zinc-500">ფილიალი</label>
               <select className={`${inputCls} w-full`} value={editDraft.branch ?? ""} onChange={(e) => setEditDraft({ ...editDraft, branch: e.target.value as Branch })}>
