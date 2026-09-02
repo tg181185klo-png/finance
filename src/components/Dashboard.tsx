@@ -995,7 +995,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           </section>
 
           <div className="mb-6">
-            <OpeningBalancesSummary transactions={operationalTx} branchCash={activeStore.branchCash} compact />
+            <OpeningBalancesSummary
+              transactions={operationalTx}
+              branchCash={activeStore.branchCash}
+              compact
+              mergeCardBank
+            />
           </div>
 
           {obSummary.total > 0 && (
