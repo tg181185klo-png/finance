@@ -5,6 +5,7 @@ import {
   dedupeCustomersList,
   mergeCustomerImport,
   parseCustomersExcel,
+  syncCustomersFromBranchReports,
 } from "@/lib/customers";
 import { updateStore, readStore } from "@/lib/server-store";
 import type { Customer } from "@/lib/types";
@@ -130,6 +131,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       removed,
+      total: store.customers?.length ?? 0,
+      customers: store.customers,
+    });
+  }
+
+  if (body.action === "syncFromReports") {
+    let added = 0;
+    const store = await updateStore((s) => {
+      added = syncCustomersFromBranchReports(s);
+    });
+    return NextResponse.json({
+      ok: true,
+      added,
       total: store.customers?.length ?? 0,
       customers: store.customers,
     });

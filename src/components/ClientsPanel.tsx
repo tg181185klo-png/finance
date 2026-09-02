@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Branch, BranchDailyReport, Customer, Employee, Transaction } from "@/lib/types";
 import EmployeeSalesPanel from "@/components/EmployeeSalesPanel";
 import { buildClientReport, buildClientSaleLines } from "@/lib/client-report";
@@ -49,6 +49,29 @@ export default function ClientsPanel({
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [editDraft, setEditDraft] = useState<Partial<Customer>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/clients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "syncFromReports" }),
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok && (data.added ?? 0) > 0) {
+          await onRefresh();
+          setMsg(`რეპორტებიდან ${data.added} კლიენტი დაემატა რეგისტრში`);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [onRefresh]);
 
   const scopedTx = useMemo(() => {
     if (branch === "ყველა") return transactions;
@@ -248,7 +271,7 @@ export default function ClientsPanel({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
         <h2 className="mb-1 text-lg font-semibold">კლიენტები</h2>
         <p className="text-xs text-zinc-500">
-          რეგისტრი ინახავს ყველა კლიენტს — Excel იმპორტიდან და თანამშრომლის რეგისტრაციიდან. ნებისმიერი კლიენტის რედაქტირება და წაშლა შესაძლებელია.
+          ყველა შევსებული კლიენტი ჩანს რეგისტრში (თანამშრომლის ლინკიდან და Excel-იდან). დუბლიკატების გასაწმენდად გამოიყენეთ ღილაკი ქვემოთ.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={tabBtn(mainView === "registry")} onClick={() => setMainView("registry")}>
@@ -353,7 +376,11 @@ export default function ClientsPanel({
                       <td className="py-2 pr-3 font-medium">{customerDisplayName(c)}</td>
                       <td className="py-2 pr-3 text-zinc-400">{c.personType === "legal" ? c.companyId ?? "—" : c.personalId ?? "—"}</td>
                       <td className="py-2 pr-3 text-zinc-400">{c.phone || c.contactPhone || "—"}</td>
-                      <td className="py-2 pr-3 text-zinc-500">—</td>
+                      <td className="py-2 pr-3 text-zinc-500">
+                        {c.personType === "legal"
+                          ? `${c.contactFirstName ?? ""} ${c.contactLastName ?? ""}`.trim() || "—"
+                          : "—"}
+                      </td>
                       <td className="py-2 pr-3">
                         <select
                           className="max-w-[140px] rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"

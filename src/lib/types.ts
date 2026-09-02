@@ -32,6 +32,9 @@ export interface Customer {
   branch?: Branch;
   registeredAt: string;
   source: CustomerRegistrySource;
+  /** ფილიალის რეპორტის გაყიდვასთან დაკავშირება */
+  sourceClientSaleId?: string;
+  sourceReportId?: string;
 }
 
 export interface Product {

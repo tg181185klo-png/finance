@@ -40,6 +40,8 @@ export function customerFromBranchSale(
     registeredByEmployeeId: string;
     registeredByEmployeeName: string;
     registeredAt: string;
+    sourceClientSaleId?: string;
+    sourceReportId?: string;
   }
 ): Customer {
   const personType = sale.personType ?? "physical";
@@ -63,6 +65,8 @@ export function customerFromBranchSale(
     branch: ctx.branch,
     registeredAt: ctx.registeredAt,
     source: "employee",
+    sourceClientSaleId: ctx.sourceClientSaleId ?? sale.clientSaleId,
+    sourceReportId: ctx.sourceReportId,
   };
 }
 
@@ -73,15 +77,16 @@ export function branchSaleBuyerName(sale: BranchClientSale): string {
   return `${sale.customerFirstName} ${sale.customerLastName}`.trim();
 }
 
-/** პირველი რეგისტრაცია ინარჩუნებს უპირატესობას */
-export function upsertCustomer(store: Store, candidate: Customer): Customer {
-  const key = customerDedupeKey(candidate);
-  if (key) {
-    const existing = store.customers.find((c) => customerDedupeKey(c) === key);
-    if (existing) return existing;
-  }
+/** ყოველი შევსებული კლიენტი ცალკე ჩანს რეგისტრში — დუბლიკატების გაწმენდა ხელით */
+export function registerCustomer(store: Store, candidate: Customer): Customer {
+  if (!store.customers) store.customers = [];
   store.customers.push(candidate);
   return candidate;
+}
+
+/** @deprecated იყენებს registerCustomer-ს — დუბლირება აღარ ხდება ავტომატურად */
+export function upsertCustomer(store: Store, candidate: Customer): Customer {
+  return registerCustomer(store, candidate);
 }
 
 export function mergeCustomerImport(existing: Customer[], incoming: Customer[]): { merged: Customer[]; added: number } {
@@ -136,6 +141,66 @@ export function dedupeCustomersList(customers: Customer[]): { customers: Custome
 
   const merged = [...byKey.values()];
   return { customers: merged, removed: customers.length - merged.length };
+}
+
+/** ფილიალის რეპორტებიდან კლიენტების დამატება, რომლებიც რეგისტრში არ იყო */
+export function syncCustomersFromBranchReports(store: Store): number {
+  if (!store.customers) store.customers = [];
+  const linked = new Set(
+    store.customers.map((c) => c.sourceClientSaleId).filter(Boolean) as string[]
+  );
+  let added = 0;
+
+  for (const report of store.branchReports ?? []) {
+    const employeeId = report.submittedEmployeeId ?? "";
+    const employeeName = report.submittedBy ?? "—";
+    const registeredAt = report.submittedAt ?? `${report.date}T12:00:00.000Z`;
+
+    for (let i = 0; i < (report.clientSales ?? []).length; i++) {
+      const client = report.clientSales![i];
+      const clientSaleId = client.clientSaleId ?? `${report.id}-sale-${i}`;
+      if (linked.has(clientSaleId)) continue;
+
+      const hasProducts = (client.products?.length ?? 0) > 0;
+      if (!hasProducts) continue;
+
+      const personType = client.personType ?? "physical";
+      const filled =
+        personType === "legal"
+          ? Boolean(client.companyName?.trim() && client.companyId?.trim())
+          : Boolean(
+              client.customerFirstName?.trim() &&
+                client.customerLastName?.trim() &&
+                client.phone?.trim()
+            );
+      if (!filled) continue;
+
+      registerCustomer(
+        store,
+        customerFromBranchSale(
+          {
+            ...client,
+            clientSaleId,
+            personType,
+            driverEmployeeId: client.driverEmployeeId ?? employeeId,
+            driverEmployeeName: client.driverEmployeeName ?? employeeName,
+          },
+          {
+            branch: report.branch,
+            registeredByEmployeeId: employeeId,
+            registeredByEmployeeName: employeeName,
+            registeredAt,
+            sourceClientSaleId: clientSaleId,
+            sourceReportId: report.id,
+          }
+        )
+      );
+      linked.add(clientSaleId);
+      added++;
+    }
+  }
+
+  return added;
 }
 
 type ParsedRow = { name: string; companyId: string };

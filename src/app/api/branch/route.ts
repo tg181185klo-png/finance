@@ -153,6 +153,8 @@ async function submitBranchReport(body: SubmitBody) {
             registeredByEmployeeId: reportingEmployee.id,
             registeredByEmployeeName: reportingEmployee.name,
             registeredAt: now,
+            sourceClientSaleId: saleWithDriver.clientSaleId,
+            sourceReportId: existingReport.id,
           })
         );
       }
@@ -351,6 +353,8 @@ async function submitBranchReport(body: SubmitBody) {
           registeredByEmployeeId: reportingEmployee.id,
           registeredByEmployeeName: reportingEmployee.name,
           registeredAt: now,
+          sourceClientSaleId: saleWithDriver.clientSaleId,
+          sourceReportId: report.id,
         })
       );
     }
