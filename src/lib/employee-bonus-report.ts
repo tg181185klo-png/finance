@@ -10,6 +10,7 @@ export type BonusSaleLine = {
   date: string;
   branch: Branch;
   employeeName: string;
+  driverEmployeeId?: string;
   clientName: string;
   clientKey: string;
   isLegacy: boolean;
@@ -124,6 +125,7 @@ export function buildBonusSaleLines(
         date: report.date,
         branch: report.branch,
         employeeName,
+        driverEmployeeId: sale.driverEmployeeId,
         clientName: branchSaleBuyerName(sale),
         clientKey: saleClientKey(sale),
         isLegacy: legacy,

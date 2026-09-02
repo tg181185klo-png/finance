@@ -1407,8 +1407,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <EmployeeBonusPanel
           branchReports={activeStore.branchReports ?? []}
           customers={activeStore.customers ?? []}
+          employees={activeStore.employees ?? []}
           period={period}
           branchFilter={filter}
+          onRefresh={refresh}
         />
       )}
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { Branch, BranchDailyReport, Customer } from "@/lib/types";
+import { useCallback, useMemo, useState } from "react";
+import type { BonusSaleLine } from "@/lib/employee-bonus-report";
+import type { Branch, BranchDailyReport, Customer, Employee } from "@/lib/types";
 import {
   BONUS_RATE_LEGACY,
   BONUS_RATE_NEW,
@@ -10,6 +11,7 @@ import {
   buildClientTradingSummary,
   buildEmployeeBonusSummary,
 } from "@/lib/employee-bonus-report";
+import { branchDriverEmployees } from "@/lib/branch-drivers";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { formatMoney } from "@/lib/utils";
@@ -17,25 +19,32 @@ import { formatMoney } from "@/lib/utils";
 const tabBtn = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
 const inputCls = "rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm";
+const selectCls = "max-w-[160px] rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs focus:border-violet-500";
 
 type View = "daily" | "employees" | "clients";
 
 type Props = {
   branchReports: BranchDailyReport[];
   customers: Customer[];
+  employees: Employee[];
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
+  onRefresh: () => Promise<unknown>;
 };
 
 export default function EmployeeBonusPanel({
   branchReports,
   customers,
+  employees,
   period,
   branchFilter,
+  onRefresh,
 }: Props) {
   const [view, setView] = useState<View>("daily");
   const [branch, setBranch] = useState<Branch | "ყველა">(branchFilter);
   const [dayFilter, setDayFilter] = useState("");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [err, setErr] = useState("");
 
   const lines = useMemo(
     () => buildBonusSaleLines(branchReports, customers, period.from, period.to, branch),
@@ -56,6 +65,39 @@ export default function EmployeeBonusPanel({
     [lines]
   );
 
+  const driversForBranch = useCallback(
+    (b: Branch) => branchDriverEmployees(b, employees),
+    [employees]
+  );
+
+  async function updateDriver(line: BonusSaleLine, driverEmployeeId: string) {
+    const emp = employees.find((e) => e.id === driverEmployeeId);
+    if (!emp) return;
+    const key = `${line.reportId}-${line.clientSaleId}`;
+    setBusyKey(key);
+    setErr("");
+    try {
+      const res = await fetch("/api/branch-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "updateDriver",
+          reportId: line.reportId,
+          clientSaleId: line.clientSaleId,
+          driverEmployeeId: emp.id,
+          driverEmployeeName: emp.name,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      await onRefresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/15 p-4">
@@ -64,7 +106,12 @@ export default function EmployeeBonusPanel({
           ფილიალის პორტალიდან გაგზავნილი გაყიდვები · პერიოდი: {period.label} · ბონუსი: ახალი კლიენტი{" "}
           {BONUS_RATE_NEW * 100}% · ძველი {BONUS_RATE_LEGACY * 100}%
         </p>
+        <p className="mt-1 text-xs text-violet-300/80">
+          მომზიდავი თანამშრომელი შეგიძლიათ შეცვალოთ დღიურ ხაზებში, თუ არასწორად გამოაგზავნეს
+        </p>
       </div>
+
+      {err && <p className="text-sm text-red-400">{err}</p>}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
@@ -120,7 +167,7 @@ export default function EmployeeBonusPanel({
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pr-3">თარიღი</th>
                   <th className="pb-2 pr-3">ფილიალი</th>
-                  <th className="pb-2 pr-3">თანამშრომელი</th>
+                  <th className="pb-2 pr-3">მომზიდავი</th>
                   <th className="pb-2 pr-3">კლიენტი</th>
                   <th className="pb-2 pr-3">სტატუსი</th>
                   <th className="pb-2 pr-3">პროდუქტები</th>
@@ -130,23 +177,43 @@ export default function EmployeeBonusPanel({
                 </tr>
               </thead>
               <tbody>
-                {filteredLines.map((l) => (
-                  <tr key={`${l.reportId}-${l.clientSaleId}`} className="border-b border-zinc-800/50">
-                    <td className="py-2 pr-3 whitespace-nowrap">{l.date}</td>
-                    <td className="py-2 pr-3">{l.branch}</td>
-                    <td className="py-2 pr-3 text-violet-300">{l.employeeName}</td>
-                    <td className="py-2 pr-3 font-medium">{l.clientName}</td>
-                    <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-0.5 text-xs ${l.isLegacy ? "bg-amber-950/50 text-amber-300" : "bg-emerald-950/50 text-emerald-300"}`}>
-                        {l.clientStatus}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 max-w-[200px] truncate text-xs text-zinc-400">{l.productsSummary}</td>
-                    <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(l.amount)}</td>
-                    <td className="py-2 pr-3 text-right text-zinc-500">{(l.bonusRate * 100).toFixed(1)}%</td>
-                    <td className="py-2 text-right font-medium text-violet-400">{formatMoney(l.bonusAmount)}</td>
-                  </tr>
-                ))}
+                {filteredLines.map((l) => {
+                  const rowKey = `${l.reportId}-${l.clientSaleId}`;
+                  const drivers = driversForBranch(l.branch);
+                  const currentDriverId =
+                    l.driverEmployeeId ??
+                    drivers.find((e) => e.name === l.employeeName)?.id ??
+                    "";
+                  return (
+                    <tr key={rowKey} className="border-b border-zinc-800/50">
+                      <td className="py-2 pr-3 whitespace-nowrap">{l.date}</td>
+                      <td className="py-2 pr-3">{l.branch}</td>
+                      <td className="py-2 pr-3">
+                        <select
+                          className={selectCls}
+                          value={currentDriverId}
+                          disabled={busyKey === rowKey}
+                          onChange={(e) => void updateDriver(l, e.target.value)}
+                        >
+                          <option value="">— აირჩიეთ —</option>
+                          {drivers.map((emp) => (
+                            <option key={emp.id} value={emp.id}>{emp.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3 font-medium">{l.clientName}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`rounded px-2 py-0.5 text-xs ${l.isLegacy ? "bg-amber-950/50 text-amber-300" : "bg-emerald-950/50 text-emerald-300"}`}>
+                          {l.clientStatus}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 max-w-[200px] truncate text-xs text-zinc-400">{l.productsSummary}</td>
+                      <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(l.amount)}</td>
+                      <td className="py-2 pr-3 text-right text-zinc-500">{(l.bonusRate * 100).toFixed(1)}%</td>
+                      <td className="py-2 text-right font-medium text-violet-400">{formatMoney(l.bonusAmount)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">
@@ -169,7 +236,7 @@ export default function EmployeeBonusPanel({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                  <th className="pb-2 pr-3">თანამშრომელი</th>
+                  <th className="pb-2 pr-3">მომზიდავი</th>
                   <th className="pb-2 pr-3 text-right">გაყიდვა</th>
                   <th className="pb-2 pr-3 text-right">ახალი</th>
                   <th className="pb-2 pr-3 text-right">ძველი</th>
@@ -208,7 +275,7 @@ export default function EmployeeBonusPanel({
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pr-3">კლიენტი</th>
                   <th className="pb-2 pr-3">სტატუსი</th>
-                  <th className="pb-2 pr-3">თანამშრომელი</th>
+                  <th className="pb-2 pr-3">მომზიდავი</th>
                   <th className="pb-2 pr-3 text-right">დღეები</th>
                   <th className="pb-2 pr-3 text-right">გაყიდვა</th>
                   <th className="pb-2 pr-3 text-right">თვეში ჯამი</th>

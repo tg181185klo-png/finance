@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/require-admin";
 import {
   deleteClientSaleFromStore,
   listEmployeeSales,
+  updateClientSaleDriverInStore,
   updateClientSaleInStore,
 } from "@/lib/branch-sales-sync";
 import { readStore, updateStore } from "@/lib/server-store";
@@ -24,14 +25,36 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = (await req.json()) as {
-      action: "updateClientSale" | "deleteClientSale";
+      action: "updateClientSale" | "deleteClientSale" | "updateDriver";
       reportId?: string;
       clientSaleId?: string;
       sale?: BranchClientSale;
+      driverEmployeeId?: string;
+      driverEmployeeName?: string;
     };
 
     if (!body.reportId || !body.clientSaleId) {
       return NextResponse.json({ error: "reportId და clientSaleId საჭიროა" }, { status: 400 });
+    }
+
+    if (body.action === "updateDriver") {
+      if (!body.driverEmployeeId?.trim() || !body.driverEmployeeName?.trim()) {
+        return NextResponse.json({ error: "მომზიდავი თანამშრომელი საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        updateClientSaleDriverInStore(
+          s,
+          body.reportId!,
+          body.clientSaleId!,
+          body.driverEmployeeId!.trim(),
+          body.driverEmployeeName!.trim()
+        );
+      });
+      return NextResponse.json({
+        ok: true,
+        branchReports: store.branchReports,
+        transactions: store.transactions,
+      });
     }
 
     if (body.action === "updateClientSale") {

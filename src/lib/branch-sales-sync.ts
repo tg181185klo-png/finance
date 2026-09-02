@@ -374,6 +374,28 @@ export function updateClientSaleInStore(
   return syncReportTransactions(store, reportId);
 }
 
+export function updateClientSaleDriverInStore(
+  store: Store,
+  reportId: string,
+  clientSaleId: string,
+  driverEmployeeId: string,
+  driverEmployeeName: string
+): BranchDailyReport {
+  const report = store.branchReports.find((r) => r.id === reportId);
+  if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
+  ensureClientSaleIds(report);
+
+  const idx = (report.clientSales ?? []).findIndex((s) => s.clientSaleId === clientSaleId);
+  if (idx < 0) throw new Error("გაყიდვა ვერ მოიძებნა");
+
+  report.clientSales![idx] = {
+    ...report.clientSales![idx],
+    driverEmployeeId,
+    driverEmployeeName,
+  };
+  return syncReportTransactions(store, reportId);
+}
+
 export function deleteClientSaleFromStore(
   store: Store,
   reportId: string,
