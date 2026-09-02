@@ -54,6 +54,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     employees: data.employees ?? [],
     attendance: data.attendance ?? [],
     customers: data.customers ?? [],
+    bankLedgerReviewed: data.bankLedgerReviewed ?? {},
   };
 }
 

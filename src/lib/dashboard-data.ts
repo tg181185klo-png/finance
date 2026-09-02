@@ -1,4 +1,4 @@
-import type { PaymentMethod, PaymentStatus } from "./types";
+import type { PaymentMethod, PaymentStatus, Product } from "./types";
 import { BRANCHES, EXPENSE_BRANCHES } from "./constants";
 import {
   ALL_EXPENSE_CATEGORIES,
@@ -15,3 +15,10 @@ export const PAYMENT_STATUSES: PaymentStatus[] = ["სრულად გად�
 export const PAYMENT_METHODS: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
 export const EXPENSE_PAYMENT_METHODS = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"] as const;
 export const TX_RECURRENCE = ["ყოველთვიური", "ერთჯერადი"] as const;
+
+/** ადგილზე გაყიდვა / სხვა შემოსავალი — მარაგს არ ეხება */
+export const OTHER_SALE_PRODUCT: Product = { code: "—", name: "სხვა", price: 0 };
+
+export function isOtherSaleProduct(p: Product | null | undefined) {
+  return p?.code === OTHER_SALE_PRODUCT.code;
+}

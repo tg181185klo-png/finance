@@ -15,6 +15,7 @@ export type AccountLedgerRow = {
   channel: LedgerChannel;
   label: string;
   comment: string;
+  depositorName: string;
   amount: number;
   source: TxSource | "admin";
   paymentMethod: PaymentMethod;
@@ -72,6 +73,19 @@ function depositLedgerText(t: Extract<Transaction, { type: "deposit" }>): { labe
   };
 }
 
+function depositorName(t: Transaction): string {
+  if (t.type === "sale") {
+    return t.buyerName?.trim() || t.employeeName?.trim() || "—";
+  }
+  if (t.type === "deposit") {
+    if (t.comment?.trim()) return t.comment.trim();
+    if (t.kind === "founder") return "დამფუძნებელი";
+    if (t.kind === "loan_repayment") return "ვალის დაბრუნება";
+    return "შენატანი";
+  }
+  return "";
+}
+
 export function buildAccountLedgerRows(
   transactions: Transaction[],
   opts: {
@@ -107,6 +121,7 @@ export function buildAccountLedgerRows(
         channel: ch,
         label,
         comment,
+        depositorName: depositorName(t),
         amount: t.amount,
         source: t.source ?? "admin",
         paymentMethod: method,
@@ -124,6 +139,7 @@ export function buildAccountLedgerRows(
         channel: ch,
         label,
         comment,
+        depositorName: depositorName(t),
         amount: t.amount,
         source: t.source ?? "admin",
         paymentMethod: method,
@@ -141,6 +157,7 @@ export function buildAccountLedgerRows(
         channel: ch,
         label,
         comment,
+        depositorName: "",
         amount: t.amount,
         source: t.source ?? "admin",
         paymentMethod: method,

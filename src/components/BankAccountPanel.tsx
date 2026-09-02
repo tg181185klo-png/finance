@@ -33,7 +33,9 @@ const OPENING_DATE_LABEL = "1 სექტემბერი 2026";
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  bankLedgerReviewed: Record<string, string>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onToggleReview: (id: string, reviewed: boolean) => Promise<boolean>;
   onRefresh: () => void | Promise<void>;
 };
 
@@ -59,13 +61,17 @@ function channelLabel(ch: LedgerChannel) {
 export default function BankAccountPanel({
   transactions,
   branchCash,
+  bankLedgerReviewed,
   onUpdatePayment,
+  onToggleReview,
   onRefresh,
 }: Props) {
   const [viewMonth, setViewMonth] = useState(currentMonth());
   const [branchFilter, setBranchFilter] = useState<Branch | "ყველა">("ყველა");
   const [channelFilter, setChannelFilter] = useState<"all" | LedgerChannel>("all");
   const [search, setSearch] = useState("");
+  const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const [openings, setOpenings] = useState<Record<Branch, BranchCash>>(() => ({ ...branchCash }));
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
   const [msg, setMsg] = useState("");
@@ -96,10 +102,21 @@ export default function BankAccountPanel({
       channelFilter,
       operationalFrom: OPERATIONAL_DATA_FROM,
     }).filter((r) => {
+      if (onlyUnreviewed && (r.direction !== "in" || bankLedgerReviewed[r.id])) return false;
       if (!q) return true;
-      return [r.label, r.comment, r.branch, r.date].join(" ").toLowerCase().includes(q);
+      return [r.label, r.comment, r.depositorName, r.branch, r.date].join(" ").toLowerCase().includes(q);
     });
-  }, [transactions, from, to, branchFilter, channelFilter, search]);
+  }, [transactions, from, to, branchFilter, channelFilter, search, onlyUnreviewed, bankLedgerReviewed]);
+
+  const unreviewedIncoming = useMemo(() => {
+    return buildAccountLedgerRows(transactions, {
+      from,
+      to,
+      branch: branchFilter,
+      channelFilter,
+      operationalFrom: OPERATIONAL_DATA_FROM,
+    }).filter((r) => r.direction === "in" && !bankLedgerReviewed[r.id]).length;
+  }, [transactions, from, to, branchFilter, channelFilter, bankLedgerReviewed]);
 
   const totals = useMemo(() => ledgerTotals(rows), [rows]);
 
@@ -142,6 +159,16 @@ export default function BankAccountPanel({
         [field]: parseNum(raw),
       },
     }));
+  }
+
+  async function toggleReview(id: string, currentlyReviewed: boolean) {
+    setReviewBusy(id);
+    try {
+      await onToggleReview(id, !currentlyReviewed);
+      await onRefresh();
+    } finally {
+      setReviewBusy(null);
+    }
   }
 
   return (
@@ -223,6 +250,11 @@ export default function BankAccountPanel({
             <p className="mt-1 text-xs text-zinc-500">
               დღიური რეპორტიდან შემოსული (ბარათი/ანგარიში), ვალდებულებების გასტუმრება და ხარჯები
             </p>
+            {unreviewedIncoming > 0 && (
+              <p className="mt-1 text-xs font-medium text-amber-300">
+                {unreviewedIncoming} უნახული ჩარიცხვა ამ ფილტრით
+              </p>
+            )}
           </div>
           <Field label="თვე">
             <input
@@ -296,9 +328,18 @@ export default function BankAccountPanel({
               className={inputCls}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="კომენტარი, კლიენტი, ხარჯი..."
+              placeholder="ჩამრიცხავი, კომენტარი, კლიენტი, ხარჯი..."
             />
           </Field>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              className="rounded border-zinc-600 bg-zinc-900"
+              checked={onlyUnreviewed}
+              onChange={(e) => setOnlyUnreviewed(e.target.checked)}
+            />
+            მხოლოდ უნახული ჩარიცხვები
+          </label>
         </div>
 
         {rows.length === 0 ? (
@@ -311,20 +352,31 @@ export default function BankAccountPanel({
                   <th className="pb-2 pl-3 pr-3 pt-2">თარიღი</th>
                   <th className="pb-2 pr-3">ფილიალი</th>
                   <th className="pb-2 pr-3">ტიპი</th>
+                  <th className="pb-2 pr-3">ჩამრიცხავი</th>
                   <th className="pb-2 pr-3">აღწერა</th>
                   <th className="pb-2 pr-3">კომენტარი</th>
                   <th className="pb-2 pr-3">არხი</th>
                   <th className="pb-2 pr-3">გადახდა</th>
                   <th className="pb-2 pr-3 text-right">თანხა</th>
+                  <th className="pb-2 pr-3 pt-2 text-center">ნანახია</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-zinc-800/50">
+                {rows.map((row) => {
+                  const reviewed = Boolean(bankLedgerReviewed[row.id]);
+                  const isIncoming = row.direction === "in";
+                  return (
+                  <tr
+                    key={row.id}
+                    className={`border-b border-zinc-800/50 ${isIncoming && !reviewed ? "bg-amber-950/20" : ""}`}
+                  >
                     <td className="py-2 pl-3 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.date)}</td>
                     <td className="py-2 pr-3">{row.branch}</td>
                     <td className={`py-2 pr-3 text-xs ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}>
                       {row.direction === "in" ? "შემოსავალი" : "გასული"}
+                    </td>
+                    <td className="py-2 pr-3 font-medium text-sky-200" title={row.depositorName}>
+                      {isIncoming ? row.depositorName || "—" : "—"}
                     </td>
                     <td className="py-2 pr-3 max-w-[160px] truncate text-zinc-300" title={row.label}>
                       {row.label}
@@ -355,18 +407,39 @@ export default function BankAccountPanel({
                       {row.direction === "in" ? "+" : "−"}
                       {formatMoney(row.amount)}
                     </td>
+                    <td className="py-2 pr-3 text-center">
+                      {isIncoming ? (
+                        <button
+                          type="button"
+                          title={reviewed ? "ნანახია — მონიშვნის მოხსნა" : "მონიშნე როგორც ნანახი"}
+                          disabled={reviewBusy === row.id}
+                          onClick={() => void toggleReview(row.id, reviewed)}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm transition ${
+                            reviewed
+                              ? "border-emerald-600 bg-emerald-950/50 text-emerald-400"
+                              : "border-zinc-600 bg-zinc-900 text-zinc-600 hover:border-violet-500 hover:text-violet-300"
+                          }`}
+                        >
+                          ✓
+                        </button>
+                      ) : (
+                        <span className="text-zinc-700">—</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">
-                  <td colSpan={7} className="py-3 pl-3 pr-3 text-right text-zinc-400">
+                  <td colSpan={8} className="py-3 pl-3 pr-3 text-right text-zinc-400">
                     თვის ჯამი (შემოსული − გასული)
                   </td>
                   <td className={`py-3 pr-3 text-right ${totals.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {totals.net >= 0 ? "+" : ""}
                     {formatMoney(totals.net)}
                   </td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
@@ -374,7 +447,7 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          დღიური რეპორტის გაყიდვები ბარათით/ანგარიშზე, ხარჯები და ვალდებულებების გასტუმრება ანგარიშიდან აქ ჩანს კომენტარებით.
+          ჩარიცხვებზე ჩანს ვინ გადარიცხა; ბოლოში ✓ დააჭირეთ რომ ნანახად მონიშნოთ და არაფერი გამოგრჩეთ.
         </p>
       </div>
     </section>

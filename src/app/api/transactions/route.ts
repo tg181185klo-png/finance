@@ -34,11 +34,12 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       transaction?: Transaction;
       migrate?: Transaction[];
-      action?: "delete" | "updateRecurrence" | "updatePaymentMethod";
+      action?: "delete" | "updateRecurrence" | "updatePaymentMethod" | "toggleBankLedgerReview";
       id?: string;
       clientSaleId?: string;
       recurrence?: string;
       paymentMethod?: PaymentMethod;
+      reviewed?: boolean;
     };
 
     if (body.action === "delete") {
@@ -105,6 +106,24 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, updated, transactions: store.transactions });
+    }
+
+    if (body.action === "toggleBankLedgerReview") {
+      if (!body.id) {
+        return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        if (!s.bankLedgerReviewed) s.bankLedgerReviewed = {};
+        if (body.reviewed === false || s.bankLedgerReviewed[body.id!]) {
+          delete s.bankLedgerReviewed[body.id!];
+        } else {
+          s.bankLedgerReviewed[body.id!] = new Date().toISOString();
+        }
+      });
+      return NextResponse.json({
+        ok: true,
+        bankLedgerReviewed: store.bankLedgerReviewed ?? {},
+      });
     }
 
     let savedTx: Transaction | null = null;

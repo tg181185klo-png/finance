@@ -38,6 +38,8 @@ import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   TX_RECURRENCE,
+  OTHER_SALE_PRODUCT,
+  isOtherSaleProduct,
 } from "@/lib/dashboard-data";
 import {
   calcBalances,
@@ -157,6 +159,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [payMethod, setPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
   const [sRecurrence, setSRecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [sComment, setSComment] = useState("");
+  const [otherSaleName, setOtherSaleName] = useState("");
+  const [saleProductListOpen, setSaleProductListOpen] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
@@ -170,6 +174,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [eRecurrence, setERecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [eComment, setEComment] = useState("");
   const [eDate, setEDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [sDate, setSDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Obligations
   const [obMonth, setObMonth] = useState(currentMonth());
@@ -297,9 +302,18 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return products.slice(0, 8);
-    return products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
+    const showOther = !q || "სხვა".includes(q) || q.includes("სხვ");
+    const list = !q
+      ? products.slice(0, 8)
+      : products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
+    return showOther ? [OTHER_SALE_PRODUCT, ...list] : list;
   }, [products, search]);
+
+  const saleIsOther = isOtherSaleProduct(selected);
+  const saleQuickProducts = useMemo(
+    () => [...products.slice(0, 5), OTHER_SALE_PRODUCT],
+    [products]
+  );
 
   const balances = useMemo(
     () => calcBalances(operationalTx, filter, activeStore.branchCash),
@@ -521,12 +535,24 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   function pickProduct(p: Product) {
     setSelected(p);
-    setSearch(`${p.code} — ${p.name}`);
-    setPrice(p.price);
+    setSearch(p.code === OTHER_SALE_PRODUCT.code ? OTHER_SALE_PRODUCT.name : `${p.code} — ${p.name}`);
+    setPrice(p.code === OTHER_SALE_PRODUCT.code ? 0 : p.price);
     setQty(1);
+    setSaleProductListOpen(false);
+    if (p.code !== OTHER_SALE_PRODUCT.code) setOtherSaleName("");
   }
 
-  const selectedStock = selected ? getStock(inventory, sBranch, selected.code) : 0;
+  function tryPickOtherFromSearch(value: string) {
+    const q = value.trim().toLowerCase();
+    if (q === "სხვა" || q === "sxva") {
+      pickProduct(OTHER_SALE_PRODUCT);
+      return true;
+    }
+    return false;
+  }
+
+  const selectedStock = selected && !saleIsOther ? getStock(inventory, sBranch, selected.code) : 0;
+  const saleFormValid = Boolean(selected && qty > 0 && price > 0);
 
   async function refresh() {
     const data = await loadStore();
@@ -535,22 +561,25 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   async function addSale(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || qty <= 0 || price <= 0) return;
+    if (!saleFormValid || !selected) return;
     const total = qty * price;
     const advance = payStatus === "ბე (ავანსი)" ? parseFloat(creditAdvance) || 0 : 0;
+    const productName = saleIsOther
+      ? otherSaleName.trim() || sComment.trim() || "სხვა"
+      : selected.name;
     const sale: Sale = {
       id: uid(),
       type: "sale",
-      date: new Date().toISOString(),
+      date: `${sDate}T12:00:00.000Z`,
       branch: sBranch,
       productCode: selected.code,
-      productName: selected.name,
+      productName,
       quantity: qty,
       unitPrice: price,
       amount: total,
       paymentStatus: payStatus,
       paymentMethod: payMethod,
-      comment: sComment.trim() || `${selected.name} × ${qty}`,
+      comment: sComment.trim() || (saleIsOther ? productName : `${selected.name} × ${qty}`),
       recurrence: sRecurrence,
       source: "admin",
       buyerName: payStatus === "ბე (ავანსი)" ? buyerName.trim() || undefined : undefined,
@@ -575,6 +604,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setQty(1);
       setPrice(0);
       setSComment("");
+      setOtherSaleName("");
       setBuyerName("");
       setCreditAdvance("");
     } catch (e) {
@@ -733,6 +763,27 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       if (!res.ok) throw new Error(d.error || "შეცდომა");
       setStore((prev) => (prev ? { ...prev, transactions: d.transactions ?? prev.transactions } : prev));
       setSaveMsg("გადახდის ტიპი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
+  async function toggleBankLedgerReview(id: string, reviewed: boolean): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggleBankLedgerReview", id, reviewed }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) =>
+        prev ? { ...prev, bankLedgerReviewed: d.bankLedgerReviewed ?? prev.bankLedgerReviewed } : prev
+      );
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "შეცდომა");
@@ -1018,6 +1069,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <form onSubmit={addSale} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-emerald-400">გაყიდვა</h2>
               <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="თარიღი">
+                  <input type="date" className={inputCls} value={sDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setSDate(e.target.value)} required />
+                </Field>
                 <Field label="ფილიალი">
                   <select className={inputCls} value={sBranch} onChange={(e) => setSBranch(e.target.value as Branch)}>
                     {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -1030,31 +1084,118 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 </Field>
                 <div className="relative sm:col-span-2">
                   <Field label="პროდუქტი">
-                    <input className={inputCls} value={search} onChange={(e) => { setSearch(e.target.value); setSelected(null); }} placeholder="კოდი ან სახელი..." autoComplete="off" />
+                    <input
+                      className={inputCls}
+                      value={search}
+                      onFocus={() => setSaleProductListOpen(true)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (tryPickOtherFromSearch(v)) return;
+                        setSearch(v);
+                        setSelected(null);
+                        setOtherSaleName("");
+                        setSaleProductListOpen(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (tryPickOtherFromSearch(search)) return;
+                        const first = filteredProducts[0];
+                        if (first) pickProduct(first);
+                      }}
+                      onBlur={() =>
+                        setTimeout(() => {
+                          setSaleProductListOpen(false);
+                          if (!selected) tryPickOtherFromSearch(search);
+                        }, 150)
+                      }
+                      placeholder="კოდი, სახელი ან „სხვა“..."
+                      autoComplete="off"
+                    />
                   </Field>
-                  {search && !selected && filteredProducts.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {saleQuickProducts.map((p) => {
+                      const isOther = p.code === OTHER_SALE_PRODUCT.code;
+                      const picked = isOther ? saleIsOther : selected?.code === p.code;
+                      return (
+                        <button
+                          key={p.code}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => pickProduct(p)}
+                          className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+                            picked
+                              ? isOther
+                                ? "border-amber-500 bg-amber-950/40 text-amber-200"
+                                : "border-emerald-600 bg-emerald-950/40 text-emerald-200"
+                              : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                          }`}
+                        >
+                          {isOther ? "სხვა" : `${p.code} · ${p.name}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {saleProductListOpen && filteredProducts.length > 0 && (
                     <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
                       {filteredProducts.map((p) => (
                         <li key={p.code}>
-                          <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800" onClick={() => pickProduct(p)}>
-                            <span className="text-emerald-400">{p.code}</span> — {p.name}
-                            <span className="float-right text-zinc-500">{formatMoney(p.price)}</span>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => pickProduct(p)}
+                          >
+                            {p.code === OTHER_SALE_PRODUCT.code ? (
+                              <>
+                                <span className="text-amber-400">სხვა</span>
+                                <span className="text-zinc-500"> — ადგილზე / სხვა შემოსავალი</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-emerald-400">{p.code}</span> — {p.name}
+                                <span className="float-right text-zinc-500">{formatMoney(p.price)}</span>
+                              </>
+                            )}
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
+                {saleIsOther && (
+                  <div className="sm:col-span-2">
+                    <Field label="აღწერა (არასავალდებულო)">
+                      <input
+                        className={inputCls}
+                        value={otherSaleName}
+                        onChange={(e) => setOtherSaleName(e.target.value)}
+                        placeholder="მაგ: ადგილზე მონტაჟი — ან ჩაწერეთ კომენტარში"
+                      />
+                    </Field>
+                    <p className="mt-1 text-xs text-amber-300/80">მარაგს არ ეხება · ფასი შეიყვანეთ და დააჭირეთ დაფიქსირება</p>
+                  </div>
+                )}
                 <Field label="რაოდენობა">
                   <input className={inputCls} type="number" min={1} value={qty} onChange={(e) => setQty(+e.target.value)} />
-                  {selected && (
+                  {selected && !saleIsOther && (
                     <p className={`mt-1 text-xs ${selectedStock < qty ? "text-amber-400" : "text-zinc-500"}`}>
                       მარაგი ({sBranch}): {selectedStock}
                       {selectedStock < qty && " — არასაკმარისი!"}
                     </p>
                   )}
                 </Field>
-                <Field label="ფასი"><input className={inputCls} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(+e.target.value)} /></Field>
+                <Field label="ფასი">
+                  <input
+                    className={`${inputCls}${saleIsOther ? " border-amber-600/60 focus:border-amber-500" : ""}`}
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={price}
+                    onChange={(e) => setPrice(+e.target.value)}
+                    placeholder={saleIsOther ? "შეიყვანეთ ფასი" : undefined}
+                  />
+                </Field>
                 {payStatus !== "ბე (ავანსი)" && (
                   <Field label="გადახდის მეთოდი">
                     <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
@@ -1088,7 +1229,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 )}
                 <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={sComment} onChange={(e) => setSComment(e.target.value)} /></Field></div>
               </div>
-              <button type="submit" className={`${btnCls} mt-4`} disabled={!selected}>დაფიქსირება</button>
+              <button
+                type="submit"
+                className={`${btnCls} mt-4${!saleFormValid ? " cursor-not-allowed opacity-50" : ""}`}
+                disabled={!saleFormValid}
+              >
+                დაფიქსირება
+              </button>
             </form>
 
             <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
@@ -1360,23 +1507,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "overview" && !loading && (
-        <>
-          <OverviewPanel
-            transactions={operationalTx}
-            branchCash={activeStore.branchCash}
-            period={period}
-            branchFilter={filter}
-            onDelete={deleteTx}
-            onUpdatePayment={updateTxPayment}
-          />
-          <div className="mt-6">
-            <BranchActivityPanel
-              branchReports={branchReports}
-              period={period}
-              branchFilter={filter}
-            />
-          </div>
-        </>
+        <OverviewPanel
+          transactions={operationalTx}
+          branchReports={branchReports}
+          branchCash={activeStore.branchCash}
+          period={period}
+          branchFilter={filter}
+          onDelete={deleteTx}
+          onUpdatePayment={updateTxPayment}
+        />
       )}
 
       {tab === "balances" && !loading && (
@@ -1757,7 +1896,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <BankAccountPanel
           transactions={operationalTx}
           branchCash={activeStore.branchCash}
+          bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onUpdatePayment={updateTxPayment}
+          onToggleReview={toggleBankLedgerReview}
           onRefresh={async () => {
             await refresh();
           }}

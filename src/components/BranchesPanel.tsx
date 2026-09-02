@@ -21,9 +21,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function branchLink(token: string) {
+function branchLink(token: string, date: string) {
   const base = typeof window !== "undefined" ? window.location.origin : "";
-  return `${base}/f/${token}`;
+  return `${base}/f/${token}?date=${date}`;
 }
 
 type Props = {
@@ -42,6 +42,7 @@ export default function BranchesPanel({
   onDeleteReport,
 }: Props) {
   const today = new Date().toISOString().slice(0, 10);
+  const [linkDate, setLinkDate] = useState(today);
   const [filterBranch, setFilterBranch] = useState<Branch | "ყველა">("ყველა");
   const [filterFrom, setFilterFrom] = useState(today);
   const [filterTo, setFilterTo] = useState(today);
@@ -138,10 +139,21 @@ export default function BranchesPanel({
     <section className="space-y-6">
       <div className="rounded-xl border border-zinc-800 p-5">
         <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
-        <p className="mb-4 text-sm text-zinc-500">გაუგზავნეთ თითოეულ ფილიალს თავისი ლინკი. დღის ბოლოს შეავსებენ ანგარიშს.</p>
+        <p className="mb-4 text-sm text-zinc-500">
+          ლინკი მიბმულია კონკრეტულ დღეზე — თანამშრომელი მხოლოდ ამ თარიღის მონაცემებს ავსებს.
+        </p>
+        <Field label="ლინკის თარიღი">
+          <input
+            type="date"
+            className={`${inputCls} max-w-xs`}
+            value={linkDate}
+            onChange={(e) => setLinkDate(e.target.value)}
+          />
+        </Field>
+        <div className="mt-4">
         {BRANCHES.map((b) => {
           const token = branchTokens[b];
-          const link = branchLink(token);
+          const link = branchLink(token, linkDate);
           return (
             <div key={b} className="mb-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
               <div className="mb-1 flex items-center justify-between gap-2">
@@ -168,6 +180,7 @@ export default function BranchesPanel({
             </div>
           );
         })}
+        </div>
       </div>
 
       <form onSubmit={adminRestore} className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-5">

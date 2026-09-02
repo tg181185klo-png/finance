@@ -275,6 +275,8 @@ export interface Store {
   employees: Employee[];
   attendance: AttendanceRecord[];
   customers: Customer[];
+  /** საბანკო/ბარათის შემოსავლის ტრანზაქციის ID → ნანახობის დრო */
+  bankLedgerReviewed?: Record<string, string>;
 }
 
 export interface Balances {

@@ -32,6 +32,7 @@ export const dynamic = "force-dynamic";
 type SubmitBody = {
   token: string;
   date: string;
+  linkDate?: string;
   incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
   clientSales?: BranchClientSale[];
@@ -85,7 +86,16 @@ async function submitBranchReport(body: SubmitBody) {
   }
 
   const submittedBy = reportingEmployee.name;
-  const day = dateOnly(body.date || new Date().toISOString());
+  const today = new Date().toISOString().slice(0, 10);
+  const linkDate = body.linkDate ? dateOnly(body.linkDate) : undefined;
+  const requestedDay = dateOnly(body.date || today);
+  const lockedDay = linkDate || today;
+
+  if (requestedDay !== lockedDay) {
+    return { error: "თარიღის შეცვლა არ შეიძლება — გამოიყენეთ ადმინისგან გაგზავნილი ლინკი", status: 400 as const };
+  }
+
+  const day = lockedDay;
   const existingReport = !body.skipDuplicateCheck ? findDayReport(preview, branch, day) : undefined;
 
   if (existingReport && body.zeroReport) {
@@ -364,7 +374,13 @@ async function submitBranchReport(body: SubmitBody) {
 }
 
 export async function GET(req: NextRequest) {
-  const token = new URL(req.url).searchParams.get("token");
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token");
+  const dayParam = url.searchParams.get("date");
+  const day =
+    dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam)
+      ? dayParam
+      : new Date().toISOString().slice(0, 10);
   if (!token) return NextResponse.json({ error: "token საჭიროა" }, { status: 400 });
 
   const store = await readStore();
@@ -386,11 +402,12 @@ export async function GET(req: NextRequest) {
     {
       branch,
       token,
+      portalDate: day,
       inventory: store.inventory[branch] ?? {},
       employees: branchReportEmployees(branch, allEmployees),
       driverEmployees: branchDriverEmployees(branch, allEmployees),
       attendance: (store.attendance ?? []).filter(
-        (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
+        (a) => a.branch === branch && a.date === day
       ),
       products,
       productsWarning: productsError,

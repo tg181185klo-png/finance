@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type {
   CustomerPersonType,
   Employee,
@@ -10,7 +11,7 @@ import type {
   Product,
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
-import { formatMoney, uid } from "@/lib/utils";
+import { formatMoney, formatDate, uid } from "@/lib/utils";
 
 const inputCls =
   "w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base focus:border-emerald-500 focus:outline-none";
@@ -76,11 +77,19 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 }
 
-export default function BranchPortal({ token }: { token: string }) {
+export default function BranchPortal({ token, fixedDate }: { token: string; fixedDate?: string }) {
+  const searchParams = useSearchParams();
+  const urlDate = searchParams.get("date") ?? undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const resolvedDate = useMemo(() => {
+    const candidate = fixedDate || urlDate;
+    return candidate && /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : today;
+  }, [fixedDate, urlDate, today]);
+
   const [branch, setBranch] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState(false);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date] = useState(resolvedDate);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -113,7 +122,7 @@ export default function BranchPortal({ token }: { token: string }) {
   const [addPrice, setAddPrice] = useState("");
 
   useEffect(() => {
-    fetch(`/api/branch?token=${token}`, { cache: "no-store" })
+    fetch(`/api/branch?token=${token}&date=${date}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((branchData) => {
         if (branchData.error) setErr(branchData.error);
@@ -132,7 +141,7 @@ export default function BranchPortal({ token }: { token: string }) {
       })
       .catch(() => setErr("კავშირის შეცდომა"))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, date]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   const driverEmployee = driverEmployees.find((e) => e.id === (driverEmployeeId || selectedEmployeeId));
@@ -324,6 +333,7 @@ export default function BranchPortal({ token }: { token: string }) {
         body: JSON.stringify({
           token,
           date,
+          linkDate: date,
           clientSales: asZero ? [] : validClients,
           expenses: asZero ? [] : validExpenses,
           submittedBy: selectedEmployee?.name,
@@ -367,8 +377,9 @@ export default function BranchPortal({ token }: { token: string }) {
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-zinc-950 px-4 py-6 text-zinc-100">
       <h1 className="text-2xl font-bold">{branch}</h1>
+      <p className="mt-1 text-sm font-medium text-emerald-300">რეპორტის თარიღი: {formatDate(date)}</p>
       <p className="mb-5 text-sm text-zinc-500">
-        დღის რეპორტი · შეგიძლიათ რამდენჯერაც გინდოთ გაგზავნოთ — ერთი სამუშაო დღე დაფიქსირდება
+        დღის რეპორტი · თარიღის შეცვლა შეუძლებელია · შეგიძლიათ რამდენჯერაც გინდოთ გაგზავნოთ
       </p>
 
       {ok && (
@@ -405,15 +416,10 @@ export default function BranchPortal({ token }: { token: string }) {
               </select>
             </>
           )}
-          <div className="mt-3">
-            <label className="mb-1 block text-xs text-zinc-500">თარიღი</label>
-            <input
-              type="date"
-              className={inputCls}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
+          <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-4 py-3">
+            <p className="text-xs text-zinc-500">თარიღი</p>
+            <p className="mt-0.5 text-lg font-semibold text-emerald-200">{formatDate(date)}</p>
+            <p className="mt-1 text-[11px] text-zinc-600">ფიქსირებულია ლინკით — შეცვლა შეუძლებელია</p>
           </div>
         </section>
 

@@ -11,6 +11,7 @@ type Props = {
   branchReports: BranchDailyReport[];
   period: ResolvedPeriod;
   branchFilter?: Branch | "ყველა";
+  dayFilter?: string;
   limit?: number;
 };
 
@@ -23,12 +24,17 @@ export default function BranchActivityPanel({
   branchReports,
   period,
   branchFilter = "ყველა",
+  dayFilter,
   limit = 50,
 }: Props) {
+  const from = dayFilter ?? period.from;
+  const to = dayFilter ?? period.to;
+  const periodLabel = dayFilter ? formatDate(dayFilter) : period.label;
+
   const items = useMemo(() => {
     const out: ActivityItem[] = [];
     for (const report of branchReports) {
-      if (report.date < period.from || report.date > period.to) continue;
+      if (report.date < from || report.date > to) continue;
       if (branchFilter !== "ყველა" && report.branch !== branchFilter) continue;
       const submittedBy = report.submittedBy ?? "—";
 
@@ -75,17 +81,17 @@ export default function BranchActivityPanel({
     return out
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, limit);
-  }, [branchReports, period.from, period.to, branchFilter, limit]);
+  }, [branchReports, from, to, branchFilter, limit]);
 
   const byBranch = useMemo(() => {
     const map = new Map<Branch, number>();
     for (const b of BRANCHES) map.set(b, 0);
     for (const r of branchReports) {
-      if (r.date < period.from || r.date > period.to) continue;
+      if (r.date < from || r.date > to) continue;
       map.set(r.branch, (map.get(r.branch) ?? 0) + 1);
     }
     return map;
-  }, [branchReports, period.from, period.to]);
+  }, [branchReports, from, to]);
 
   return (
     <section className="rounded-xl border border-teal-900/40 bg-teal-950/15 p-5">
@@ -93,7 +99,7 @@ export default function BranchActivityPanel({
         <div>
           <h3 className="font-semibold text-teal-200">ფილიალის ლინკებიდან — აქტივობა</h3>
           <p className="text-xs text-zinc-500">
-            გაყიდვები, კლიენტები, ხარჯები · {period.label}
+            გაყიდვები, კლიენტები, ხარჯები · {periodLabel}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
