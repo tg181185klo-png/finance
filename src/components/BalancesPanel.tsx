@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { Branch, BranchCash, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { effectiveDepositBranch, effectiveExpenseBranch } from "@/lib/branch-allocation";
-import { calcBalances, currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
+import { calcBalances, currentMonth, emptyBranchCash, formatMoney, monthStartEnd } from "@/lib/utils";
 
 
 const tabBtn = (on: boolean) =>
@@ -86,10 +86,21 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
     const branchRows = BRANCHES.map((branch) => {
       const flow = branchFlow(transactions, branch, from, to);
       const bal = calcBalances(transactions, branch, branchCash);
-      return { branch, ...flow, ...bal };
+      const opening = branchCash?.[branch] ?? emptyBranchCash();
+      return { branch, ...flow, ...bal, opening };
     });
     const companyFlow_ = companyFlow(transactions, from, to);
     const companyBal = calcBalances(transactions, "ყველა", branchCash);
+    const companyOpening = BRANCHES.reduce(
+      (acc, b) => {
+        const o = branchCash?.[b] ?? emptyBranchCash();
+        acc.cash += o.cash;
+        acc.card += o.card;
+        acc.bank += o.bank;
+        return acc;
+      },
+      emptyBranchCash()
+    );
     return {
       branches: branchRows,
       company: {
@@ -98,6 +109,7 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
         cash: companyBal.cash,
         card: companyBal.card,
         bank: companyBal.bank,
+        opening: companyOpening,
         revenue: companyFlow_.revenue,
         expenses: companyFlow_.expenses,
         net: companyFlow_.net,
@@ -151,6 +163,12 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
               />
             </div>
             <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">საწყისი ნაშთი</p>
+              <Stat label="💵 ქეში" value={formatMoney(r.opening.cash)} accent="text-zinc-400" />
+              <Stat label="💳 ბარათი" value={formatMoney(r.opening.card)} accent="text-zinc-400" />
+              <Stat label="🏦 ანგარიში" value={formatMoney(r.opening.bank)} accent="text-zinc-400" />
+            </div>
+            <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">ფული ახლა</p>
               <Stat label="💵 ქეში" value={formatMoney(r.cash)} accent="text-emerald-300" />
               <Stat label="💳 ბარათი" value={formatMoney(r.card)} accent="text-sky-400" />
@@ -172,6 +190,12 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
             />
           </div>
           <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">საწყისი ნაშთი</p>
+            <Stat label="💵 ქეში (ყველა)" value={formatMoney(rows.company.opening.cash)} accent="text-zinc-400" />
+            <Stat label="💳 ბარათი (ყველა)" value={formatMoney(rows.company.opening.card)} accent="text-zinc-400" />
+            <Stat label="🏦 ანგარიში (ყველა)" value={formatMoney(rows.company.opening.bank)} accent="text-zinc-400" />
+          </div>
+          <div className="mt-3 space-y-2 border-t border-emerald-900/40 pt-3">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">ჯამური ფული</p>
             <Stat label="💵 ქეში (ყველა)" value={formatMoney(rows.company.cash)} accent="text-emerald-300" />
             <Stat label="💳 ბარათი (ყველა)" value={formatMoney(rows.company.card)} accent="text-sky-400" />
@@ -196,6 +220,7 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
               <th className="pb-3 pr-4 text-right">შემოსავალი</th>
               <th className="pb-3 pr-4 text-right">ხარჯი</th>
               <th className="pb-3 pr-4 text-right">ნეტო</th>
+              <th className="pb-3 pr-4 text-right">საწყისი ქეში</th>
               <th className="pb-3 pr-4 text-right">ქეში</th>
               <th className="pb-3 pr-4 text-right">ბარათი</th>
               <th className="pb-3 text-right">ანგარიში</th>
@@ -210,6 +235,7 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
                 <td className={`py-3 pr-4 text-right ${r.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {formatMoney(r.net)}
                 </td>
+                <td className="py-3 pr-4 text-right text-zinc-500">{formatMoney(r.opening.cash)}</td>
                 <td className="py-3 pr-4 text-right text-emerald-300">{formatMoney(r.cash)}</td>
                 <td className="py-3 pr-4 text-right text-sky-400">{formatMoney(r.card)}</td>
                 <td className="py-3 text-right text-violet-400">{formatMoney(r.bank)}</td>
@@ -222,6 +248,7 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
               <td className={`py-3 pr-4 text-right ${rows.company.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {formatMoney(rows.company.net)}
               </td>
+              <td className="py-3 pr-4 text-right text-zinc-500">{formatMoney(rows.company.opening.cash)}</td>
               <td className="py-3 pr-4 text-right text-emerald-300">{formatMoney(rows.company.cash)}</td>
               <td className="py-3 pr-4 text-right text-sky-400">{formatMoney(rows.company.card)}</td>
               <td className="py-3 text-right text-violet-400">{formatMoney(rows.company.bank)}</td>

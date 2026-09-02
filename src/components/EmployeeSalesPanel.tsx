@@ -272,7 +272,8 @@ export default function EmployeeSalesPanel({
                 <th className="pb-2 pr-3">ფილიალი</th>
                 <th className="pb-2 pr-3">კლიენტი</th>
                 <th className="pb-2 pr-3">პროდუქტები</th>
-                <th className="pb-2 pr-3">თანამშრომელი</th>
+                <th className="pb-2 pr-3">მომზიდავი</th>
+                <th className="pb-2 pr-3">გამომგზავნი</th>
                 <th className="pb-2 pr-3 text-right">ჯამი</th>
                 <th className="pb-2">მოქმედება</th>
               </tr>
@@ -292,7 +293,8 @@ export default function EmployeeSalesPanel({
                   <td className="py-2 pr-3 text-xs text-zinc-400">
                     {r.sale.products.map((p) => `${p.productName} ×${p.quantity}`).join(", ")}
                   </td>
-                  <td className="py-2 pr-3 text-violet-300">{r.submittedBy}</td>
+                  <td className="py-2 pr-3 text-violet-300">{r.sale.driverEmployeeName?.trim() || r.submittedBy}</td>
+                  <td className="py-2 pr-3 text-zinc-500">{r.submittedBy}</td>
                   <td className="py-2 pr-3 text-right font-medium text-emerald-400">{formatMoney(r.total)}</td>
                   <td className="py-2 whitespace-nowrap">
                     <button type="button" className={`${smallBtn} mr-2`} onClick={() => openEdit(r)}>რედაქტირება</button>

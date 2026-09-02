@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Branch, BranchDailyReport, Employee } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
+import { branchSaleBuyerName } from "@/lib/customers";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -325,8 +326,14 @@ export default function BranchesPanel({
                     {r.clientSales.map((c, i) => (
                       <div key={i} className="rounded border border-zinc-800/80 p-2">
                         <p className="text-zinc-200">
-                          {c.customerFirstName} {c.customerLastName}
-                          <span className="text-zinc-500"> · {c.phone}</span>
+                          {branchSaleBuyerName(c)}
+                          <span className="text-zinc-500">
+                            {" "}
+                            · {c.personType === "legal" ? c.companyId : c.phone}
+                          </span>
+                          {c.driverEmployeeName ? (
+                            <span className="text-violet-400"> · მომზიდავი: {c.driverEmployeeName}</span>
+                          ) : null}
                         </p>
                         {c.products.map((p, j) => (
                           <p key={j} className="text-emerald-400">

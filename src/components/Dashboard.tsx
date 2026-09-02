@@ -28,6 +28,9 @@ import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
+import BalancesPanel from "@/components/BalancesPanel";
+import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
+import BranchActivityPanel from "@/components/BranchActivityPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -91,7 +94,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "payments" | "bank" | "inventory" | "employees" | "employee-bonus";
+type Tab = "main" | "overview" | "balances" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "payments" | "bank" | "inventory" | "employees" | "employee-bonus";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -929,6 +932,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <button type="button" className={tabCls(tab === "overview")} onClick={() => setTab("overview")}>
           მიმოხილვა
         </button>
+        <button type="button" className={tabCls(tab === "balances")} onClick={() => setTab("balances")}>
+          ბალანსები
+        </button>
         <button type="button" className={tabCls(tab === "expenses")} onClick={() => setTab("expenses")}>
           ხარჯები
         </button>
@@ -987,6 +993,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <Stat label="ბარათი/ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
             <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
+
+          <div className="mb-6">
+            <OpeningBalancesSummary transactions={operationalTx} branchCash={activeStore.branchCash} compact />
+          </div>
 
           {obSummary.total > 0 && (
             <section className="mb-6 rounded-xl border border-violet-900/50 bg-violet-950/20 p-4">
@@ -1345,14 +1355,27 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "overview" && !loading && (
-        <OverviewPanel
-          transactions={operationalTx}
-          branchCash={activeStore.branchCash}
-          period={period}
-          branchFilter={filter}
-          onDelete={deleteTx}
-          onUpdatePayment={updateTxPayment}
-        />
+        <>
+          <OverviewPanel
+            transactions={operationalTx}
+            branchCash={activeStore.branchCash}
+            period={period}
+            branchFilter={filter}
+            onDelete={deleteTx}
+            onUpdatePayment={updateTxPayment}
+          />
+          <div className="mt-6">
+            <BranchActivityPanel
+              branchReports={branchReports}
+              period={period}
+              branchFilter={filter}
+            />
+          </div>
+        </>
+      )}
+
+      {tab === "balances" && !loading && (
+        <BalancesPanel transactions={operationalTx} branchCash={activeStore.branchCash} />
       )}
 
       {tab === "expenses" && !loading && (
@@ -1696,18 +1719,27 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "branches" && !loading && (
-        <BranchesPanel
-          branchReports={branchReports}
-          employees={activeStore.employees ?? []}
-          branchTokens={activeStore.branchTokens}
-          onRefresh={refresh}
-          onDeleteReport={deleteReport}
-        />
+        <>
+          <BranchesPanel
+            branchReports={branchReports}
+            employees={activeStore.employees ?? []}
+            branchTokens={activeStore.branchTokens}
+            onRefresh={refresh}
+            onDeleteReport={deleteReport}
+          />
+          <div className="mt-6">
+            <BranchActivityPanel
+              branchReports={branchReports}
+              period={period}
+            />
+          </div>
+        </>
       )}
 
       {tab === "payments" && !loading && (
         <BranchesPaymentsHub
           transactions={activeStore.transactions}
+          branchCash={activeStore.branchCash}
           onRefresh={async () => {
             await refresh();
           }}

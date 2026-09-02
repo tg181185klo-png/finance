@@ -7,9 +7,10 @@ import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
-import { calcBalances, formatMoney } from "@/lib/utils";
+import { calcBalances, emptyBranchCash, formatMoney } from "@/lib/utils";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
+import OpeningBalancesSummary, { OpeningBalanceStrip } from "@/components/OpeningBalancesSummary";
 
 const scopeBtn = (on: boolean) =>
   `rounded-xl px-4 py-2 text-sm font-medium transition ${
@@ -70,7 +71,8 @@ export default function OverviewPanel({
           !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t))
       );
       const bal = calcBalances(transactions, branch, branchCash);
-      return { branch, ...flow, ...bal, count: txs.length };
+      const opening = branchCash[branch] ?? emptyBranchCash();
+      return { branch, ...flow, ...bal, opening, count: txs.length };
     });
   }, [transactions, branchCash, from, to]);
 
@@ -123,6 +125,8 @@ export default function OverviewPanel({
         </div>
       </div>
 
+      <OpeningBalancesSummary transactions={transactions} branchCash={branchCash} compact />
+
       {scope === "company" && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -159,7 +163,11 @@ export default function OverviewPanel({
                   <p className={`text-sm font-medium ${b.net >= 0 ? "text-emerald-300" : "text-red-300"}`}>
                     ნეტო: {formatMoney(b.net)}
                   </p>
-                  <p className="mt-1 text-xs text-zinc-500">{b.count} ჩანაწერი</p>
+                  <p className="mt-1 text-xs text-emerald-400/80">ქეში: {formatMoney(b.cash)}</p>
+                  <p className="text-[10px] text-zinc-600">
+                    საწყისი: {formatMoney(b.opening.cash)}
+                  </p>
+                  <p className="text-xs text-zinc-500">{b.count} ჩანაწერი</p>
                 </button>
               ))}
             </div>
@@ -170,7 +178,8 @@ export default function OverviewPanel({
       {activeBranch && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
           <h3 className="mb-3 text-xl font-bold text-emerald-200">{activeBranch.branch}</h3>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <OpeningBalanceStrip branchCash={branchCash} branch={activeBranch.branch} />
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="შემოსავალი" value={formatMoney(activeBranch.revenue)} accent="text-emerald-400" />
             <StatCard label="ხარჯი" value={formatMoney(activeBranch.expenses)} accent="text-red-400" />
             <StatCard
@@ -179,6 +188,11 @@ export default function OverviewPanel({
               accent={activeBranch.net >= 0 ? "text-emerald-400" : "text-red-400"}
             />
             <StatCard label="ჩანაწერები" value={String(activeBranch.count)} />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <StatCard label="💵 ქეში (მიმდინარე)" value={formatMoney(activeBranch.cash)} accent="text-emerald-300" />
+            <StatCard label="💳 ბარათი" value={formatMoney(activeBranch.card)} accent="text-sky-400" />
+            <StatCard label="🏦 ანგარიში" value={formatMoney(activeBranch.bank)} accent="text-violet-400" />
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useMemo, useState } from "react";
-import type { Branch, PaymentMethod, Sale, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import {
   branchPaymentOptions,
   branchSalesForPayments,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/branch-payments";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import { currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
+import { OpeningBalanceStrip } from "@/components/OpeningBalancesSummary";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -64,6 +65,7 @@ const THEMES: Record<Branch, Theme> = {
 type Props = {
   branch: Branch;
   transactions: Transaction[];
+  branchCash?: Record<Branch, BranchCash>;
   onRefresh: () => void | Promise<void>;
   header?: React.ReactNode;
   subtitle?: string;
@@ -110,6 +112,7 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
 export default function BranchPaymentsPanel({
   branch,
   transactions,
+  branchCash,
   onRefresh,
   header,
   subtitle,
@@ -223,6 +226,12 @@ export default function BranchPaymentsPanel({
             />
           </Field>
         </div>
+
+        {branchCash && (
+          <div className="mb-4">
+            <OpeningBalanceStrip branchCash={branchCash} branch={branch} />
+          </div>
+        )}
 
         <div className={`mb-4 grid gap-3 ${isDistribuciaBranch(branch) ? "sm:grid-cols-4" : "sm:grid-cols-5"}`}>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">

@@ -256,7 +256,7 @@ async function submitBranchReport(body: SubmitBody) {
         source: "branch",
         reportId,
         clientSaleId: client.clientSaleId,
-        employeeName: submittedBy,
+        employeeName: client.driverEmployeeName?.trim() || submittedBy,
       });
     }
   }

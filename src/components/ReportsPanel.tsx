@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Branch, Employee, PaymentMethod, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
+import type { ReportSnapshotMeta } from "@/lib/report-snapshots";
 import { BRANCHES, TX_RECURRENCE, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
+import ReportsExportHub from "@/components/ReportsExportHub";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, paymentMethodLabel, txPaymentMethod, txRecurrence } from "@/lib/utils";
 
@@ -47,7 +49,11 @@ function MiniReport({ title, report }: { title: string; report: PeriodReport | n
         />
       </div>
       <p className="mt-2 text-xs text-zinc-500">
-        ქეში თვის ბოლოს: <span className="text-emerald-400">{formatMoney(report.cashAtEnd)}</span>
+        ქეში: <span className="text-emerald-400">{formatMoney(report.cashAtEnd)}</span>
+        {" · "}
+        ბარათი: <span className="text-sky-400">{formatMoney(report.cardAtEnd)}</span>
+        {" · "}
+        ანგარიში: <span className="text-violet-400">{formatMoney(report.bankAtEnd)}</span>
       </p>
     </div>
   );
@@ -110,6 +116,10 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
   const [monthBranch, setMonthBranch] = useState<Branch>("დიღომი");
   const [history, setHistory] = useState<MonthHistoryRow[]>([]);
   const [summaryRefresh, setSummaryRefresh] = useState(0);
+  const [snapshots, setSnapshots] = useState<ReportSnapshotMeta[]>([]);
+  const [canSaveSnapshots, setCanSaveSnapshots] = useState(false);
+  const [snapshotTitle, setSnapshotTitle] = useState("");
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
   const [err, setErr] = useState("");
 
   const loadReport = useCallback(async (mode: string, from?: string, to?: string, branch?: Branch | "ყველა") => {
@@ -136,9 +146,21 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
     setHistory(data.months ?? []);
   }, []);
 
+  const loadSnapshots = useCallback(async () => {
+    const res = await fetch("/api/reports/snapshots", { cache: "no-store" });
+    const data = await res.json();
+    if (data.error) {
+      setErr(data.error);
+      return;
+    }
+    setSnapshots(data.snapshots ?? []);
+    setCanSaveSnapshots(Boolean(data.canSave));
+  }, []);
+
   useEffect(() => {
     loadHistory();
-  }, [loadHistory]);
+    loadSnapshots();
+  }, [loadHistory, loadSnapshots]);
 
   const loadMonthlySnapshots = useCallback(async () => {
     const [company, branch] = await Promise.all([
@@ -184,6 +206,53 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
   function exportExcel(r: PeriodReport) {
     const b = encodeURIComponent(r.branch);
     window.open(`/api/reports/export?from=${r.from}&to=${r.to}&branch=${b}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function saveSnapshot() {
+    if (!report) return;
+    setSnapshotBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/reports/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: snapshotTitle.trim() || undefined,
+          from: report.from,
+          to: report.to,
+          branch: report.branch,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      setSnapshotTitle("");
+      await loadSnapshots();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }
+
+  async function deleteSnapshot(id: string) {
+    if (!confirm("წავშალოთ შენახული რეპორტი?")) return;
+    const res = await fetch(`/api/reports/snapshots?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      setErr(data.error || "შეცდომა");
+      return;
+    }
+    await loadSnapshots();
+  }
+
+  async function viewSnapshot(id: string) {
+    const res = await fetch(`/api/reports/snapshots?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+    const data = await res.json();
+    if (data.error) {
+      setErr(data.error);
+      return;
+    }
+    if (data.payload) setReport(data.payload as PeriodReport);
   }
 
   async function setRecurrence(txId: string, recurrence: TxRecurrence) {
@@ -241,11 +310,77 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
 
   return (
     <section className="space-y-6">
+      <ReportsExportHub
+        report={report}
+        repFrom={repFrom}
+        repTo={repTo}
+        repBranch={repBranch}
+        canSaveSnapshots={canSaveSnapshots}
+        snapshotBusy={snapshotBusy}
+        snapshotTitle={snapshotTitle}
+        onSnapshotTitleChange={setSnapshotTitle}
+        onSaveSnapshot={() => void saveSnapshot()}
+        snapshots={snapshots}
+        onViewSnapshot={(id) => void viewSnapshot(id)}
+        onDeleteSnapshot={(id) => void deleteSnapshot(id)}
+        onRefreshSnapshots={loadSnapshots}
+      />
+
       <ImportSalesPanel employees={employees} onImported={handleImportComplete} />
 
       <ImportExpensesPanel onImported={handleImportComplete} />
 
       <FinancialSummaryPanel refreshSignal={summaryRefresh} />
+
+      {snapshots.length > 0 && (
+        <div className="rounded-xl border border-indigo-900/40 bg-indigo-950/20 p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold text-indigo-200">შენახული რეპორტები — სრული სია</h2>
+            <button type="button" className={btnCls} onClick={loadSnapshots}>განახლება</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                  <th className="pb-2 pr-3">სახელი</th>
+                  <th className="pb-2 pr-3">პერიოდი</th>
+                  <th className="pb-2 pr-3">ფილიალი</th>
+                  <th className="pb-2 pr-3 text-right">შემოსავალი</th>
+                  <th className="pb-2 pr-3 text-right">ხარჯი</th>
+                  <th className="pb-2 pr-3 text-right">ნეტო</th>
+                  <th className="pb-2 pr-3">შექმნა</th>
+                  <th className="pb-2">მოქმედება</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshots.map((s) => (
+                  <tr key={s.id} className="border-b border-zinc-800/50">
+                    <td className="py-2 pr-3 font-medium">{s.title}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {s.fromDate === s.toDate ? s.fromDate : `${s.fromDate} — ${s.toDate}`}
+                    </td>
+                    <td className="py-2 pr-3">{s.branch}</td>
+                    <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(s.revenue)}</td>
+                    <td className="py-2 pr-3 text-right text-red-400">{formatMoney(s.expenses)}</td>
+                    <td className={`py-2 pr-3 text-right ${s.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {formatMoney(s.net)}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-zinc-500">{formatDate(s.createdAt)}</td>
+                    <td className="py-2 whitespace-nowrap">
+                      <button type="button" className="mr-2 text-xs text-indigo-400 hover:text-indigo-300" onClick={() => void viewSnapshot(s.id)}>
+                        ნახვა
+                      </button>
+                      <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteSnapshot(s.id)}>
+                        წაშლა
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {history.length > 0 && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-5">
@@ -429,7 +564,7 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                 ↓ Excel
               </button>
             </div>
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
               <Stat label="ხარჯები" value={formatMoney(report.expenses)} accent="text-red-400" />
               <Stat
@@ -437,7 +572,11 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                 value={formatMoney(report.net)}
                 accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"}
               />
-              <Stat label="ქეში (პერიოდის ბოლოს)" value={formatMoney(report.cashAtEnd)} accent="text-emerald-300" />
+            </div>
+            <div className="mb-6 grid gap-3 sm:grid-cols-3">
+              <Stat label="💵 ქეში (ბოლოს)" value={formatMoney(report.cashAtEnd)} accent="text-emerald-300" />
+              <Stat label="💳 ბარათი (ბოლოს)" value={formatMoney(report.cardAtEnd)} accent="text-sky-400" />
+              <Stat label="🏦 ანგარიში (ბოლოს)" value={formatMoney(report.bankAtEnd)} accent="text-violet-400" />
             </div>
 
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
@@ -484,7 +623,9 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                     <th className="pb-2 pr-4 text-right">შემოსავალი</th>
                     <th className="pb-2 pr-4 text-right">ხარჯი</th>
                     <th className="pb-2 pr-4 text-right">მოგება/ზარალი</th>
-                    <th className="pb-2 text-right">ქეში (ბოლოს)</th>
+                    <th className="pb-2 pr-4 text-right">ქეში</th>
+                    <th className="pb-2 pr-4 text-right">ბარათი</th>
+                    <th className="pb-2 text-right">ანგარიში</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -496,7 +637,9 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                       <td className={`py-2 pr-4 text-right ${b.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {formatMoney(b.net)}
                       </td>
-                      <td className="py-2 text-right text-emerald-300">{formatMoney(b.cashAtEnd)}</td>
+                      <td className="py-2 pr-4 text-right text-emerald-300">{formatMoney(b.cashAtEnd)}</td>
+                      <td className="py-2 pr-4 text-right text-sky-400">{formatMoney(b.cardAtEnd)}</td>
+                      <td className="py-2 text-right text-violet-400">{formatMoney(b.bankAtEnd)}</td>
                     </tr>
                   ))}
                   <tr className="font-semibold">
@@ -510,8 +653,14 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                     <td className="py-2 pr-4 text-right text-emerald-400">
                       {formatMoney(report.byBranch.reduce((s, b) => s + b.net, 0))}
                     </td>
-                    <td className="py-2 text-right text-emerald-300">
+                    <td className="py-2 pr-4 text-right text-emerald-300">
                       {formatMoney(report.byBranch.reduce((s, b) => s + b.cashAtEnd, 0))}
+                    </td>
+                    <td className="py-2 pr-4 text-right text-sky-400">
+                      {formatMoney(report.byBranch.reduce((s, b) => s + b.cardAtEnd, 0))}
+                    </td>
+                    <td className="py-2 text-right text-violet-400">
+                      {formatMoney(report.byBranch.reduce((s, b) => s + b.bankAtEnd, 0))}
                     </td>
                   </tr>
                 </tbody>

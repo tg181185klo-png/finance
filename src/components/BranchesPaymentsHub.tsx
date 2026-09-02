@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Branch, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, Transaction } from "@/lib/types";
 import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
 import DistribuciaSyncPanel from "@/components/DistribuciaSyncPanel";
 
@@ -12,10 +12,11 @@ const tabBtn = (on: boolean) =>
 
 type Props = {
   transactions: Transaction[];
+  branchCash: Record<Branch, BranchCash>;
   onRefresh: () => void | Promise<void>;
 };
 
-export default function BranchesPaymentsHub({ transactions, onRefresh }: Props) {
+export default function BranchesPaymentsHub({ transactions, branchCash, onRefresh }: Props) {
   const [branch, setBranch] = useState<Branch>("დისტრიბუცია");
 
   return (
@@ -35,6 +36,7 @@ export default function BranchesPaymentsHub({ transactions, onRefresh }: Props) 
         key={branch}
         branch={branch}
         transactions={transactions}
+        branchCash={branchCash}
         onRefresh={onRefresh}
         header={
           branch === "დისტრიბუცია" ? <DistribuciaSyncPanel onSynced={onRefresh} /> : undefined

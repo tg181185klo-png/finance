@@ -124,7 +124,7 @@ function buildSaleTx(
     source: "branch",
     reportId: report.id,
     clientSaleId: client.clientSaleId,
-    employeeName: submittedBy,
+    employeeName: client.driverEmployeeName?.trim() || submittedBy,
   };
 }
 

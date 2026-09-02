@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES, PAYMENT_METHODS } from "@/lib/dashboard-data";
+import {
+  buildAccountLedgerRows,
+  ledgerTotals,
+  nonCashOpening,
+  type LedgerChannel,
+} from "@/lib/bank-ledger";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import {
   calcBalances,
@@ -10,11 +16,8 @@ import {
   emptyBranchCash,
   formatDate,
   formatMoney,
-  isCreditOrder,
-  isCreditOrderActive,
   monthStartEnd,
   paymentMethodLabel,
-  txPaymentMethod,
 } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-violet-500";
@@ -25,17 +28,7 @@ const btnCls = "rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium hover:b
 const tabBtn = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-violet-800 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
 
-const BANK_METHOD: PaymentMethod = "ანგარიშზე ჩარიცხვა";
 const OPENING_DATE_LABEL = "1 სექტემბერი 2026";
-
-type LedgerRow = {
-  id: string;
-  date: string;
-  branch: Branch;
-  label: string;
-  amount: number;
-  paymentMethod: PaymentMethod;
-};
 
 type Props = {
   transactions: Transaction[];
@@ -59,19 +52,8 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function txLedgerLabel(t: Transaction): string {
-  if (t.type === "sale") return t.buyerName ? `${t.buyerName} · ${t.productName}` : t.productName;
-  if (t.type === "deposit") {
-    const kind =
-      t.kind === "founder" ? "დამფუძნებლის შენატანი" : t.kind === "loan_repayment" ? "ვალის დაბრუნება" : "შენატანი";
-    return t.comment || kind;
-  }
-  return `${t.category}${t.comment ? ` · ${t.comment}` : ""}`;
-}
-
-function sumOpeningBank(branchCash: Record<Branch, BranchCash>, branchFilter: Branch | "ყველა") {
-  const branches = branchFilter === "ყველა" ? BRANCHES : [branchFilter];
-  return branches.reduce((s, b) => s + (branchCash[b]?.bank ?? 0), 0);
+function channelLabel(ch: LedgerChannel) {
+  return ch === "bank" ? "ანგარიში" : "ბარათი";
 }
 
 export default function BankAccountPanel({
@@ -82,6 +64,7 @@ export default function BankAccountPanel({
 }: Props) {
   const [viewMonth, setViewMonth] = useState(currentMonth());
   const [branchFilter, setBranchFilter] = useState<Branch | "ყველა">("ყველა");
+  const [channelFilter, setChannelFilter] = useState<"all" | LedgerChannel>("all");
   const [search, setSearch] = useState("");
   const [openings, setOpenings] = useState<Record<Branch, BranchCash>>(() => ({ ...branchCash }));
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
@@ -94,47 +77,31 @@ export default function BankAccountPanel({
 
   const { from, to } = useMemo(() => monthStartEnd(viewMonth), [viewMonth]);
 
-  const openingBank = useMemo(
-    () => sumOpeningBank(branchCash, branchFilter),
+  const opening = useMemo(
+    () => nonCashOpening(branchCash, branchFilter, BRANCHES),
     [branchCash, branchFilter]
   );
 
-  const currentBalance = useMemo(
-    () => calcBalances(transactions, branchFilter, branchCash).bank,
-    [transactions, branchFilter, branchCash]
-  );
+  const currentNonCash = useMemo(() => {
+    const bal = calcBalances(transactions, branchFilter, branchCash);
+    return { card: bal.card, bank: bal.bank, total: bal.card + bal.bank };
+  }, [transactions, branchFilter, branchCash]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const out: LedgerRow[] = [];
+    return buildAccountLedgerRows(transactions, {
+      from,
+      to,
+      branch: branchFilter,
+      channelFilter,
+      operationalFrom: OPERATIONAL_DATA_FROM,
+    }).filter((r) => {
+      if (!q) return true;
+      return [r.label, r.comment, r.branch, r.date].join(" ").toLowerCase().includes(q);
+    });
+  }, [transactions, from, to, branchFilter, channelFilter, search]);
 
-    for (const t of transactions) {
-      if (txPaymentMethod(t) !== BANK_METHOD) continue;
-      if (t.type === "expense") continue;
-      const date = t.date.slice(0, 10);
-      if (date < OPERATIONAL_DATA_FROM || date < from || date > to) continue;
-      if (branchFilter !== "ყველა" && t.branch !== branchFilter) continue;
-      if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) continue;
-
-      out.push({
-        id: t.id,
-        date,
-        branch: t.branch,
-        label: txLedgerLabel(t),
-        amount: t.amount,
-        paymentMethod: txPaymentMethod(t),
-      });
-    }
-
-    return out
-      .filter((r) => {
-        if (!q) return true;
-        return [r.label, r.branch, r.date].join(" ").toLowerCase().includes(q);
-      })
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  }, [transactions, from, to, branchFilter, search]);
-
-  const periodIncoming = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
+  const totals = useMemo(() => ledgerTotals(rows), [rows]);
 
   const saveOpening = useCallback(
     async (branch: Branch) => {
@@ -182,8 +149,7 @@ export default function BankAccountPanel({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
         <h2 className="mb-1 font-semibold text-zinc-200">საწყისი ნაშთები — {OPENING_DATE_LABEL}</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          დააყენეთ თითო ფილიალის ქეში, ბარათი და საბანკო ანგარიშის ნაშთი {OPERATIONAL_DATA_FROM}-ის მდგომარეობით.
-          ამ თარიღის შემდეგ მოძრაობა ცალკე ითვლება.
+          ქეში, ბარათი და საბანკო ანგარიში ფილიალების მიხედვით · {OPERATIONAL_DATA_FROM}-ის მდგომარეობით
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
@@ -244,21 +210,6 @@ export default function BankAccountPanel({
                 );
               })}
             </tbody>
-            <tfoot>
-              <tr className="border-t border-zinc-700 font-semibold">
-                <td className="py-3 pl-3 pr-3 text-zinc-400">ჯამი</td>
-                <td className="py-3 pr-3 text-emerald-400">
-                  {formatMoney(BRANCHES.reduce((s, b) => s + (openings[b]?.cash ?? 0), 0))}
-                </td>
-                <td className="py-3 pr-3 text-sky-400">
-                  {formatMoney(BRANCHES.reduce((s, b) => s + (openings[b]?.card ?? 0), 0))}
-                </td>
-                <td className="py-3 pr-3 text-violet-400">
-                  {formatMoney(BRANCHES.reduce((s, b) => s + (openings[b]?.bank ?? 0), 0))}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
           </table>
         </div>
         {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
@@ -268,9 +219,9 @@ export default function BankAccountPanel({
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-violet-200">საბანკო ანგარიში — შემოსული გადმორიცხვები</h2>
+            <h2 className="font-semibold text-violet-200">ბარათი და საბანკო ანგარიში — მოძრაობა</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              მხოლოდ ანგარიშზე შემოსული თანხები ({OPERATIONAL_DATA_FROM}-დან)
+              დღიური რეპორტიდან შემოსული (ბარათი/ანგარიში), ვალდებულებების გასტუმრება და ხარჯები
             </p>
           </div>
           <Field label="თვე">
@@ -285,12 +236,8 @@ export default function BankAccountPanel({
         </div>
 
         <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={tabBtn(branchFilter === "ყველა")}
-            onClick={() => setBranchFilter("ყველა")}
-          >
-            ყველა
+          <button type="button" className={tabBtn(branchFilter === "ყველა")} onClick={() => setBranchFilter("ყველა")}>
+            ყველა ფილიალი
           </button>
           {BRANCHES.map((b) => (
             <button key={b} type="button" className={tabBtn(branchFilter === b)} onClick={() => setBranchFilter(b)}>
@@ -299,19 +246,47 @@ export default function BankAccountPanel({
           ))}
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" className={tabBtn(channelFilter === "all")} onClick={() => setChannelFilter("all")}>
+            ბარათი + ანგარიში
+          </button>
+          <button type="button" className={tabBtn(channelFilter === "card")} onClick={() => setChannelFilter("card")}>
+            მხოლოდ ბარათი
+          </button>
+          <button type="button" className={tabBtn(channelFilter === "bank")} onClick={() => setChannelFilter("bank")}>
+            მხოლოდ ანგარიში
+          </button>
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-lg border border-violet-900/50 bg-violet-950/30 p-3">
-            <p className="text-xs text-zinc-500">საწყისი ანგარიში ({OPENING_DATE_LABEL})</p>
-            <p className="mt-1 text-lg font-semibold text-violet-300">{formatMoney(openingBank)}</p>
+            <p className="text-xs text-zinc-500">საწყისი (ბარათი+ანგარიში)</p>
+            <p className="mt-1 text-lg font-semibold text-violet-300">{formatMoney(opening.total)}</p>
+            <p className="mt-1 text-[10px] text-zinc-600">
+              ბარათი {formatMoney(opening.card)} · ანგარიში {formatMoney(opening.bank)}
+            </p>
           </div>
           <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-3">
             <p className="text-xs text-zinc-500">შემოსული (თვე)</p>
-            <p className="mt-1 text-lg font-semibold text-emerald-400">+{formatMoney(periodIncoming)}</p>
+            <p className="mt-1 text-lg font-semibold text-emerald-400">+{formatMoney(totals.incoming)}</p>
+          </div>
+          <div className="rounded-lg border border-red-900/40 bg-red-950/20 p-3">
+            <p className="text-xs text-zinc-500">გასული (თვე)</p>
+            <p className="mt-1 text-lg font-semibold text-red-400">−{formatMoney(totals.outgoing)}</p>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-            <p className="text-xs text-zinc-500">მიმდინარე ნაშთი ანგარიშზე</p>
-            <p className="mt-1 text-lg font-semibold text-violet-200">{formatMoney(currentBalance)}</p>
-            <p className="mt-1 text-[10px] text-zinc-600">საწყისი + შემოსული − გასული</p>
+            <p className="text-xs text-zinc-500">ნეტო მოძრაობა (თვე)</p>
+            <p className={`mt-1 text-lg font-semibold ${totals.net >= 0 ? "text-emerald-300" : "text-red-400"}`}>
+              {totals.net >= 0 ? "+" : ""}
+              {formatMoney(totals.net)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-indigo-900/40 bg-indigo-950/20 p-3">
+            <p className="text-xs text-zinc-500">მიმდინარე ნაშთი</p>
+            <p className="mt-1 text-lg font-semibold text-indigo-200">{formatMoney(currentNonCash.total)}</p>
+            <p className="mt-1 text-[10px] text-zinc-600">
+              ბარათი {formatMoney(currentNonCash.card)} · ანგარიში {formatMoney(currentNonCash.bank)}
+            </p>
           </div>
         </div>
 
@@ -321,13 +296,13 @@ export default function BankAccountPanel({
               className={inputCls}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="აღწერა, ფილიალი..."
+              placeholder="კომენტარი, კლიენტი, ხარჯი..."
             />
           </Field>
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-sm text-zinc-500">ამ თვეში ანგარიშზე შემოსული თანხა არ არის.</p>
+          <p className="text-sm text-zinc-500">ამ თვეში ბარათი/ანგარიშის მოძრაობა არ არის.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
             <table className="w-full text-sm">
@@ -335,7 +310,10 @@ export default function BankAccountPanel({
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pl-3 pr-3 pt-2">თარიღი</th>
                   <th className="pb-2 pr-3">ფილიალი</th>
+                  <th className="pb-2 pr-3">ტიპი</th>
                   <th className="pb-2 pr-3">აღწერა</th>
+                  <th className="pb-2 pr-3">კომენტარი</th>
+                  <th className="pb-2 pr-3">არხი</th>
                   <th className="pb-2 pr-3">გადახდა</th>
                   <th className="pb-2 pr-3 text-right">თანხა</th>
                 </tr>
@@ -345,7 +323,16 @@ export default function BankAccountPanel({
                   <tr key={row.id} className="border-b border-zinc-800/50">
                     <td className="py-2 pl-3 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.date)}</td>
                     <td className="py-2 pr-3">{row.branch}</td>
-                    <td className="py-2 pr-3 text-zinc-300">{row.label}</td>
+                    <td className={`py-2 pr-3 text-xs ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}>
+                      {row.direction === "in" ? "შემოსავალი" : "გასული"}
+                    </td>
+                    <td className="py-2 pr-3 max-w-[160px] truncate text-zinc-300" title={row.label}>
+                      {row.label}
+                    </td>
+                    <td className="py-2 pr-3 max-w-[200px] truncate text-zinc-500" title={row.comment}>
+                      {row.comment}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-sky-300">{channelLabel(row.channel)}</td>
                     <td className="py-2 pr-3">
                       <select
                         className={selectCls}
@@ -362,18 +349,24 @@ export default function BankAccountPanel({
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 pr-3 text-right font-medium text-emerald-400">
-                      +{formatMoney(row.amount)}
+                    <td
+                      className={`py-2 pr-3 text-right font-medium ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}
+                    >
+                      {row.direction === "in" ? "+" : "−"}
+                      {formatMoney(row.amount)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">
-                  <td colSpan={4} className="py-3 pl-3 pr-3 text-right text-zinc-400">
-                    შემოსული თვეში
+                  <td colSpan={7} className="py-3 pl-3 pr-3 text-right text-zinc-400">
+                    თვის ჯამი (შემოსული − გასული)
                   </td>
-                  <td className="py-3 pr-3 text-right text-emerald-400">+{formatMoney(periodIncoming)}</td>
+                  <td className={`py-3 pr-3 text-right ${totals.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {totals.net >= 0 ? "+" : ""}
+                    {formatMoney(totals.net)}
+                  </td>
                 </tr>
               </tfoot>
             </table>
@@ -381,7 +374,7 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          გასული თანხები (ხარჯები) აქ არ ჩანს — მხოლოდ ანგარიშზე შემოსული გაყიდვები და შენატანები.
+          დღიური რეპორტის გაყიდვები ბარათით/ანგარიშზე, ხარჯები და ვალდებულებების გასტუმრება ანგარიშიდან აქ ჩანს კომენტარებით.
         </p>
       </div>
     </section>
