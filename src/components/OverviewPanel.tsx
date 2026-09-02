@@ -105,6 +105,7 @@ function OverviewBreakdown({
       {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400")}
       {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
       {cell("revenue_card", "შემოსავალი ბარათი", stats.revenueCard, "text-sky-400")}
+      {cell("revenue_bank", "შემოსავალი ანგარიში", stats.revenueBank, "text-violet-400")}
       {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
       {cell("expense_card", "ხარჯი ბარათი", stats.expenseCard, "text-red-300")}
       {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
