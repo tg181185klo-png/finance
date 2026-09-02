@@ -13,6 +13,7 @@ import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import { buildClientSaleMeta } from "@/lib/branch-sales-sync";
+import { branchDriverEmployees, branchReportEmployees } from "@/lib/branch-drivers";
 import type {
   Branch,
   BranchClientSale,
@@ -313,12 +314,15 @@ export async function GET(req: NextRequest) {
 
   const { products, error: productsError } = await fetchProductsFromGoogleSheets();
 
+  const allEmployees = store.employees ?? [];
+
   return NextResponse.json(
     {
       branch,
       token,
       inventory: store.inventory[branch] ?? {},
-      employees: (store.employees ?? []).filter((e) => e.branch === branch && e.active),
+      employees: branchReportEmployees(branch, allEmployees),
+      driverEmployees: branchDriverEmployees(branch, allEmployees),
       attendance: (store.attendance ?? []).filter(
         (a) => a.branch === branch && a.date === new Date().toISOString().slice(0, 10)
       ),

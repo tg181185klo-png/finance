@@ -84,6 +84,7 @@ export default function BranchPortal({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [driverEmployees, setDriverEmployees] = useState<Employee[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productWarning, setProductWarning] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
@@ -120,6 +121,7 @@ export default function BranchPortal({ token }: { token: string }) {
           setBranch(branchData.branch);
           const list: Employee[] = branchData.employees ?? [];
           setEmployees(list);
+          setDriverEmployees((branchData.driverEmployees ?? list) as Employee[]);
           if (list.length === 1) setSelectedEmployeeId(list[0].id);
           setProducts((branchData.products ?? []) as Product[]);
           if (branchData.productsWarning) setProductWarning(String(branchData.productsWarning));
@@ -133,7 +135,7 @@ export default function BranchPortal({ token }: { token: string }) {
   }, [token]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  const driverEmployee = employees.find((e) => e.id === (driverEmployeeId || selectedEmployeeId));
+  const driverEmployee = driverEmployees.find((e) => e.id === (driverEmployeeId || selectedEmployeeId));
 
   useEffect(() => {
     if (selectedEmployeeId && !driverEmployeeId) setDriverEmployeeId(selectedEmployeeId);
@@ -495,7 +497,7 @@ export default function BranchPortal({ token }: { token: string }) {
               value={driverEmployeeId || selectedEmployeeId}
               onChange={(e) => setDriverEmployeeId(e.target.value)}
             >
-              {employees.map((emp) => (
+              {driverEmployees.map((emp) => (
                 <option key={emp.id} value={emp.id}>{emp.name}</option>
               ))}
             </select>
