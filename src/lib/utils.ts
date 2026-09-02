@@ -358,6 +358,18 @@ export function isCreditOrderActive(sale: Sale) {
   return isCreditOrder(sale) && !isCreditOrderFullyComplete(sale);
 }
 
+export function txPaymentMethod(t: Transaction): PaymentMethod {
+  if (t.type === "sale") return t.paymentMethod;
+  if (t.type === "expense") return t.expensePaymentMethod ?? "ქეში (ნაღდი)";
+  return t.depositPaymentMethod ?? "ქეში (ნაღდი)";
+}
+
+export function paymentMethodLabel(method: PaymentMethod) {
+  if (method === "ქეში (ნაღდი)") return "ქეში";
+  if (method === "ანგარიშზე ჩარიცხვა") return "გადმორიცხვა";
+  return method;
+}
+
 /** @deprecated use isCreditOrderActive */
 export function isSaleCreditOpen(sale: Sale) {
   return isCreditOrderActive(sale);

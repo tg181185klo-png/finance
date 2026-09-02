@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
-import type { CreditPayment, Expense, Sale, Store, Transaction } from "@/lib/types";
+import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +34,10 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       transaction?: Transaction;
       migrate?: Transaction[];
-      action?: "delete" | "updateRecurrence";
+      action?: "delete" | "updateRecurrence" | "updatePaymentMethod";
       id?: string;
       recurrence?: string;
+      paymentMethod?: PaymentMethod;
     };
 
     if (body.action === "delete") {
@@ -65,6 +66,31 @@ export async function POST(req: NextRequest) {
         if (!t) throw new Error("ჩანაწერი ვერ მოიძებნა");
         t.recurrence = body.recurrence as Sale["recurrence"];
       });
+      return NextResponse.json({ ok: true, transactions: store.transactions });
+    }
+
+    if (body.action === "updatePaymentMethod") {
+      const paymentMethod = body.paymentMethod as PaymentMethod | undefined;
+      if (!body.id || !paymentMethod) {
+        return NextResponse.json({ error: "id და paymentMethod საჭიროა" }, { status: 400 });
+      }
+      const valid: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
+      if (!valid.includes(paymentMethod)) {
+        return NextResponse.json({ error: "არასწორი გადახდის მეთოდი" }, { status: 400 });
+      }
+
+      const store = await updateStore((s) => {
+        const t = s.transactions.find((x) => x.id === body.id);
+        if (!t) throw new Error("ჩანაწერი ვერ მოიძებნა");
+        if (t.type === "sale") {
+          t.paymentMethod = paymentMethod;
+        } else if (t.type === "expense") {
+          t.expensePaymentMethod = paymentMethod;
+        } else {
+          t.depositPaymentMethod = paymentMethod;
+        }
+      });
+
       return NextResponse.json({ ok: true, transactions: store.transactions });
     }
 

@@ -44,6 +44,7 @@ import {
   formatMoney,
   getStock,
   loadLegacyTransactions,
+  paymentMethodLabel,
   paymentsForObligation,
   paymentsForSale,
   deliveriesForSale,
@@ -715,6 +716,54 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
+  async function updateTxPayment(id: string, paymentMethod: PaymentMethod): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updatePaymentMethod", id, paymentMethod }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) => (prev ? { ...prev, transactions: d.transactions ?? prev.transactions } : prev));
+      setSaveMsg("გადახდის ტიპი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
+  async function updateCreditPayment(paymentId: string, paymentMethod: PaymentMethod): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updatePaymentMethod", paymentId, paymentMethod }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              creditPayments: d.creditPayments ?? prev.creditPayments,
+              transactions: d.transactions ?? prev.transactions,
+            }
+          : prev
+      );
+      setSaveMsg("გადახდის ტიპი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   function deleteReport(reportId: string) {
     runWithPin(async () => {
       try {
@@ -1242,6 +1291,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                       <th className="pb-2 pr-3">ტიპი</th>
                       <th className="pb-2 pr-3">ფილიალი</th>
                       <th className="pb-2 pr-3">მყიდველი / პროდუქტი</th>
+                      <th className="pb-2 pr-3">გადახდა</th>
                       <th className="pb-2 pr-3 text-right">რაოდენობა / თანხა</th>
                     </tr>
                   </thead>
@@ -1257,9 +1307,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                           <span className="text-zinc-300">{row.buyer}</span>
                           <span className="text-zinc-500"> · {row.productName}</span>
                         </td>
+                        <td className="py-2 pr-3">
+                          {row.kind === "pay" ? (
+                            <select
+                              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                              value={row.paymentMethod ?? "ქეში (ნაღდი)"}
+                              onChange={(e) => updateCreditPayment(row.id, e.target.value as PaymentMethod)}
+                            >
+                              {PAYMENT_METHODS.map((m) => (
+                                <option key={m} value={m}>
+                                  {paymentMethodLabel(m)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-zinc-500">—</span>
+                          )}
+                        </td>
                         <td className={`py-2 pr-3 text-right font-medium ${row.kind === "pay" ? "text-emerald-400" : "text-sky-400"}`}>
                           {row.kind === "pay"
-                            ? `+${formatMoney(row.amount ?? 0)}${row.paymentMethod ? ` · ${row.paymentMethod}` : ""}`
+                            ? `+${formatMoney(row.amount ?? 0)}`
                             : `+${row.quantity} ც`}
                         </td>
                       </tr>
@@ -1280,6 +1347,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           period={period}
           branchFilter={filter}
           onDelete={deleteTx}
+          onUpdatePayment={updateTxPayment}
         />
       )}
 
@@ -1287,6 +1355,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <ExpensesPanel
           expenses={operationalTx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
+          onUpdatePayment={updateTxPayment}
         />
       )}
 

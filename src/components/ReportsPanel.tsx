@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Branch, Employee, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
-import { BRANCHES, TX_RECURRENCE } from "@/lib/dashboard-data";
+import type { Branch, Employee, PaymentMethod, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
+import { BRANCHES, TX_RECURRENCE, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
 import type { ResolvedPeriod } from "@/lib/period-filter";
-import { formatDate, formatMoney, monthStartEnd, txRecurrence } from "@/lib/utils";
+import { formatDate, formatMoney, monthStartEnd, paymentMethodLabel, txPaymentMethod, txRecurrence } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -195,6 +195,26 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
           action: "updateRecurrence",
           id: txId,
           recurrence,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      await onTransactionsUpdate();
+      await refreshAllReports();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    }
+  }
+
+  async function setPaymentMethod(txId: string, paymentMethod: PaymentMethod) {
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "updatePaymentMethod",
+          id: txId,
+          paymentMethod,
         }),
       });
       const data = await res.json();
@@ -554,6 +574,7 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                       <th className="pb-2 pr-3">ფილიალი</th>
                       <th className="pb-2 pr-3">ტიპი</th>
                       <th className="pb-2 pr-3">აღწერა</th>
+                      <th className="pb-2 pr-3">გადახდა</th>
                       <th className="pb-2 pr-3">ტიპი*</th>
                       <th className="pb-2 text-right">თანხა</th>
                     </tr>
@@ -567,6 +588,19 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                           {t.type === "sale" ? "შემოსავალი" : "ხარჯი"}
                         </td>
                         <td className="py-2 pr-3">{txLabel(t)}</td>
+                        <td className="py-2 pr-3">
+                          <select
+                            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                            value={txPaymentMethod(t)}
+                            onChange={(e) => setPaymentMethod(t.id, e.target.value as PaymentMethod)}
+                          >
+                            {PAYMENT_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {paymentMethodLabel(m)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="py-2 pr-3">
                           <select
                             className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"

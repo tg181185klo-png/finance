@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Transaction } from "@/lib/types";
+import type { PaymentMethod, Transaction } from "@/lib/types";
+import { PAYMENT_METHODS } from "@/lib/dashboard-data";
 import {
   formatDate,
   formatMoney,
   isCreditOrder,
   isCreditOrderActive,
+  paymentMethodLabel,
   saleCreditRemaining,
   saleQuantityRemaining,
+  txPaymentMethod,
 } from "@/lib/utils";
 
 export function txLabel(t: Transaction) {
@@ -37,10 +40,46 @@ export function txDetail(t: Transaction) {
     return `ბე · ${parts.join(" · ")}`;
   }
   if (t.type === "sale") {
-    if (t.orderCompletedAt) return `ბე დასრულებული · ${t.paymentMethod}`;
-    return `${t.paymentStatus} · ${t.paymentMethod}`;
+    if (t.orderCompletedAt) return `ბე დასრულებული · ${paymentMethodLabel(t.paymentMethod)}`;
+    return `${t.paymentStatus} · ${paymentMethodLabel(t.paymentMethod)}`;
   }
   return t.source === "branch" ? "ხარჯი (ფილიალი)" : "ხარჯი";
+}
+
+function PaymentMethodCell({
+  transaction,
+  onUpdatePayment,
+}: {
+  transaction: Transaction;
+  onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const value = txPaymentMethod(transaction);
+
+  if (!onUpdatePayment) {
+    return <span className="text-xs text-zinc-400">{paymentMethodLabel(value)}</span>;
+  }
+
+  return (
+    <select
+      className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs focus:border-emerald-500"
+      value={value}
+      disabled={busy}
+      onChange={async (e) => {
+        const next = e.target.value as PaymentMethod;
+        if (next === value) return;
+        setBusy(true);
+        await onUpdatePayment(transaction.id, next);
+        setBusy(false);
+      }}
+    >
+      {PAYMENT_METHODS.map((m) => (
+        <option key={m} value={m}>
+          {paymentMethodLabel(m)}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 function DeleteRow({
@@ -73,6 +112,7 @@ type Props = {
   rows: Transaction[];
   showBranch?: boolean;
   onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   emptyText?: string;
 };
 
@@ -80,6 +120,7 @@ export default function TransactionTable({
   rows,
   showBranch = true,
   onDelete,
+  onUpdatePayment,
   emptyText = "ტრანზაქციები არ არის",
 }: Props) {
   if (rows.length === 0) {
@@ -96,6 +137,7 @@ export default function TransactionTable({
             {showBranch && <th className="pb-2 pr-3">ფილიალი</th>}
             <th className="pb-2 pr-3">აღწერა</th>
             <th className="pb-2 pr-3">კომენტარი</th>
+            <th className="pb-2 pr-3">გადახდა</th>
             <th className="pb-2 pr-3 text-right">თანხა</th>
             <th className="pb-2 w-24">წაშლა</th>
           </tr>
@@ -125,6 +167,9 @@ export default function TransactionTable({
               {showBranch && <td className="py-2 pr-3">{t.branch}</td>}
               <td className="py-2 pr-3">{txLabel(t)}</td>
               <td className="py-2 pr-3 text-zinc-500">{t.comment || txDetail(t)}</td>
+              <td className="py-2 pr-3">
+                <PaymentMethodCell transaction={t} onUpdatePayment={onUpdatePayment} />
+              </td>
               <td
                 className={`py-2 pr-3 text-right font-medium ${
                   t.type === "sale" ? "text-emerald-400" : t.type === "deposit" ? "text-sky-400" : "text-red-400"

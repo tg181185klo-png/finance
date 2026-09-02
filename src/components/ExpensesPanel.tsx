@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, Expense, ExpenseBranch, ExpenseCategory, TxSource } from "@/lib/types";
-import { CATEGORIES, EXPENSE_BRANCHES } from "@/lib/dashboard-data";
+import type { Branch, Expense, ExpenseBranch, ExpenseCategory, PaymentMethod, TxSource } from "@/lib/types";
+import { CATEGORIES, EXPENSE_BRANCHES, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
-import { monthStartEnd, formatDate, formatMoney } from "@/lib/utils";
+import { monthStartEnd, formatDate, formatMoney, paymentMethodLabel, txPaymentMethod } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-red-500 focus:outline-none";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -18,6 +18,7 @@ type PeriodMode = "month" | "range" | "all";
 type Props = {
   expenses: Expense[];
   onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -41,7 +42,7 @@ function inDateRange(date: string, from: string, to: string) {
   return day >= from && day <= to;
 }
 
-export default function ExpensesPanel({ expenses, onDelete }: Props) {
+export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: Props) {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -231,6 +232,7 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
                   <th className="pb-2 pr-3">კატეგორია</th>
                   <th className="pb-2 pr-3">კომენტარი</th>
                   <th className="pb-2 pr-3">წყარო</th>
+                  <th className="pb-2 pr-3">გადახდა</th>
                   <th className="pb-2 pr-3 text-right">თანხა</th>
                   <th className="pb-2 w-16" />
                 </tr>
@@ -243,6 +245,23 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
                     <td className="py-2 pr-3">{e.category}</td>
                     <td className="py-2 pr-3 text-zinc-500">{e.comment || "—"}</td>
                     <td className="py-2 pr-3 text-xs text-zinc-500">{sourceLabel(e.source)}</td>
+                    <td className="py-2 pr-3">
+                      <select
+                        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs focus:border-red-500"
+                        value={txPaymentMethod(e)}
+                        onChange={async (ev) => {
+                          const next = ev.target.value as PaymentMethod;
+                          if (next === txPaymentMethod(e)) return;
+                          await onUpdatePayment(e.id, next);
+                        }}
+                      >
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m} value={m}>
+                            {paymentMethodLabel(m)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="py-2 pr-3 text-right font-medium text-red-400">-{formatMoney(e.amount)}</td>
                     <td className="py-2">
                       <button
@@ -261,7 +280,7 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">
-                  <td colSpan={5} className="py-3 pr-3 text-right text-zinc-400">ჯამი</td>
+                  <td colSpan={6} className="py-3 pr-3 text-right text-zinc-400">ჯამი</td>
                   <td className="py-3 pr-3 text-right text-red-400">{formatMoney(total)}</td>
                   <td />
                 </tr>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
@@ -45,6 +45,7 @@ type Props = {
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
   onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
 
 export default function OverviewPanel({
@@ -53,6 +54,7 @@ export default function OverviewPanel({
   period,
   branchFilter,
   onDelete,
+  onUpdatePayment,
 }: Props) {
   const [scope, setScope] = useState<ViewScope>("company");
   const from = period.from;
@@ -186,7 +188,12 @@ export default function OverviewPanel({
           {scope === "company" ? "ტრანზაქციები — კომპანია" : `ტრანზაქციები — ${scope}`}
           <span className="ml-2 text-sm font-normal text-zinc-500">({tableRows.length})</span>
         </h3>
-        <TransactionTable rows={tableRows} showBranch={scope === "company"} onDelete={onDelete} />
+        <TransactionTable
+          rows={tableRows}
+          showBranch={scope === "company"}
+          onDelete={onDelete}
+          onUpdatePayment={onUpdatePayment}
+        />
       </div>
     </section>
   );

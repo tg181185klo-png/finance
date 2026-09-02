@@ -1,6 +1,6 @@
 "use client";
 
-import type { Branch, Transaction } from "@/lib/types";
+import type { Branch, PaymentMethod, Transaction } from "@/lib/types";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
 
@@ -8,12 +8,14 @@ type Props = {
   transactions: Transaction[];
   filter: Branch | "ყველა";
   onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
 
 export default function TransactionsPanel({
   transactions,
   filter,
   onDelete,
+  onUpdatePayment,
 }: Props) {
   const rows = (
     filter === "ყველა"
@@ -31,6 +33,7 @@ export default function TransactionsPanel({
         rows={rows}
         showBranch={filter === "ყველა"}
         onDelete={onDelete}
+        onUpdatePayment={onUpdatePayment}
         emptyText="ცარიელია"
       />
     </section>
