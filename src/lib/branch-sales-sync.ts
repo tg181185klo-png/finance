@@ -1,5 +1,5 @@
 import { branchSaleBuyerName } from "@/lib/customers";
-import { branchTransactionDate } from "@/lib/branch-tx-date";
+import { branchTransactionDate, isBrokenBranchTxDate } from "@/lib/branch-tx-date";
 import type {
   BranchClientSale,
   BranchDailyReport,
@@ -417,4 +417,27 @@ export function deleteClientSaleFromStore(
     return null;
   }
   return syncReportTransactions(store, reportId);
+}
+
+/** გადააწეროს ძველი T20:00 UTC ტრანზაქციები სწორ დღე+საათზე */
+export function fixReportTimestampsForDay(store: Store, day: string): { reports: number; transactions: number } {
+  const reports = store.branchReports.filter((r) => r.date === day);
+  for (const report of reports) {
+    syncReportTransactions(store, report.id);
+  }
+
+  let transactions = 0;
+  for (const t of store.transactions) {
+    if (!isBrokenBranchTxDate(t.date, day)) continue;
+    const report = t.reportId ? store.branchReports.find((r) => r.id === t.reportId) : null;
+    const reportDay = report?.date ?? day;
+    const at = report?.submittedAt ?? `${reportDay}T12:00:00.000Z`;
+    const fixed = branchTransactionDate(reportDay, at);
+    if (t.date !== fixed) {
+      t.date = fixed;
+      transactions += 1;
+    }
+  }
+
+  return { reports: reports.length, transactions };
 }

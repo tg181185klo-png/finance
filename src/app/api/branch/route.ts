@@ -12,7 +12,7 @@ import {
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
-import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses } from "@/lib/branch-sales-sync";
+import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import type {
@@ -478,10 +478,29 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as SubmitBody & {
-      action?: "adminRestore";
+      action?: "adminRestore" | "fixReportTimestamps";
       pin?: string;
       branch?: Branch;
+      date?: string;
     };
+
+    if (body.action === "fixReportTimestamps") {
+      const authError = await requireAdminSession();
+      if (authError) return authError;
+      const day = dateOnly(body.date || "2026-09-02");
+      let fixed = { reports: 0, transactions: 0 };
+      const store = await updateStore((s) => {
+        fixed = fixReportTimestampsForDay(s, day);
+      });
+      const sample = store.transactions
+        .filter((t) => {
+          const report = t.reportId ? store.branchReports.find((r) => r.id === t.reportId) : null;
+          return report?.date === day || t.date.slice(0, 10) === day;
+        })
+        .slice(0, 8)
+        .map((t) => ({ date: t.date, type: t.type, branch: t.branch }));
+      return NextResponse.json({ ok: true, day, ...fixed, sample });
+    }
 
     if (body.action === "adminRestore") {
       const authError = await requireAdminSession();

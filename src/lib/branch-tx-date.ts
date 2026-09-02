@@ -69,3 +69,12 @@ export function reportSubmissionWarnings(report: BranchDailyReport): string[] {
 export function isReportSuspicious(report: BranchDailyReport): boolean {
   return reportSubmissionWarnings(report).length > 0;
 }
+
+/** ძველი ბაგი: T20:00 UTC → საქართველოში შემდეგ დღე ჩანს */
+export function isBrokenBranchTxDate(iso: string, reportDay: string): boolean {
+  if (iso === `${reportDay}T20:00:00.000Z`) return true;
+  const next = new Date(`${reportDay}T12:00:00`);
+  next.setDate(next.getDate() + 1);
+  const nextDay = next.toISOString().slice(0, 10);
+  return iso.startsWith(`${nextDay}T00:`);
+}
