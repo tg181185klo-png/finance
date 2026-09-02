@@ -57,7 +57,8 @@ import {
   uid,
 } from "@/lib/utils";
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
-import { type PeriodMode, resolvePeriod, periodFlow } from "@/lib/period-filter";
+import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions } from "@/lib/period-filter";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
@@ -276,6 +277,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   const activeStore = store ?? mergeStore({});
   const tx = activeStore.transactions;
+  const operationalTx = useMemo(() => filterOperationalTransactions(tx), [tx]);
 
   const period = useMemo(
     () => resolvePeriod(periodMode, customFrom, customTo),
@@ -283,8 +285,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   );
 
   const periodStats = useMemo(
-    () => periodFlow(tx, filter, period.from, period.to),
-    [tx, filter, period.from, period.to]
+    () => periodFlow(operationalTx, filter, period.from, period.to),
+    [operationalTx, filter, period.from, period.to]
   );
 
   const filteredProducts = useMemo(() => {
@@ -294,12 +296,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, [products, search]);
 
   const balances = useMemo(
-    () => calcBalances(tx, filter, activeStore.branchCash),
-    [tx, filter, activeStore.branchCash]
+    () => calcBalances(operationalTx, filter, activeStore.branchCash),
+    [operationalTx, filter, activeStore.branchCash]
   );
   const creditTx = useMemo(
-    () => tx.filter((t): t is Sale => t.type === "sale" && isCreditOrder(t)),
-    [tx]
+    () => operationalTx.filter((t): t is Sale => t.type === "sale" && isCreditOrder(t)),
+    [operationalTx]
   );
   const openCreditOrders = useMemo(() => creditTx.filter((t) => isCreditOrderActive(t)), [creditTx]);
   const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
@@ -916,7 +918,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "main" && (
         <>
-          <p className="mb-3 text-xs text-zinc-500">ნაჩვენები პერიოდი: <span className="text-emerald-400">{period.label}</span></p>
+          <p className="mb-3 text-xs text-zinc-500">
+            ნაჩვენები პერიოდი: <span className="text-emerald-400">{period.label}</span>
+            <span className="text-zinc-600"> · მონაცემები {OPERATIONAL_DATA_FROM.slice(0, 7)}-დან</span>
+          </p>
           <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             <Stat label="შემოსავალი" value={formatMoney(periodStats.revenue)} accent="text-emerald-400" />
             <Stat label="ხარჯები" value={formatMoney(periodStats.expenses)} accent="text-red-400" />
@@ -1016,10 +1021,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
             <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-red-400">ხარჯი</h2>
-              <p className="mb-3 text-xs text-zinc-500">წინა თვეების ხარჯისთვის აირჩიეთ თარიღი — შემოსავალი Excel/აპიდან ემატება</p>
+              <p className="mb-3 text-xs text-zinc-500">ხარჯის თარიღი — სექტემბრის 2026-დან</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="თარიღი">
-                  <input type="date" className={inputCls} value={eDate} onChange={(e) => setEDate(e.target.value)} required />
+                  <input type="date" className={inputCls} value={eDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setEDate(e.target.value)} required />
                 </Field>
                 <Field label="ფილიალი">
                   <select className={inputCls} value={eBranch} onChange={(e) => setEBranch(e.target.value as ExpenseBranch)}>
@@ -1266,7 +1271,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "overview" && !loading && (
         <OverviewPanel
-          transactions={tx}
+          transactions={operationalTx}
           branchCash={activeStore.branchCash}
           period={period}
           branchFilter={filter}
@@ -1276,7 +1281,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "expenses" && !loading && (
         <ExpensesPanel
-          expenses={tx.filter((t): t is Expense => t.type === "expense")}
+          expenses={operationalTx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
         />
       )}

@@ -6,6 +6,7 @@ import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
+import { OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { calcBalances, formatMoney } from "@/lib/utils";
 import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
@@ -105,7 +106,7 @@ export default function OverviewPanel({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
         <h2 className="mb-3 text-lg font-semibold">მიმოხილვა — ფილიალი ან კომპანია</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          პერიოდი: <span className="text-emerald-400">{period.label}</span> · ზემოთ შეცვალეთ თუ სხვა თვე გჭირდებათ
+          პერიოდი: <span className="text-emerald-400">{period.label}</span> · მონაცემები {OPERATIONAL_DATA_FROM_MONTH}-დან
         </p>
 
         <div className="flex flex-wrap gap-2">

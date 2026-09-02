@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Branch, Expense, ExpenseBranch, ExpenseCategory, TxSource } from "@/lib/types";
 import { CATEGORIES, EXPENSE_BRANCHES } from "@/lib/dashboard-data";
 import { effectiveExpenseBranch } from "@/lib/branch-allocation";
+import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { monthStartEnd, formatDate, formatMoney } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-red-500 focus:outline-none";
@@ -46,7 +47,10 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [from, setFrom] = useState(() => monthStartEnd().from);
+  const [from, setFrom] = useState(() => {
+    const r = monthStartEnd();
+    return r.from < OPERATIONAL_DATA_FROM ? OPERATIONAL_DATA_FROM : r.from;
+  });
   const [to, setTo] = useState(() => monthStartEnd().to);
   const [branch, setBranch] = useState<ExpenseBranch | Branch | "ყველა">("ყველა");
   const [category, setCategory] = useState<ExpenseCategory | "ყველა">("ყველა");
@@ -100,7 +104,7 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
       <div className="rounded-xl border border-red-900/40 bg-red-950/15 p-5">
         <h2 className="mb-1 font-semibold text-red-200">ხარჯების ფილტრი</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          ყველა ხარჯი ინახება სისტემაში — Excel იმპორტი, ფილიალის ანგარიში და ხელით ჩაწერა. აქ შეგიძლიათ ფილტრი თვე/პერიოდის, ფილიალის და კატეგორიის მიხედვით.
+          ხარჯები ჩანს {OPERATIONAL_DATA_FROM_MONTH}-დან (სექტემბერი 2026). წინა თვეების Excel იმპორტი ამ ტაბში არ ჩანს.
         </p>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -111,23 +115,23 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
             პერიოდი
           </button>
           <button type="button" className={tabBtn(periodMode === "all")} onClick={() => setPeriodMode("all")}>
-            ყველა მონაცემი
+            სექტემბრიდან
           </button>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {periodMode === "month" && (
             <Field label="თვე">
-              <input type="month" className={inputCls} value={month} onChange={(e) => setMonth(e.target.value)} />
+              <input type="month" className={inputCls} value={month} min={OPERATIONAL_DATA_FROM_MONTH} onChange={(e) => setMonth(e.target.value)} />
             </Field>
           )}
           {periodMode === "range" && (
             <>
               <Field label="დან">
-                <input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} />
+                <input type="date" className={inputCls} value={from} min={OPERATIONAL_DATA_FROM} onChange={(e) => setFrom(e.target.value)} />
               </Field>
               <Field label="მდე">
-                <input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} />
+                <input type="date" className={inputCls} value={to} min={OPERATIONAL_DATA_FROM} onChange={(e) => setTo(e.target.value)} />
               </Field>
             </>
           )}
@@ -208,7 +212,7 @@ export default function ExpensesPanel({ expenses, onDelete }: Props) {
           <h3 className="font-semibold text-zinc-200">ხარჯების სია</h3>
           <span className="text-xs text-zinc-500">
             {periodMode === "all"
-              ? "ყველა დრო"
+              ? `${OPERATIONAL_DATA_FROM_MONTH}-დან`
               : periodMode === "month"
                 ? month
                 : `${from} — ${to}`}

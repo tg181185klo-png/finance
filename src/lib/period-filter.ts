@@ -1,5 +1,6 @@
 import type { Branch, Transaction } from "./types";
 import { txMatchesBranchFilter } from "./branch-allocation";
+import { OPERATIONAL_DATA_FROM } from "./report-config";
 import { currentMonth, monthStartEnd } from "./utils";
 
 export type PeriodMode = "month" | "today" | "custom";
@@ -27,6 +28,27 @@ export function resolvePeriod(mode: PeriodMode, customFrom?: string, customTo?: 
   const month = currentMonth();
   const { from, to } = monthStartEnd(month);
   return { mode: "month", from, to, label: `მიმდინარე თვე (${month})` };
+}
+
+export function isOperationalDate(date: string) {
+  return date.slice(0, 10) >= OPERATIONAL_DATA_FROM;
+}
+
+export function filterOperationalTransactions(transactions: Transaction[]) {
+  return transactions.filter((t) => isOperationalDate(t.date));
+}
+
+export function clampPeriodFrom(period: ResolvedPeriod): ResolvedPeriod {
+  if (period.from >= OPERATIONAL_DATA_FROM) return period;
+  const from = OPERATIONAL_DATA_FROM;
+  const to = period.to >= OPERATIONAL_DATA_FROM ? period.to : OPERATIONAL_DATA_FROM;
+  const label =
+    period.mode === "month"
+      ? `მიმდინარე თვე (${from.slice(0, 7)})`
+      : from === to
+        ? from
+        : `${from} — ${to}`;
+  return { ...period, from, to, label };
 }
 
 export function txInPeriod(date: string, from: string, to: string) {
