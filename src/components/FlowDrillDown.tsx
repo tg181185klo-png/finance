@@ -43,8 +43,16 @@ function drillMatches(a: FlowDrillState | null, b: FlowDrillState) {
 export function useFlowDrill() {
   const [drill, setDrill] = useState<FlowDrillState | null>(null);
 
+  function setAccountChannel(channel: AccountChannel) {
+    setDrill((prev) => (prev ? { ...prev, accountChannel: channel } : null));
+  }
+
   function toggle(next: FlowDrillState) {
-    setDrill((prev) => (drillMatches(prev, next) ? null : next));
+    const withDefaultChannel =
+      isAccountDrillKind(next.kind) && next.scope === "ყველა" && next.kind === "expense_account"
+        ? { ...next, accountChannel: next.accountChannel ?? "all" }
+        : next;
+    setDrill((prev) => (drillMatches(prev, withDefaultChannel) ? null : withDefaultChannel));
   }
 
   function close() {
@@ -53,10 +61,6 @@ export function useFlowDrill() {
 
   function isActive(kind: FlowDetailKind, scope: FlowBranchScope, from: string, to: string, recurrence?: TxRecurrence) {
     return drillMatches(drill, { kind, scope, from, to, rangeLabel: "", recurrence });
-  }
-
-  function setAccountChannel(channel: AccountChannel) {
-    setDrill((prev) => (prev ? { ...prev, accountChannel: channel } : null));
   }
 
   return { drill, toggle, close, isActive, setAccountChannel };
@@ -148,6 +152,11 @@ export function FlowDrillPanel({
   if (!drill) return null;
 
   const needsChannel = isAccountDrillKind(drill.kind);
+  const showAllChannel =
+    needsChannel && drill.kind === "expense_account" && drill.scope === "ყველა";
+  const channelOptions: AccountChannel[] = showAllChannel
+    ? ["all", "card", "bank"]
+    : ["card", "bank"];
 
   return (
     <div className={`rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-5 ${className ?? ""}`}>
@@ -170,7 +179,7 @@ export function FlowDrillPanel({
       {needsChannel && onSetAccountChannel && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-xs text-zinc-500">აირჩიეთ:</span>
-          {(["card", "bank"] as const).map((channel) => (
+          {channelOptions.map((channel) => (
             <button
               key={channel}
               type="button"

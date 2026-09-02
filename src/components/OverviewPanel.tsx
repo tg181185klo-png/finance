@@ -13,7 +13,6 @@ import {
   KUTAISI_DISTRIB_BRANCHES,
   KUTAISI_DISTRIB_LABEL,
   txMatchesFlowScope,
-  accountTotal,
   type FlowBranchScope,
   type FlowDetailKind,
   type ScopePeriodStats,
@@ -68,7 +67,6 @@ type BreakdownDrill = {
 function OverviewBreakdown({
   stats,
   cashBalance,
-  cardBalance,
   bankBalance,
   scope,
   balanceHint,
@@ -77,16 +75,15 @@ function OverviewBreakdown({
 }: {
   stats: ScopePeriodStats;
   cashBalance: number;
-  cardBalance: number;
   bankBalance: number;
   scope: ViewScope;
   balanceHint?: string;
   compact?: boolean;
   drill: BreakdownDrill;
 }) {
+  const isCompanySummary = scope === "company";
   const accountRevenue = stats.revenueCard + stats.revenueBank;
   const accountExpense = stats.expenseCard + stats.expenseBank;
-  const accountBalance = accountTotal({ card: cardBalance, bank: bankBalance });
   const cell = (
     kind: FlowDetailKind,
     label: string,
@@ -112,9 +109,10 @@ function OverviewBreakdown({
       {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
       {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
       {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
-      {cell("expense_account", "ხარჯი ანგარიში", accountExpense, "text-red-300")}
+      {isCompanySummary && cell("expense_account", "ხარჯი ანგარიში", accountExpense, "text-red-300")}
       {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
-      {cell("balance_account", "ნაშთი ანგარიში", accountBalance, "text-violet-400", balanceHint)}
+      {isCompanySummary &&
+        cell("balance_bank", "ნაშთი ჩამური ანგარიში", bankBalance, "text-violet-400", balanceHint)}
       {!compact && (
         <>
           <ClickableFlowStat
@@ -398,7 +396,6 @@ export default function OverviewPanel({
             <OverviewBreakdown
               stats={companyChannelStats}
               cashBalance={companyBal.cash}
-              cardBalance={companyBal.card}
               bankBalance={companyBal.bank}
               scope="company"
               balanceHint={balanceHint}
@@ -429,7 +426,6 @@ export default function OverviewPanel({
                   <OverviewBreakdown
                     stats={b.channel}
                     cashBalance={b.cash}
-                    cardBalance={b.card}
                     bankBalance={b.bank}
                     scope={b.branch}
                     balanceHint={balanceHint}
@@ -452,7 +448,6 @@ export default function OverviewPanel({
                 <OverviewBreakdown
                   stats={kutaisiDistribChannelStats}
                   cashBalance={kutaisiDistribStats.cash}
-                  cardBalance={kutaisiDistribStats.card}
                   bankBalance={kutaisiDistribStats.bank}
                   scope={KUTAISI_DISTRIB_LABEL}
                   balanceHint={balanceHint}
@@ -473,7 +468,6 @@ export default function OverviewPanel({
           <OverviewBreakdown
             stats={activeBranch.channel}
             cashBalance={activeBranch.cash}
-            cardBalance={activeBranch.card}
             bankBalance={activeBranch.bank}
             scope={activeBranch.branch}
             balanceHint={balanceHint}
@@ -491,7 +485,6 @@ export default function OverviewPanel({
           <OverviewBreakdown
             stats={kutaisiDistribChannelStats}
             cashBalance={activeGroup.cash}
-            cardBalance={activeGroup.card}
             bankBalance={activeGroup.bank}
             scope={KUTAISI_DISTRIB_LABEL}
             balanceHint={balanceHint}

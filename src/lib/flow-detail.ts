@@ -7,7 +7,7 @@ import { countsTowardOperatingExpenses, txPaymentMethod, txRecurrence } from "./
 
 export type FlowBranchScope = Branch | "ყველა" | typeof KUTAISI_DISTRIB_LABEL;
 
-export type AccountChannel = "card" | "bank";
+export type AccountChannel = "card" | "bank" | "all";
 
 export type FlowDetailKind =
   | "revenue"
@@ -27,6 +27,7 @@ export type FlowDetailKind =
   | "account";
 
 export function accountChannelLabel(channel: AccountChannel) {
+  if (channel === "all") return "ყველა";
   return channel === "card" ? "ბარათი" : "გადარიცხვა";
 }
 
@@ -168,7 +169,7 @@ export function filterFlowDetailTransactions(
   options?: { recurrence?: TxRecurrence; accountChannel?: AccountChannel }
 ): Transaction[] {
   const resolvedKind =
-    options?.accountChannel && isAccountDrillKind(kind)
+    options?.accountChannel && options.accountChannel !== "all" && isAccountDrillKind(kind)
       ? kind === "revenue_account"
         ? options.accountChannel === "card"
           ? "revenue_card"
@@ -199,7 +200,8 @@ export function flowDetailTitle(
   accountChannel?: AccountChannel
 ) {
   const scopeName = flowScopeLabel(scope);
-  const channelSuffix = accountChannel ? ` · ${accountChannelLabel(accountChannel)}` : "";
+  const channelSuffix =
+    accountChannel && accountChannel !== "all" ? ` · ${accountChannelLabel(accountChannel)}` : "";
   const titles: Record<FlowDetailKind, string> = {
     revenue: `მთლიანი შემოსავალი — ${scopeName} · ${rangeLabel}`,
     revenue_cash: `შემოსავალი (ქეში) — ${scopeName} · ${rangeLabel}`,
