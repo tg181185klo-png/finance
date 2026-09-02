@@ -29,7 +29,7 @@ import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
-import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
+import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import {
   BRANCHES,
@@ -50,6 +50,7 @@ import {
   formatMoney,
   getStock,
   loadLegacyTransactions,
+  monthStartEnd,
   paymentMethodLabel,
   paymentsForObligation,
   paymentsForSale,
@@ -65,7 +66,8 @@ import {
   uid,
 } from "@/lib/utils";
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
-import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions } from "@/lib/period-filter";
+import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions, txInPeriod } from "@/lib/period-filter";
+import { txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS, STORE_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
@@ -299,6 +301,35 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     () => periodFlow(operationalTx, filter, period.from, period.to),
     [operationalTx, filter, period.from, period.to]
   );
+
+  const mainTabRows = useMemo(() => {
+    return operationalTx
+      .filter((t) => {
+        if (!txInPeriod(t.date, period.from, period.to)) return false;
+        if (filter !== "ყველა" && !txMatchesBranchFilter(t, filter)) return false;
+        return true;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [operationalTx, filter, period.from, period.to]);
+
+  function ensureSaleVisibleInPeriod(saleDate: string) {
+    const d = saleDate.slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    const { from: monthFrom, to: monthTo } = monthStartEnd(currentMonth());
+    const inRange = (from: string, to: string) => d >= from && d <= to;
+
+    if (periodMode === "custom" && customFrom && customTo && inRange(customFrom, customTo)) return;
+    if (periodMode === "today" && d === today) return;
+    if (periodMode === "month" && inRange(monthFrom, monthTo)) return;
+
+    if (d === today) setPeriodMode("today");
+    else if (inRange(monthFrom, monthTo)) setPeriodMode("month");
+    else {
+      setCustomFrom(d);
+      setCustomTo(d);
+      setPeriodMode("custom");
+    }
+  }
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -595,6 +626,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           : prev
       );
       setSaveMsg("გაყიდვა შენახულია ✓");
+      setFilter(sBranch);
+      ensureSaleVisibleInPeriod(sDate);
       setSearch("");
       setSelected(null);
       setQty(1);
@@ -1069,7 +1102,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   <input type="date" className={inputCls} value={sDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setSDate(e.target.value)} required />
                 </Field>
                 <Field label="ფილიალი">
-                  <select className={inputCls} value={sBranch} onChange={(e) => setSBranch(e.target.value as Branch)}>
+                  <select
+                    className={inputCls}
+                    value={sBranch}
+                    onChange={(e) => {
+                      const br = e.target.value as Branch;
+                      setSBranch(br);
+                      setFilter(br);
+                    }}
+                  >
                     {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </Field>
@@ -1240,6 +1281,24 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               <button type="submit" className={`${btnCls} mt-4 bg-red-600 hover:bg-red-500`}>დაფიქსირება</button>
             </form>
           </div>
+
+          <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <h3 className="mb-2 font-semibold">
+              {filter === "ყველა" ? "ტრანზაქციები" : `ტრანზაქციები — ${filter}`}
+              <span className="ml-2 text-sm font-normal text-zinc-500">
+                ({mainTabRows.length}) · {period.label}
+              </span>
+            </h3>
+            <p className="mb-3 text-xs text-zinc-500">
+              გაყიდვა/ხარჯის დაფიქსირების შემდეგ ჩანაწერი მაშინვე ჩანს არჩეული ფილიალის სიაში
+            </p>
+            <TransactionTable
+              rows={mainTabRows}
+              showBranch={filter === "ყველა"}
+              onDelete={deleteTx}
+              onUpdatePayment={updateTxPayment}
+            />
+          </section>
 
           {openCreditOrders.length > 0 && (
             <section className="mb-6 space-y-3">
