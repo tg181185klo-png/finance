@@ -184,8 +184,9 @@ type Props = {
   branchReports: BranchDailyReport[];
   branchCash: Record<Branch, BranchCash>;
   period: ResolvedPeriod;
-  onDelete: (id: string) => Promise<boolean>;
-  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  readOnly?: boolean;
+  onDelete?: (id: string) => Promise<boolean>;
+  onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
 
 export default function OverviewPanel({
@@ -193,6 +194,7 @@ export default function OverviewPanel({
   branchReports,
   branchCash,
   period,
+  readOnly = false,
   onDelete,
   onUpdatePayment,
 }: Props) {
@@ -299,8 +301,8 @@ export default function OverviewPanel({
       drill={drill}
       transactions={transactions}
       onClose={close}
-      onDelete={onDelete}
-      onUpdatePayment={onUpdatePayment}
+      onDelete={readOnly ? undefined : onDelete}
+      onUpdatePayment={readOnly ? undefined : onUpdatePayment}
     />
   );
 
@@ -312,7 +314,9 @@ export default function OverviewPanel({
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h2 className="mb-3 text-lg font-semibold">მიმოხილვა — ფილიალი ან კომპანია</h2>
+        <h2 className="mb-3 text-lg font-semibold">
+          {readOnly ? "მიმოხილვა" : "მიმოხილვა — ფილიალი ან კომპანია"}
+        </h2>
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div>
@@ -498,8 +502,8 @@ export default function OverviewPanel({
         <TransactionTable
           rows={tableRows}
           showBranch={scope === "company" || scope === KUTAISI_DISTRIB_LABEL}
-          onDelete={onDelete}
-          onUpdatePayment={onUpdatePayment}
+          onDelete={readOnly ? undefined : onDelete}
+          onUpdatePayment={readOnly ? undefined : onUpdatePayment}
         />
       </div>
 

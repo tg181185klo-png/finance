@@ -212,6 +212,10 @@ export function branchByToken(store: Store, token: string): Branch | null {
   return null;
 }
 
+export function overviewByToken(store: Store, token: string): boolean {
+  return store.overviewReportToken === token;
+}
+
 export function dateOnly(iso: string) {
   return iso.slice(0, 10);
 }

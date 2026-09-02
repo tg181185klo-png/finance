@@ -276,6 +276,8 @@ export interface Store {
   transactions: Transaction[];
   obligations: Record<string, Obligation[]>;
   branchTokens: Record<Branch, string>;
+  /** საჯარო მიმოხილვის ლინკი (/o/{token}) */
+  overviewReportToken: string;
   branchReports: BranchDailyReport[];
   inventory: Record<Branch, BranchInventory>;
   branchCash: Record<Branch, BranchCash>;

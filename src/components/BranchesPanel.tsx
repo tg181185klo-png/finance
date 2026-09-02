@@ -27,10 +27,16 @@ function branchLink(token: string, date: string) {
   return `${base}/f/${token}?date=${date}`;
 }
 
+function overviewLink(token: string) {
+  const base = typeof window !== "undefined" ? window.location.origin : "";
+  return `${base}/o/${token}`;
+}
+
 type Props = {
   branchReports: BranchDailyReport[];
   employees: Employee[];
   branchTokens: Record<Branch, string>;
+  overviewReportToken: string;
   onRefresh: () => Promise<unknown>;
   onDeleteReport: (reportId: string) => void;
 };
@@ -39,6 +45,7 @@ export default function BranchesPanel({
   branchReports,
   employees,
   branchTokens,
+  overviewReportToken,
   onRefresh,
   onDeleteReport,
 }: Props) {
@@ -138,6 +145,36 @@ export default function BranchesPanel({
 
   return (
     <section className="space-y-6">
+      <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-5">
+        <h2 className="mb-2 font-semibold text-emerald-300">მიმოხილვის საჯარო ლინკი</h2>
+        <p className="mb-3 text-sm text-zinc-500">
+          ნებისმიერს შეუძლია ნახოს მიმოხილვის რეპორტი (მხოლოდ ნახვა, 1 სექტემბრიდან).
+        </p>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="font-medium text-emerald-200">კომპანიის მიმოხილვა</p>
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                className="text-xs text-zinc-400 hover:text-white"
+                onClick={() => navigator.clipboard.writeText(overviewLink(overviewReportToken))}
+              >
+                კოპირება
+              </button>
+              <a
+                href={overviewLink(overviewReportToken)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+              >
+                გახსნა
+              </a>
+            </div>
+          </div>
+          <code className="block break-all text-xs text-emerald-400">{overviewLink(overviewReportToken)}</code>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-zinc-800 p-5">
         <h2 className="mb-4 font-semibold">ფილიალის ლინკები</h2>
         <p className="mb-4 text-sm text-zinc-500">

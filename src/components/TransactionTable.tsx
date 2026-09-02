@@ -111,7 +111,7 @@ function DeleteRow({
 type Props = {
   rows: Transaction[];
   showBranch?: boolean;
-  onDelete: (id: string) => Promise<boolean>;
+  onDelete?: (id: string) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   emptyText?: string;
 };
@@ -139,7 +139,7 @@ export default function TransactionTable({
             <th className="pb-2 pr-3">კომენტარი</th>
             <th className="pb-2 pr-3">გადახდა</th>
             <th className="pb-2 pr-3 text-right">თანხა</th>
-            <th className="pb-2 w-24">წაშლა</th>
+            {onDelete && <th className="pb-2 w-24">წაშლა</th>}
           </tr>
         </thead>
         <tbody>
@@ -178,9 +178,11 @@ export default function TransactionTable({
                 {t.type === "sale" ? "+" : t.type === "deposit" ? "+" : "-"}
                 {formatMoney(t.amount)}
               </td>
-              <td className="py-2">
-                <DeleteRow id={t.id} onDelete={onDelete} />
-              </td>
+              {onDelete && (
+                <td className="py-2">
+                  <DeleteRow id={t.id} onDelete={onDelete} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

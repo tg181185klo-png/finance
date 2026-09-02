@@ -1961,6 +1961,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             branchReports={branchReports}
             employees={activeStore.employees ?? []}
             branchTokens={activeStore.branchTokens}
+            overviewReportToken={activeStore.overviewReportToken}
             onRefresh={refresh}
             onDeleteReport={deleteReport}
           />

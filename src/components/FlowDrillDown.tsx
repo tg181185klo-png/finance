@@ -108,8 +108,8 @@ type FlowDrillPanelProps = {
   drill: FlowDrillState | null;
   transactions: Transaction[];
   onClose: () => void;
-  onDelete: (id: string) => Promise<boolean>;
-  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onDelete?: (id: string) => Promise<boolean>;
+  onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   className?: string;
 };
 

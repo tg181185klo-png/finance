@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth-session";
 
-const PUBLIC_API_PREFIXES = ["/api/auth", "/api/health", "/api/branch"];
+const PUBLIC_API_PREFIXES = ["/api/auth", "/api/health", "/api/branch", "/api/overview"];
 
 function isPublicApi(pathname: string) {
   return PUBLIC_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));

@@ -2,6 +2,8 @@ import { BRANCHES } from "./constants";
 import type { Branch, BranchCash, BranchInventory, Store } from "./types";
 import { emptyBranchCash, emptyInventory } from "./utils";
 
+export const DEFAULT_OVERVIEW_REPORT_TOKEN = "ovw-mr9k2";
+
 export const DEFAULT_BRANCH_TOKENS: Record<Branch, string> = {
   ქუთაისი: "kut-a8f3",
   ლილო: "lil-b2c9",
@@ -44,6 +46,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     transactions,
     obligations: data.obligations ?? {},
     branchTokens: { ...DEFAULT_BRANCH_TOKENS, ...data.branchTokens },
+    overviewReportToken: data.overviewReportToken ?? DEFAULT_OVERVIEW_REPORT_TOKEN,
     branchReports: data.branchReports ?? [],
     inventory: mergeInventory(data.inventory),
     branchCash: mergeBranchCash(data.branchCash),
