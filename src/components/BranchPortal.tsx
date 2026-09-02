@@ -107,7 +107,6 @@ export default function BranchPortal({ token }: { token: string }) {
 
   const [productSearch, setProductSearch] = useState("");
   const [showProductList, setShowProductList] = useState(false);
-  const [showProductCatalog, setShowProductCatalog] = useState(false);
   const [pickedProduct, setPickedProduct] = useState<Product | null>(null);
   const [addQty, setAddQty] = useState("1");
   const [addPrice, setAddPrice] = useState("");
@@ -536,36 +535,6 @@ export default function BranchPortal({ token }: { token: string }) {
           {productWarning && <p className="mb-2 text-xs text-amber-300">{productWarning}</p>}
           {products.length > 0 && (
             <p className="mb-2 text-xs text-zinc-500">{products.length} პროდუქტი ხელმისაწვდომია</p>
-          )}
-
-          <button
-            type="button"
-            className="mb-3 flex w-full items-center justify-between rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
-            onClick={() => setShowProductCatalog((v) => !v)}
-          >
-            <span>პროდუქტების ჩამონათვალი</span>
-            <span className="text-zinc-500">{showProductCatalog ? "▲" : "▼"}</span>
-          </button>
-          {showProductCatalog && (
-            <ul className="mb-3 max-h-56 overflow-auto rounded-xl border border-zinc-700 bg-zinc-950/60">
-              {matchProducts(products, productSearch, 200).map((p) => (
-                <li key={p.code}>
-                  <button
-                    type="button"
-                    className="w-full border-b border-zinc-800 px-3 py-2 text-left text-sm hover:bg-zinc-800"
-                    onClick={() => pickProductForCart(p)}
-                  >
-                    <span className="font-medium text-emerald-400">{p.code}</span>
-                    <span className="mx-1 text-zinc-600">|</span>
-                    <span>{p.name}</span>
-                    <span className="float-right text-zinc-400">{formatMoney(p.price)}</span>
-                  </button>
-                </li>
-              ))}
-              {products.length === 0 && (
-                <li className="px-3 py-2 text-xs text-zinc-500">პროდუქტები ვერ ჩაიტვირთა</li>
-              )}
-            </ul>
           )}
 
           <div className="relative">
