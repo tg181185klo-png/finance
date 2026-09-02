@@ -169,6 +169,26 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
     }
   }
 
+  async function syncFromReports() {
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "syncFromReports", fromDate: "2026-09-01" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      await onRefresh();
+      setMsg(`რეპორტებიდან სინქრონიზებულია — ${d.added ?? 0} ახალი სამუშაო დღე`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const monthAttendance = attendance.filter((a) => a.date.startsWith(empMonthFilter));
   const empMap = new Map<string, { name: string; branch: Branch; records: AttendanceRecord[]; wage: number }>();
   for (const emp of employees) {
@@ -192,6 +212,20 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
     <section className="space-y-6">
       {err && <p className="text-sm text-red-400">{err}</p>}
       {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+
+      <div className="rounded-xl border border-violet-900/40 bg-violet-950/15 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-violet-200">ლილო / დიღომი — ხელფასი რეპორტებიდან</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              რეპორტის გამომგზავნის მიხედვით ერიცხება დღიური ხელფასი და ჩნდება ვალდებულებებში (როგორც ციცინო სოლომნიშვილის)
+            </p>
+          </div>
+          <button type="button" className={`${btnCls} bg-violet-700 hover:bg-violet-600`} disabled={busy} onClick={() => void syncFromReports()}>
+            სინქრონიზაცია რეპორტებიდან
+          </button>
+        </div>
+      </div>
 
       <form onSubmit={addEmployee} className="rounded-xl border border-teal-900/50 bg-teal-950/10 p-5">
         <h2 className="mb-4 text-lg font-semibold text-teal-300">ახალი თანამშრომელი</h2>

@@ -249,9 +249,35 @@ export function addEmployeeAttendance(
   const existing = store.attendance.find(
     (item) => item.employeeId === employee.id && item.date === date
   );
-  if (existing) return existing;
-
   const wageAmount = wageForShift(employee.dailyWage, shift, branch);
+
+  if (existing) {
+    if (wageAmount > (existing.wageAmount ?? 0)) {
+      const diff = wageAmount - (existing.wageAmount ?? 0);
+      existing.wageAmount = wageAmount;
+      existing.employeeName = employee.name;
+      existing.branch = branch;
+      const month = date.slice(0, 7);
+      if (!store.obligations[month]) store.obligations[month] = [];
+      let obligation = store.obligations[month].find((item) => item.employeeId === employee.id);
+      if (!obligation) {
+        obligation = {
+          id: uid(),
+          name: `${employee.name} — ხელფასი`,
+          amount: 0,
+          paid: 0,
+          branch: employee.branch,
+          category: "ხელფასი",
+          month,
+          employeeId: employee.id,
+        };
+        store.obligations[month].push(obligation);
+      }
+      obligation.amount += diff;
+    }
+    return existing;
+  }
+
   const record = {
     id: uid(),
     employeeId: employee.id,

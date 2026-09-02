@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { mergeEmployeeImport, parseEmployeesExcel } from "@/lib/employees-import";
+import {
+  syncAllReportWageObligations,
+  syncAttendanceFromBranchReports,
+} from "@/lib/attendance-from-reports";
 import { addEmployeeAttendance, removeEmployeeAttendance, uid } from "@/lib/utils";
 import { branchByToken, readStore, updateStore } from "@/lib/server-store";
 import type { Branch, WorkShift } from "@/lib/types";
@@ -49,7 +53,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json()) as {
-      action: "addEmployee" | "updateEmployee" | "deleteEmployee" | "checkin" | "deleteAttendance";
+      action:
+        | "addEmployee"
+        | "updateEmployee"
+        | "deleteEmployee"
+        | "checkin"
+        | "deleteAttendance"
+        | "syncFromReports";
       token?: string;
       name?: string;
       branch?: Branch;
@@ -58,6 +68,7 @@ export async function POST(req: NextRequest) {
       attendanceId?: string;
       date?: string;
       shift?: WorkShift;
+      fromDate?: string;
     };
 
     if (body.action === "addEmployee") {
@@ -155,6 +166,22 @@ export async function POST(req: NextRequest) {
         ok: true,
         attendance: store.attendance,
         obligations: store.obligations,
+      });
+    }
+
+    if (body.action === "syncFromReports") {
+      const fromDate = body.fromDate || "2026-09-01";
+      let result = { added: 0, skipped: 0, reports: 0, employees: [] as string[] };
+      const store = await updateStore((s) => {
+        result = syncAttendanceFromBranchReports(s, { fromDate });
+        syncAllReportWageObligations(s, fromDate);
+      });
+      return NextResponse.json({
+        ok: true,
+        ...result,
+        attendance: store.attendance,
+        obligations: store.obligations,
+        branchReports: store.branchReports,
       });
     }
 
