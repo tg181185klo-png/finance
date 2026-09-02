@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatReportDay } from "@/lib/branch-tx-date";
-import { formatMoney, formatDate, uid } from "@/lib/utils";
+import { formatMoney, formatDate, uid, branchExpenseOperatingAmount } from "@/lib/utils";
 
 const inputCls =
   "w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base focus:border-emerald-500 focus:outline-none";
@@ -156,7 +156,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     [completedSales]
   );
   const expensesTotal = useMemo(
-    () => expenses.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0),
+    () => expenses.reduce((s, r) => s + branchExpenseOperatingAmount({ amount: parseFloat(r.amount) || 0, paymentMethod: r.paymentMethod }), 0),
     [expenses]
   );
   const suggestions = matchProducts(products, pickedProduct ? "" : productSearch);

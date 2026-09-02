@@ -13,6 +13,7 @@ import type {
 import {
   applyExpenseToStore,
   applySaleToStock,
+  branchExpenseOperatingAmount,
   reverseExpenseObligation,
   uid,
 } from "@/lib/utils";
@@ -75,7 +76,7 @@ export function recalculateReportTotals(report: BranchDailyReport): void {
         ? legacySales.reduce((s, x) => s + x.amount, 0)
         : 0;
 
-  report.expensesTotal = expenses.reduce((s, x) => s + x.amount, 0);
+  report.expensesTotal = expenses.reduce((s, x) => s + branchExpenseOperatingAmount(x), 0);
 
   report.salesNote = clientSales.length
     ? clientSales

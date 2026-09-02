@@ -104,7 +104,7 @@ function buildRecurrenceStats(filtered: Transaction[]): { recurring: RecurrenceS
   for (const t of filtered) {
     const bucket = txRecurrence(t) === "ყოველთვიური" ? recurring : oneTime;
     if (t.type === "sale") bucket.revenue += t.amount;
-    else bucket.expenses += t.amount;
+    else bucket.expenses += operatingExpenseAmount(t);
   }
   recurring.net = recurring.revenue - recurring.expenses;
   oneTime.net = oneTime.revenue - oneTime.expenses;
@@ -130,7 +130,7 @@ function buildByBranchStats(
         revenue += t.amount;
       } else if (t.type === "expense") {
         if (effectiveExpenseBranch(t) !== br) continue;
-        expenses += t.amount;
+        expenses += operatingExpenseAmount(t);
       } else if (t.type === "deposit") {
         if (effectiveDepositBranch(t) !== br) continue;
         deposits += t.amount;
@@ -183,7 +183,8 @@ export function calcBalances(
       else if (t.paymentMethod === "ბარათი") b.card += t.amount;
       else b.bank += t.amount;
     } else if (t.type === "expense") {
-      b.expenses += t.amount;
+      const amt = operatingExpenseAmount(t);
+      b.expenses += amt;
       if (t.expensePaymentMethod === "ბარათი") b.card -= t.amount;
       else if (t.expensePaymentMethod === "ანგარიშზე ჩარიცხვა") b.bank -= t.amount;
       else b.cash -= t.amount;
@@ -388,6 +389,19 @@ export function txPaymentMethod(t: Transaction): PaymentMethod {
   if (t.type === "sale") return t.paymentMethod;
   if (t.type === "expense") return t.expensePaymentMethod ?? "ქეში (ნაღდი)";
   return t.depositPaymentMethod ?? "ქეში (ნაღდი)";
+}
+
+/** ბარათის ხარჯი P&L-ის „ხარჯში“ არ ჩანს — მხოლოდ ბარათის ნაშთიდან ჩაიჭრება */
+export function countsTowardOperatingExpenses(t: Transaction): boolean {
+  return t.type === "expense" && txPaymentMethod(t) !== "ბარათი";
+}
+
+export function operatingExpenseAmount(t: Transaction): number {
+  return countsTowardOperatingExpenses(t) ? t.amount : 0;
+}
+
+export function branchExpenseOperatingAmount(e: { amount: number; paymentMethod?: PaymentMethod }) {
+  return e.paymentMethod === "ბარათი" ? 0 : e.amount;
 }
 
 export function paymentMethodLabel(method: PaymentMethod) {
@@ -643,8 +657,8 @@ export function buildPeriodReport(
       revenue += t.amount;
       row.revenue += t.amount;
     } else if (t.type === "expense") {
-      expenses += t.amount;
-      row.expenses += t.amount;
+      expenses += operatingExpenseAmount(t);
+      row.expenses += operatingExpenseAmount(t);
     } else if (t.type === "deposit") {
       deposits += t.amount;
       if (t.kind === "founder") founderDeposits += t.amount;

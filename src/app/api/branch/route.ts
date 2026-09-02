@@ -5,6 +5,7 @@ import {
   addEmployeeAttendance,
   applyExpenseToStore,
   applySaleToStock,
+  branchExpenseOperatingAmount,
   removeEmployeeAttendance,
   reverseExpenseObligation,
   wageForShift,
@@ -235,7 +236,7 @@ async function submitBranchReport(body: SubmitBody) {
         ? sales.reduce((s, x) => s + x.amount, 0)
         : body.salesTotal || 0;
 
-  const expensesTotal = expenses.reduce((s, x) => s + x.amount, 0);
+  const expensesTotal = expenses.reduce((s, x) => s + branchExpenseOperatingAmount(x), 0);
 
   const salesNote = clientSales.length
     ? clientSales

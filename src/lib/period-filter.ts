@@ -1,7 +1,7 @@
 import type { Branch, Transaction } from "./types";
 import { txMatchesBranchFilter } from "./branch-allocation";
 import { OPERATIONAL_DATA_FROM } from "./report-config";
-import { currentMonth, monthStartEnd } from "./utils";
+import { currentMonth, monthStartEnd, operatingExpenseAmount } from "./utils";
 
 export type PeriodMode = "month" | "today" | "custom";
 
@@ -76,7 +76,7 @@ export function periodFlow(
     if (branch !== "ყველა" && !txMatchesBranchFilter(t, branch)) continue;
     count += 1;
     if (t.type === "sale") revenue += t.amount;
-    else if (t.type === "expense") expenses += t.amount;
+    else if (t.type === "expense") expenses += operatingExpenseAmount(t);
     else if (t.type === "deposit") {
       deposits += t.amount;
       if (t.kind === "founder") founderDeposits += t.amount;
