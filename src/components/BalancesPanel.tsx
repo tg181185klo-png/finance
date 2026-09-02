@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { effectiveDepositBranch, effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { calcBalances, currentMonth, emptyBranchCash, formatMoney, monthStartEnd, operatingExpenseAmount } from "@/lib/utils";
-
+import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 
 const tabBtn = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
@@ -39,7 +39,6 @@ function branchFlow(
       expenses += operatingExpenseAmount(t);
     } else if (t.type === "deposit") {
       if (effectiveDepositBranch(t) !== branch) continue;
-      // deposits not counted in revenue/expenses here
     }
   }
   return { revenue, expenses, net: revenue - expenses };
@@ -62,23 +61,20 @@ function companyFlow(
   return { revenue, expenses, net: revenue - expenses };
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div>
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className={`text-base font-semibold ${accent ?? "text-zinc-100"}`}>{value}</p>
-    </div>
-  );
-}
-
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
 
-export default function BalancesPanel({ transactions, branchCash }: Props) {
+export default function BalancesPanel({ transactions, branchCash, onDelete, onUpdatePayment }: Props) {
   const [period, setPeriod] = useState<Period>("month");
   const range = periodRange(period);
+  const { drill, toggle, close, isActive } = useFlowDrill();
+
+  const drillFrom = range?.from ?? "1970-01-01";
+  const drillTo = range?.to ?? "2099-12-31";
 
   const rows = useMemo(() => {
     const from = range?.from;
@@ -125,6 +121,10 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
         ? `თვე (${monthStartEnd().from} — ${monthStartEnd().to})`
         : "ყველა დრო";
 
+  function drillToggle(kind: "revenue" | "expense", scope: Branch | "ყველა") {
+    toggle({ kind, scope, from: drillFrom, to: drillTo, rangeLabel: periodLabel });
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -147,32 +147,50 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {rows.branches.map((r) => (
-          <div
-            key={r.branch}
-            className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5"
-          >
+          <div key={r.branch} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
             <h3 className="mb-4 text-lg font-bold text-zinc-100">{r.branch}</h3>
             <div className="mb-4 space-y-2 border-b border-zinc-800 pb-4">
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{periodLabel}</p>
-              <Stat label="შემოსავალი" value={formatMoney(r.revenue)} accent="text-emerald-400" />
-              <Stat label="ხარჯი" value={formatMoney(r.expenses)} accent="text-red-400" />
-              <Stat
-                label="ნეტო"
-                value={formatMoney(r.net)}
-                accent={r.net >= 0 ? "text-emerald-400" : "text-red-400"}
+              <ClickableFlowStat
+                variant="inline"
+                label="შემოსავალი"
+                value={formatMoney(r.revenue)}
+                accent="text-emerald-400"
+                onClick={() => drillToggle("revenue", r.branch)}
+                active={isActive("revenue", r.branch, drillFrom, drillTo)}
               />
+              <ClickableFlowStat
+                variant="inline"
+                label="ხარჯი"
+                value={formatMoney(r.expenses)}
+                accent="text-red-400"
+                onClick={() => drillToggle("expense", r.branch)}
+                active={isActive("expense", r.branch, drillFrom, drillTo)}
+              />
+              <div>
+                <p className="text-xs text-zinc-500">ნეტო</p>
+                <p className={`text-base font-semibold ${r.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {formatMoney(r.net)}
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">საწყისი ნაშთი</p>
-              <Stat label="💵 ქეში" value={formatMoney(r.opening.cash)} accent="text-zinc-400" />
-              <Stat label="💳 ბარათი" value={formatMoney(r.opening.card)} accent="text-zinc-400" />
-              <Stat label="🏦 ანგარიში" value={formatMoney(r.opening.bank)} accent="text-zinc-400" />
+              <p className="text-xs text-zinc-500">💵 ქეში</p>
+              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.cash)}</p>
+              <p className="text-xs text-zinc-500">💳 ბარათი</p>
+              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.card)}</p>
+              <p className="text-xs text-zinc-500">🏦 ანგარიში</p>
+              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.bank)}</p>
             </div>
             <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">ფული ახლა</p>
-              <Stat label="💵 ქეში" value={formatMoney(r.cash)} accent="text-emerald-300" />
-              <Stat label="💳 ბარათი" value={formatMoney(r.card)} accent="text-sky-400" />
-              <Stat label="🏦 ანგარიში" value={formatMoney(r.bank)} accent="text-violet-400" />
+              <p className="text-xs text-zinc-500">💵 ქეში</p>
+              <p className="text-base font-semibold text-emerald-300">{formatMoney(r.cash)}</p>
+              <p className="text-xs text-zinc-500">💳 ბარათი</p>
+              <p className="text-base font-semibold text-sky-400">{formatMoney(r.card)}</p>
+              <p className="text-xs text-zinc-500">🏦 ანგარიში</p>
+              <p className="text-base font-semibold text-violet-400">{formatMoney(r.bank)}</p>
             </div>
           </div>
         ))}
@@ -181,35 +199,65 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
           <h3 className="mb-4 text-lg font-bold text-emerald-300">კომპანია</h3>
           <div className="mb-4 space-y-2 border-b border-emerald-900/40 pb-4">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">{periodLabel}</p>
-            <Stat label="შემოსავალი" value={formatMoney(rows.company.revenue)} accent="text-emerald-400" />
-            <Stat label="ხარჯი" value={formatMoney(rows.company.expenses)} accent="text-red-400" />
-            <Stat
-              label="ნეტო (მოგება/ზარალი)"
-              value={formatMoney(rows.company.net)}
-              accent={rows.company.net >= 0 ? "text-emerald-400" : "text-red-400"}
+            <ClickableFlowStat
+              variant="inline"
+              label="შემოსავალი"
+              value={formatMoney(rows.company.revenue)}
+              accent="text-emerald-400"
+              onClick={() => drillToggle("revenue", "ყველა")}
+              active={isActive("revenue", "ყველა", drillFrom, drillTo)}
             />
+            <ClickableFlowStat
+              variant="inline"
+              label="ხარჯი"
+              value={formatMoney(rows.company.expenses)}
+              accent="text-red-400"
+              onClick={() => drillToggle("expense", "ყველა")}
+              active={isActive("expense", "ყველა", drillFrom, drillTo)}
+            />
+            <div>
+              <p className="text-xs text-zinc-500">ნეტო (მოგება/ზარალი)</p>
+              <p
+                className={`text-base font-semibold ${rows.company.net >= 0 ? "text-emerald-400" : "text-red-400"}`}
+              >
+                {formatMoney(rows.company.net)}
+              </p>
+            </div>
           </div>
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">საწყისი ნაშთი</p>
-            <Stat label="💵 ქეში (ყველა)" value={formatMoney(rows.company.opening.cash)} accent="text-zinc-400" />
-            <Stat label="💳 ბარათი (ყველა)" value={formatMoney(rows.company.opening.card)} accent="text-zinc-400" />
-            <Stat label="🏦 ანგარიში (ყველა)" value={formatMoney(rows.company.opening.bank)} accent="text-zinc-400" />
+            <p className="text-xs text-zinc-500">💵 ქეში (ყველა)</p>
+            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.cash)}</p>
+            <p className="text-xs text-zinc-500">💳 ბარათი (ყველა)</p>
+            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.card)}</p>
+            <p className="text-xs text-zinc-500">🏦 ანგარიში (ყველა)</p>
+            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.bank)}</p>
           </div>
           <div className="mt-3 space-y-2 border-t border-emerald-900/40 pt-3">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">ჯამური ფული</p>
-            <Stat label="💵 ქეში (ყველა)" value={formatMoney(rows.company.cash)} accent="text-emerald-300" />
-            <Stat label="💳 ბარათი (ყველა)" value={formatMoney(rows.company.card)} accent="text-sky-400" />
-            <Stat label="🏦 ანგარიში (ყველა)" value={formatMoney(rows.company.bank)} accent="text-violet-400" />
+            <p className="text-xs text-zinc-500">💵 ქეში (ყველა)</p>
+            <p className="text-base font-semibold text-emerald-300">{formatMoney(rows.company.cash)}</p>
+            <p className="text-xs text-zinc-500">💳 ბარათი (ყველა)</p>
+            <p className="text-base font-semibold text-sky-400">{formatMoney(rows.company.card)}</p>
+            <p className="text-xs text-zinc-500">🏦 ანგარიში (ყველა)</p>
+            <p className="text-base font-semibold text-violet-400">{formatMoney(rows.company.bank)}</p>
             <div className="mt-2 rounded-lg bg-emerald-950/40 px-3 py-2">
-              <Stat
-                label="სულ (ქეში+ბარათი+ანგარიში)"
-                value={formatMoney(rows.company.cash + rows.company.card + rows.company.bank)}
-                accent="text-emerald-200"
-              />
+              <p className="text-xs text-zinc-500">სულ (ქეში+ბარათი+ანგარიში)</p>
+              <p className="text-base font-semibold text-emerald-200">
+                {formatMoney(rows.company.cash + rows.company.card + rows.company.bank)}
+              </p>
             </div>
           </div>
         </div>
       </div>
+
+      <FlowDrillPanel
+        drill={drill}
+        transactions={transactions}
+        onClose={close}
+        onDelete={onDelete}
+        onUpdatePayment={onUpdatePayment}
+      />
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
         <h3 className="mb-4 font-semibold text-zinc-200">შეჯამებით ცხრილი</h3>
@@ -230,8 +278,24 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
             {rows.branches.map((r) => (
               <tr key={r.branch} className="border-b border-zinc-800/50">
                 <td className="py-3 pr-4 font-medium">{r.branch}</td>
-                <td className="py-3 pr-4 text-right text-emerald-400">{formatMoney(r.revenue)}</td>
-                <td className="py-3 pr-4 text-right text-red-400">{formatMoney(r.expenses)}</td>
+                <td className="py-3 pr-4 text-right">
+                  <button
+                    type="button"
+                    className="text-emerald-400 hover:underline"
+                    onClick={() => drillToggle("revenue", r.branch)}
+                  >
+                    {formatMoney(r.revenue)}
+                  </button>
+                </td>
+                <td className="py-3 pr-4 text-right">
+                  <button
+                    type="button"
+                    className="text-red-400 hover:underline"
+                    onClick={() => drillToggle("expense", r.branch)}
+                  >
+                    {formatMoney(r.expenses)}
+                  </button>
+                </td>
                 <td className={`py-3 pr-4 text-right ${r.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {formatMoney(r.net)}
                 </td>
@@ -243,8 +307,24 @@ export default function BalancesPanel({ transactions, branchCash }: Props) {
             ))}
             <tr className="font-semibold">
               <td className="py-3 pr-4 text-emerald-300">კომპანია (ჯამი)</td>
-              <td className="py-3 pr-4 text-right text-emerald-400">{formatMoney(rows.company.revenue)}</td>
-              <td className="py-3 pr-4 text-right text-red-400">{formatMoney(rows.company.expenses)}</td>
+              <td className="py-3 pr-4 text-right">
+                <button
+                  type="button"
+                  className="text-emerald-400 hover:underline"
+                  onClick={() => drillToggle("revenue", "ყველა")}
+                >
+                  {formatMoney(rows.company.revenue)}
+                </button>
+              </td>
+              <td className="py-3 pr-4 text-right">
+                <button
+                  type="button"
+                  className="text-red-400 hover:underline"
+                  onClick={() => drillToggle("expense", "ყველა")}
+                >
+                  {formatMoney(rows.company.expenses)}
+                </button>
+              </td>
               <td className={`py-3 pr-4 text-right ${rows.company.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {formatMoney(rows.company.net)}
               </td>

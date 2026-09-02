@@ -31,6 +31,7 @@ import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
+import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import {
@@ -305,6 +306,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     () => periodFlow(operationalTx, filter, period.from, period.to),
     [operationalTx, filter, period.from, period.to]
   );
+
+  const { drill: mainDrill, toggle: toggleMainDrill, close: closeMainDrill, isActive: isMainDrillActive } =
+    useFlowDrill();
+  const mainFlowScope = filter === "ყველა" ? "ყველა" : filter;
 
   const mainTabRows = useMemo(() => {
     return operationalTx
@@ -1071,13 +1076,50 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <span className="text-zinc-600"> · მონაცემები {OPERATIONAL_DATA_FROM.slice(0, 7)}-დან</span>
           </p>
           <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <Stat label="შემოსავალი" value={formatMoney(periodStats.revenue)} accent="text-emerald-400" />
-            <Stat label="ხარჯები" value={formatMoney(periodStats.expenses)} accent="text-red-400" />
+            <ClickableFlowStat
+              label="შემოსავალი"
+              value={formatMoney(periodStats.revenue)}
+              accent="text-emerald-400"
+              onClick={() =>
+                toggleMainDrill({
+                  kind: "revenue",
+                  scope: mainFlowScope,
+                  from: period.from,
+                  to: period.to,
+                  rangeLabel: period.label,
+                })
+              }
+              active={isMainDrillActive("revenue", mainFlowScope, period.from, period.to)}
+            />
+            <ClickableFlowStat
+              label="ხარჯები"
+              value={formatMoney(periodStats.expenses)}
+              accent="text-red-400"
+              onClick={() =>
+                toggleMainDrill({
+                  kind: "expense",
+                  scope: mainFlowScope,
+                  from: period.from,
+                  to: period.to,
+                  rangeLabel: period.label,
+                })
+              }
+              active={isMainDrillActive("expense", mainFlowScope, period.from, period.to)}
+            />
             <Stat label="ნეტო" value={formatMoney(periodStats.net)} accent={periodStats.net >= 0 ? "text-emerald-400" : "text-red-400"} />
             <Stat label="ქეში (სულ)" value={formatMoney(balances.cash)} />
             <Stat label="ბარათი/ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
             <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
+
+          <FlowDrillPanel
+            drill={mainDrill}
+            transactions={operationalTx}
+            onClose={closeMainDrill}
+            onDelete={deleteTx}
+            onUpdatePayment={updateTxPayment}
+            className="mb-6"
+          />
 
           <div className="mb-6">
             <OpeningBalancesSummary
@@ -1560,7 +1602,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "balances" && !loading && (
-        <BalancesPanel transactions={operationalTx} branchCash={activeStore.branchCash} />
+        <BalancesPanel
+          transactions={operationalTx}
+          branchCash={activeStore.branchCash}
+          onDelete={deleteTx}
+          onUpdatePayment={updateTxPayment}
+        />
       )}
 
       {tab === "expenses" && !loading && (
@@ -1754,6 +1801,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <ReportsPanel
           employees={activeStore.employees ?? []}
           period={period}
+          transactions={operationalTx}
+          onDelete={deleteTx}
+          onUpdatePayment={updateTxPayment}
           onTransactionsUpdate={async () => {
             await loadStore();
           }}

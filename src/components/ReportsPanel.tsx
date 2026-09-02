@@ -9,6 +9,8 @@ import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
 import ReportsExportHub from "@/components/ReportsExportHub";
+import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
+import type { FlowBranchScope, FlowDetailKind } from "@/lib/flow-detail";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { formatDate, formatMoney, monthStartEnd, paymentMethodLabel, txPaymentMethod, txRecurrence } from "@/lib/utils";
 
@@ -34,15 +36,45 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-function MiniReport({ title, report }: { title: string; report: PeriodReport | null }) {
+function reportRangeLabel(report: PeriodReport) {
+  return report.from === report.to ? report.from : `${report.from} — ${report.to}`;
+}
+
+function MiniReport({
+  title,
+  report,
+  onRevenueClick,
+  onExpenseClick,
+  revenueActive,
+  expenseActive,
+}: {
+  title: string;
+  report: PeriodReport | null;
+  onRevenueClick?: () => void;
+  onExpenseClick?: () => void;
+  revenueActive?: boolean;
+  expenseActive?: boolean;
+}) {
   if (!report) return null;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
       <h3 className="mb-3 font-semibold text-zinc-200">{title}</h3>
       <div className="grid gap-2 sm:grid-cols-3">
-        <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
-        <Stat label="ხარჯი" value={formatMoney(report.expenses)} accent="text-red-400" />
-        <Stat
+        <ClickableFlowStat
+          label="შემოსავალი"
+          value={formatMoney(report.revenue)}
+          accent="text-emerald-400"
+          onClick={onRevenueClick}
+          active={revenueActive}
+        />
+        <ClickableFlowStat
+          label="ხარჯი"
+          value={formatMoney(report.expenses)}
+          accent="text-red-400"
+          onClick={onExpenseClick}
+          active={expenseActive}
+        />
+        <ClickableFlowStat
           label="მოგება/ზარალი"
           value={formatMoney(report.net)}
           accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"}
@@ -103,10 +135,37 @@ function BranchMonthCell({ br }: { br?: MonthBranchStat }) {
 type Props = {
   employees: Employee[];
   period: ResolvedPeriod;
+  transactions: Transaction[];
+  onDelete: (id: string) => Promise<boolean>;
+  onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onTransactionsUpdate: () => void | Promise<void>;
 };
 
-export default function ReportsPanel({ employees, period, onTransactionsUpdate }: Props) {
+export default function ReportsPanel({
+  employees,
+  period,
+  transactions,
+  onDelete,
+  onUpdatePayment,
+  onTransactionsUpdate,
+}: Props) {
+  const { drill, toggle, close, isActive } = useFlowDrill();
+
+  function drillReport(
+    kind: FlowDetailKind,
+    branch: FlowBranchScope,
+    report: PeriodReport,
+    recurrence?: TxRecurrence
+  ) {
+    toggle({
+      kind,
+      scope: branch,
+      from: report.from,
+      to: report.to,
+      rangeLabel: reportRangeLabel(report),
+      recurrence,
+    });
+  }
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [monthBranchReport, setMonthBranchReport] = useState<PeriodReport | null>(null);
   const [monthCompanyReport, setMonthCompanyReport] = useState<PeriodReport | null>(null);
@@ -330,7 +389,18 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
 
       <ImportExpensesPanel onImported={handleImportComplete} />
 
-      <FinancialSummaryPanel refreshSignal={summaryRefresh} />
+      <FinancialSummaryPanel
+        refreshSignal={summaryRefresh}
+        onDrillToggle={toggle}
+      />
+
+      <FlowDrillPanel
+        drill={drill}
+        transactions={transactions}
+        onClose={close}
+        onDelete={onDelete}
+        onUpdatePayment={onUpdatePayment}
+      />
 
       {snapshots.length > 0 && (
         <div className="rounded-xl border border-indigo-900/40 bg-indigo-950/20 p-5">
@@ -501,8 +571,50 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
           )}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <MiniReport title={`კომპანია — ${monthFrom} / ${monthTo}`} report={monthCompanyReport} />
-          <MiniReport title={`${monthBranch} — ${monthFrom} / ${monthTo}`} report={monthBranchReport} />
+          <MiniReport
+            title={`კომპანია — ${monthFrom} / ${monthTo}`}
+            report={monthCompanyReport}
+            onRevenueClick={
+              monthCompanyReport
+                ? () => drillReport("revenue", "ყველა", monthCompanyReport)
+                : undefined
+            }
+            onExpenseClick={
+              monthCompanyReport
+                ? () => drillReport("expense", "ყველა", monthCompanyReport)
+                : undefined
+            }
+            revenueActive={
+              monthCompanyReport
+                ? isActive("revenue", "ყველა", monthCompanyReport.from, monthCompanyReport.to)
+                : false
+            }
+            expenseActive={
+              monthCompanyReport
+                ? isActive("expense", "ყველა", monthCompanyReport.from, monthCompanyReport.to)
+                : false
+            }
+          />
+          <MiniReport
+            title={`${monthBranch} — ${monthFrom} / ${monthTo}`}
+            report={monthBranchReport}
+            onRevenueClick={
+              monthBranchReport ? () => drillReport("revenue", monthBranch, monthBranchReport) : undefined
+            }
+            onExpenseClick={
+              monthBranchReport ? () => drillReport("expense", monthBranch, monthBranchReport) : undefined
+            }
+            revenueActive={
+              monthBranchReport
+                ? isActive("revenue", monthBranch, monthBranchReport.from, monthBranchReport.to)
+                : false
+            }
+            expenseActive={
+              monthBranchReport
+                ? isActive("expense", monthBranch, monthBranchReport.from, monthBranchReport.to)
+                : false
+            }
+          />
         </div>
       </div>
 
@@ -565,9 +677,21 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
               </button>
             </div>
             <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Stat label="შემოსავალი" value={formatMoney(report.revenue)} accent="text-emerald-400" />
-              <Stat label="ხარჯები" value={formatMoney(report.expenses)} accent="text-red-400" />
-              <Stat
+              <ClickableFlowStat
+                label="შემოსავალი"
+                value={formatMoney(report.revenue)}
+                accent="text-emerald-400"
+                onClick={() => drillReport("revenue", report.branch, report)}
+                active={isActive("revenue", report.branch, report.from, report.to)}
+              />
+              <ClickableFlowStat
+                label="ხარჯები"
+                value={formatMoney(report.expenses)}
+                accent="text-red-400"
+                onClick={() => drillReport("expense", report.branch, report)}
+                active={isActive("expense", report.branch, report.from, report.to)}
+              />
+              <ClickableFlowStat
                 label="მოგება / ზარალი"
                 value={formatMoney(report.net)}
                 accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"}
@@ -583,10 +707,24 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
                 <h4 className="mb-2 text-sm font-semibold text-zinc-300">ყოველთვიური</h4>
                 <p className="text-sm">
-                  შემოსავალი: <span className="text-emerald-400">{formatMoney(report.recurring.revenue)}</span>
+                  შემოსავალი:{" "}
+                  <button
+                    type="button"
+                    className="text-emerald-400 hover:underline"
+                    onClick={() => drillReport("revenue", report.branch, report, "ყოველთვიური")}
+                  >
+                    {formatMoney(report.recurring.revenue)}
+                  </button>
                 </p>
                 <p className="text-sm">
-                  ხარჯი: <span className="text-red-400">{formatMoney(report.recurring.expenses)}</span>
+                  ხარჯი:{" "}
+                  <button
+                    type="button"
+                    className="text-red-400 hover:underline"
+                    onClick={() => drillReport("expense", report.branch, report, "ყოველთვიური")}
+                  >
+                    {formatMoney(report.recurring.expenses)}
+                  </button>
                 </p>
                 <p className="text-sm font-medium">
                   ნეტო:{" "}
@@ -598,10 +736,24 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
                 <h4 className="mb-2 text-sm font-semibold text-zinc-300">ერთჯერადი</h4>
                 <p className="text-sm">
-                  შემოსავალი: <span className="text-emerald-400">{formatMoney(report.oneTime.revenue)}</span>
+                  შემოსავალი:{" "}
+                  <button
+                    type="button"
+                    className="text-emerald-400 hover:underline"
+                    onClick={() => drillReport("revenue", report.branch, report, "ერთჯერადი")}
+                  >
+                    {formatMoney(report.oneTime.revenue)}
+                  </button>
                 </p>
                 <p className="text-sm">
-                  ხარჯი: <span className="text-red-400">{formatMoney(report.oneTime.expenses)}</span>
+                  ხარჯი:{" "}
+                  <button
+                    type="button"
+                    className="text-red-400 hover:underline"
+                    onClick={() => drillReport("expense", report.branch, report, "ერთჯერადი")}
+                  >
+                    {formatMoney(report.oneTime.expenses)}
+                  </button>
                 </p>
                 <p className="text-sm font-medium">
                   ნეტო:{" "}
@@ -632,8 +784,24 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                   {report.byBranch.map((b) => (
                     <tr key={b.branch} className="border-b border-zinc-800/50">
                       <td className="py-2 pr-4 font-medium">{b.branch}</td>
-                      <td className="py-2 pr-4 text-right text-emerald-400">{formatMoney(b.revenue)}</td>
-                      <td className="py-2 pr-4 text-right text-red-400">{formatMoney(b.expenses)}</td>
+                      <td className="py-2 pr-4 text-right">
+                        <button
+                          type="button"
+                          className="text-emerald-400 hover:underline"
+                          onClick={() => drillReport("revenue", b.branch, report)}
+                        >
+                          {formatMoney(b.revenue)}
+                        </button>
+                      </td>
+                      <td className="py-2 pr-4 text-right">
+                        <button
+                          type="button"
+                          className="text-red-400 hover:underline"
+                          onClick={() => drillReport("expense", b.branch, report)}
+                        >
+                          {formatMoney(b.expenses)}
+                        </button>
+                      </td>
                       <td className={`py-2 pr-4 text-right ${b.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {formatMoney(b.net)}
                       </td>
@@ -644,11 +812,23 @@ export default function ReportsPanel({ employees, period, onTransactionsUpdate }
                   ))}
                   <tr className="font-semibold">
                     <td className="py-2 pr-4">კომპანია (ჯამი)</td>
-                    <td className="py-2 pr-4 text-right text-emerald-400">
-                      {formatMoney(report.byBranch.reduce((s, b) => s + b.revenue, 0))}
+                    <td className="py-2 pr-4 text-right">
+                      <button
+                        type="button"
+                        className="text-emerald-400 hover:underline"
+                        onClick={() => drillReport("revenue", "ყველა", report)}
+                      >
+                        {formatMoney(report.byBranch.reduce((s, b) => s + b.revenue, 0))}
+                      </button>
                     </td>
-                    <td className="py-2 pr-4 text-right text-red-400">
-                      {formatMoney(report.byBranch.reduce((s, b) => s + b.expenses, 0))}
+                    <td className="py-2 pr-4 text-right">
+                      <button
+                        type="button"
+                        className="text-red-400 hover:underline"
+                        onClick={() => drillReport("expense", "ყველა", report)}
+                      >
+                        {formatMoney(report.byBranch.reduce((s, b) => s + b.expenses, 0))}
+                      </button>
                     </td>
                     <td className="py-2 pr-4 text-right text-emerald-400">
                       {formatMoney(report.byBranch.reduce((s, b) => s + b.net, 0))}

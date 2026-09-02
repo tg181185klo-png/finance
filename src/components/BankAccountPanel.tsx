@@ -303,7 +303,7 @@ export default function BankAccountPanel({
             <p className="mt-1 text-lg font-semibold text-emerald-400">+{formatMoney(totals.incoming)}</p>
           </div>
           <div className="rounded-lg border border-red-900/40 bg-red-950/20 p-3">
-            <p className="text-xs text-zinc-500">გასული (თვე)</p>
+            <p className="text-xs text-zinc-500">გასავალი (თვე)</p>
             <p className="mt-1 text-lg font-semibold text-red-400">−{formatMoney(totals.outgoing)}</p>
           </div>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
@@ -373,7 +373,7 @@ export default function BankAccountPanel({
                     <td className="py-2 pl-3 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.date)}</td>
                     <td className="py-2 pr-3">{row.branch}</td>
                     <td className={`py-2 pr-3 text-xs ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}>
-                      {row.direction === "in" ? "შემოსავალი" : "გასული"}
+                      {row.direction === "in" ? "შემოსავალი" : "გასავალი"}
                     </td>
                     <td className="py-2 pr-3 font-medium text-sky-200" title={row.depositorName}>
                       {isIncoming ? row.depositorName || "—" : "—"}
@@ -433,7 +433,7 @@ export default function BankAccountPanel({
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">
                   <td colSpan={8} className="py-3 pl-3 pr-3 text-right text-zinc-400">
-                    თვის ჯამი (შემოსული − გასული)
+                    თვის ჯამი (შემოსული − გასავალი)
                   </td>
                   <td className={`py-3 pr-3 text-right ${totals.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {totals.net >= 0 ? "+" : ""}

@@ -2,12 +2,21 @@
 
 import { useMemo, useState } from "react";
 import type { Branch, BranchCash, BranchDailyReport, PaymentMethod, Transaction } from "@/lib/types";
-import { BRANCHES, KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "@/lib/dashboard-data";
+import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
-import { calcBalancesUpToDate, emptyBranchCash, formatDate, formatMoney, txPaymentMethod } from "@/lib/utils";
+import { calcBalancesUpToDate, emptyBranchCash, formatDate, formatMoney } from "@/lib/utils";
+import {
+  accountTotal,
+  KUTAISI_DISTRIB_BRANCHES,
+  KUTAISI_DISTRIB_LABEL,
+  txMatchesFlowScope,
+  type FlowBranchScope,
+  type FlowDetailKind,
+} from "@/lib/flow-detail";
+import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 
@@ -23,56 +32,19 @@ const inputCls = "rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text
 
 type ViewScope = "company" | Branch | typeof KUTAISI_DISTRIB_LABEL;
 type RangeMode = "period" | "day";
-type DetailKind = "revenue" | "account";
 
-function isNonCashMethod(method: PaymentMethod) {
-  return method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა";
+function toFlowScope(scope: ViewScope): FlowBranchScope {
+  return scope === "company" ? "ყველა" : scope;
 }
 
-function txAffectsAccount(t: Transaction) {
-  return isNonCashMethod(txPaymentMethod(t));
-}
-
-function accountTotal(bal: { card: number; bank: number }) {
-  return bal.card + bal.bank;
-}
-
-function filterDetailTransactions(
-  transactions: Transaction[],
-  kind: DetailKind,
-  scope: ViewScope,
-  from: string,
-  to: string
-) {
-  return transactions
-    .filter((t) => {
-      if (!txInPeriod(t.date, from, to)) return false;
-      if (!txMatchesScope(t, scope)) return false;
-      if (kind === "revenue") return t.type === "sale";
-      return txAffectsAccount(t);
-    })
-    .sort((a, b) => b.date.localeCompare(a.date));
-}
-
-function detailTitle(kind: DetailKind, scope: ViewScope, rangeLabel: string) {
-  const scopeName = scopeLabel(scope);
-  if (kind === "revenue") return `შემოსავლის ტრანზაქციები — ${scopeName} · ${rangeLabel}`;
-  return `ანგარიშის ტრანზაქციები (ბარათი + ანგარიში) — ${scopeName} · ${rangeLabel}`;
+function txMatchesScope(t: Transaction, scope: ViewScope) {
+  return txMatchesFlowScope(t, toFlowScope(scope));
 }
 
 function dayBefore(iso: string) {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
-}
-
-function txMatchesScope(t: Transaction, scope: ViewScope) {
-  if (scope === "company") return true;
-  if (scope === KUTAISI_DISTRIB_LABEL) {
-    const br = effectiveTxBranch(t);
-    return br === "ქუთაისი" || br === "დისტრიბუცია";
-  }
-  return effectiveTxBranch(t) === scope;
 }
 
 function scopeToBranches(scope: ViewScope): Branch[] | undefined {
@@ -135,42 +107,6 @@ function buildGroupStats(
   };
 }
 
-function StatCard({
-  label,
-  value,
-  accent,
-  large,
-  hint,
-  onClick,
-  active,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-  large?: boolean;
-  hint?: string;
-  onClick?: () => void;
-  active?: boolean;
-}) {
-  const Tag = onClick ? "button" : "div";
-  return (
-    <Tag
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      className={`rounded-xl border bg-zinc-900/60 p-4 text-left transition ${
-        onClick ? "cursor-pointer hover:border-emerald-700/50 hover:bg-zinc-900/80" : "border-zinc-800"
-      } ${active ? "border-emerald-600 ring-1 ring-emerald-600/40" : "border-zinc-800"}`}
-    >
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className={`mt-1 font-semibold ${large ? "text-2xl" : "text-lg"} ${accent ?? "text-zinc-100"}`}>
-        {value}
-      </p>
-      {hint && <p className="mt-1 text-[10px] text-zinc-600">{hint}</p>}
-      {onClick && !active && <p className="mt-1 text-[10px] text-zinc-600">დაჭერით ტრანზაქციების სია</p>}
-    </Tag>
-  );
-}
-
 type Props = {
   transactions: Transaction[];
   branchReports: BranchDailyReport[];
@@ -192,20 +128,7 @@ export default function OverviewPanel({
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
   const [selectedDay, setSelectedDay] = useState(today);
-  const [detailDrill, setDetailDrill] = useState<{ kind: DetailKind; scope: ViewScope } | null>(null);
-
-  function toggleDetail(kind: DetailKind, detailScope: ViewScope) {
-    setDetailDrill((prev) =>
-      prev?.kind === kind && prev.scope === detailScope ? null : { kind, scope: detailScope }
-    );
-  }
-
-  function openDetail(kind: DetailKind, detailScope: ViewScope) {
-    setDetailDrill((prev) =>
-      prev?.kind === kind && prev.scope === detailScope ? null : { kind, scope: detailScope }
-    );
-    if (detailScope !== scope) setScope(detailScope);
-  }
+  const { drill, toggle, close, isActive } = useFlowDrill();
 
   const { from, to, rangeLabel } = useMemo(() => {
     if (rangeMode === "day") {
@@ -213,6 +136,19 @@ export default function OverviewPanel({
     }
     return { from: period.from, to: period.to, rangeLabel: period.label };
   }, [rangeMode, selectedDay, period.from, period.to, period.label]);
+
+  function toggleDetail(kind: FlowDetailKind, detailScope: ViewScope) {
+    toggle({ kind, scope: toFlowScope(detailScope), from, to, rangeLabel });
+  }
+
+  function openDetail(kind: FlowDetailKind, detailScope: ViewScope) {
+    toggle({ kind, scope: toFlowScope(detailScope), from, to, rangeLabel });
+    if (detailScope !== scope) setScope(detailScope);
+  }
+
+  function drillActive(kind: FlowDetailKind, detailScope: ViewScope) {
+    return isActive(kind, toFlowScope(detailScope), from, to);
+  }
 
   const branchStats = useMemo(() => {
     return BRANCHES.map((branch) => {
@@ -290,39 +226,15 @@ export default function OverviewPanel({
       ? `${scopeLabel(scope)} · ${formatDate(selectedDay)} — იმ დღის ყველა ტრანზაქცია`
       : `${scopeLabel(scope)} · ${rangeLabel} — პერიოდის ყველა ტრანზაქცია`;
 
-  const detailRows = useMemo(() => {
-    if (!detailDrill) return [];
-    return filterDetailTransactions(transactions, detailDrill.kind, detailDrill.scope, from, to);
-  }, [transactions, detailDrill, from, to]);
-
-  const detailDrillPanel =
-    detailDrill && (
-      <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-semibold text-emerald-200">
-            {detailTitle(detailDrill.kind, detailDrill.scope, rangeLabel)}
-            <span className="ml-2 text-sm font-normal text-zinc-500">({detailRows.length})</span>
-          </h3>
-          <button
-            type="button"
-            className="rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:border-zinc-600"
-            onClick={() => setDetailDrill(null)}
-          >
-            დახურვა
-          </button>
-        </div>
-        {detailRows.length === 0 ? (
-          <p className="text-sm text-zinc-500">ამ პერიოდში ტრანზაქცია არ არის.</p>
-        ) : (
-          <TransactionTable
-            rows={detailRows}
-            showBranch={detailDrill.scope === "company" || detailDrill.scope === KUTAISI_DISTRIB_LABEL}
-            onDelete={onDelete}
-            onUpdatePayment={onUpdatePayment}
-          />
-        )}
-      </div>
-    );
+  const detailDrillPanel = (
+    <FlowDrillPanel
+      drill={drill}
+      transactions={transactions}
+      onClose={close}
+      onDelete={onDelete}
+      onUpdatePayment={onUpdatePayment}
+    />
+  );
 
   return (
     <section className="space-y-6">
@@ -399,33 +311,40 @@ export default function OverviewPanel({
       {scope === "company" && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
+            <ClickableFlowStat
               label="შემოსავალი"
               value={formatMoney(companyFlow.revenue)}
               accent="text-emerald-400"
               large
               onClick={() => toggleDetail("revenue", "company")}
-              active={detailDrill?.kind === "revenue" && detailDrill.scope === "company"}
+              active={drillActive("revenue", "company")}
             />
-            <StatCard label="ხარჯი" value={formatMoney(companyFlow.expenses)} accent="text-red-400" large />
-            <StatCard
+            <ClickableFlowStat
+              label="ხარჯი"
+              value={formatMoney(companyFlow.expenses)}
+              accent="text-red-400"
+              large
+              onClick={() => toggleDetail("expense", "company")}
+              active={drillActive("expense", "company")}
+            />
+            <ClickableFlowStat
               label="მოგება / ზარალი"
               value={formatMoney(companyFlow.net)}
               accent={companyFlow.net >= 0 ? "text-emerald-400" : "text-red-400"}
               large
             />
-            <StatCard label="ტრანზაქციები" value={String(companyFlow.count)} accent="text-zinc-300" large />
+            <ClickableFlowStat label="ტრანზაქციები" value={String(companyFlow.count)} accent="text-zinc-300" large />
           </div>
 
           {companyOpeningBal && (
             <div className="grid gap-3 sm:grid-cols-2">
-              <StatCard
+              <ClickableFlowStat
                 label="💵 ქეში (დღის დასაწყისი)"
                 value={formatMoney(companyOpeningBal.cash)}
                 accent="text-zinc-400"
                 hint={formatDate(dayBefore(selectedDay))}
               />
-              <StatCard
+              <ClickableFlowStat
                 label="🏦 ანგარიში (ბარათი+ანგარიში, დღის დასაწყისი)"
                 value={formatMoney(accountTotal(companyOpeningBal))}
                 accent="text-zinc-400"
@@ -435,14 +354,14 @@ export default function OverviewPanel({
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <StatCard label="💵 ქეში" value={formatMoney(companyBal.cash)} accent="text-emerald-300" hint={balanceHint} />
-            <StatCard
+            <ClickableFlowStat label="💵 ქეში" value={formatMoney(companyBal.cash)} accent="text-emerald-300" hint={balanceHint} />
+            <ClickableFlowStat
               label="🏦 ანგარიში (ბარათი + ანგარიში)"
               value={formatMoney(accountTotal(companyBal))}
               accent="text-violet-400"
               hint={balanceHint}
               onClick={() => toggleDetail("account", "company")}
-              active={detailDrill?.kind === "account" && detailDrill.scope === "company"}
+              active={drillActive("account", "company")}
             />
           </div>
 
@@ -473,7 +392,16 @@ export default function OverviewPanel({
                   >
                     +{formatMoney(b.revenue)}
                   </button>
-                  <p className="text-sm text-red-400">-{formatMoney(b.expenses)}</p>
+                  <button
+                    type="button"
+                    className="block text-sm text-red-400 hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDetail("expense", b.branch);
+                    }}
+                  >
+                    -{formatMoney(b.expenses)}
+                  </button>
                   <p className={`text-sm font-medium ${b.net >= 0 ? "text-emerald-300" : "text-red-300"}`}>
                     ნეტო: {formatMoney(b.net)}
                   </p>
@@ -504,7 +432,16 @@ export default function OverviewPanel({
                 >
                   +{formatMoney(kutaisiDistribStats.revenue)}
                 </button>
-                <p className="text-sm text-red-400">-{formatMoney(kutaisiDistribStats.expenses)}</p>
+                <button
+                  type="button"
+                  className="block text-sm text-red-400 hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDetail("expense", KUTAISI_DISTRIB_LABEL);
+                  }}
+                >
+                  -{formatMoney(kutaisiDistribStats.expenses)}
+                </button>
                 <p
                   className={`text-sm font-medium ${kutaisiDistribStats.net >= 0 ? "text-emerald-300" : "text-red-300"}`}
                 >
@@ -525,29 +462,35 @@ export default function OverviewPanel({
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
           <h3 className="mb-3 text-xl font-bold text-emerald-200">{activeBranch.branch}</h3>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
+            <ClickableFlowStat
               label="შემოსავალი"
               value={formatMoney(activeBranch.revenue)}
               accent="text-emerald-400"
               onClick={() => toggleDetail("revenue", activeBranch.branch)}
-              active={detailDrill?.kind === "revenue" && detailDrill.scope === activeBranch.branch}
+              active={drillActive("revenue", activeBranch.branch)}
             />
-            <StatCard label="ხარჯი" value={formatMoney(activeBranch.expenses)} accent="text-red-400" />
-            <StatCard
+            <ClickableFlowStat
+              label="ხარჯი"
+              value={formatMoney(activeBranch.expenses)}
+              accent="text-red-400"
+              onClick={() => toggleDetail("expense", activeBranch.branch)}
+              active={drillActive("expense", activeBranch.branch)}
+            />
+            <ClickableFlowStat
               label="ნეტო"
               value={formatMoney(activeBranch.net)}
               accent={activeBranch.net >= 0 ? "text-emerald-400" : "text-red-400"}
             />
-            <StatCard label="ჩანაწერები" value={String(activeBranch.count)} />
+            <ClickableFlowStat label="ჩანაწერები" value={String(activeBranch.count)} />
           </div>
           {activeBranch.opening && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <StatCard
+              <ClickableFlowStat
                 label="💵 ქეში (დღის დასაწყისი)"
                 value={formatMoney(activeBranch.opening.cash)}
                 accent="text-zinc-400"
               />
-              <StatCard
+              <ClickableFlowStat
                 label="🏦 ანგარიში (ბარათი+ანგარიში, დღის დასაწყისი)"
                 value={formatMoney(accountTotal(activeBranch.opening))}
                 accent="text-zinc-400"
@@ -555,14 +498,14 @@ export default function OverviewPanel({
             </div>
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <StatCard label="💵 ქეში" value={formatMoney(activeBranch.cash)} accent="text-emerald-300" hint={balanceHint} />
-            <StatCard
+            <ClickableFlowStat label="💵 ქეში" value={formatMoney(activeBranch.cash)} accent="text-emerald-300" hint={balanceHint} />
+            <ClickableFlowStat
               label="🏦 ანგარიში (ბარათი + ანგარიში)"
               value={formatMoney(accountTotal(activeBranch))}
               accent="text-violet-400"
               hint={balanceHint}
               onClick={() => toggleDetail("account", activeBranch.branch)}
-              active={detailDrill?.kind === "account" && detailDrill.scope === activeBranch.branch}
+              active={drillActive("account", activeBranch.branch)}
             />
           </div>
           {detailDrillPanel}
@@ -574,29 +517,35 @@ export default function OverviewPanel({
           <h3 className="mb-3 text-xl font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</h3>
           <p className="mb-3 text-xs text-violet-300/70">ქუთაისი და დისტრიბუცია ერთად</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
+            <ClickableFlowStat
               label="შემოსავალი"
               value={formatMoney(activeGroup.revenue)}
               accent="text-emerald-400"
               onClick={() => toggleDetail("revenue", KUTAISI_DISTRIB_LABEL)}
-              active={detailDrill?.kind === "revenue" && detailDrill.scope === KUTAISI_DISTRIB_LABEL}
+              active={drillActive("revenue", KUTAISI_DISTRIB_LABEL)}
             />
-            <StatCard label="ხარჯი" value={formatMoney(activeGroup.expenses)} accent="text-red-400" />
-            <StatCard
+            <ClickableFlowStat
+              label="ხარჯი"
+              value={formatMoney(activeGroup.expenses)}
+              accent="text-red-400"
+              onClick={() => toggleDetail("expense", KUTAISI_DISTRIB_LABEL)}
+              active={drillActive("expense", KUTAISI_DISTRIB_LABEL)}
+            />
+            <ClickableFlowStat
               label="ნეტო"
               value={formatMoney(activeGroup.net)}
               accent={activeGroup.net >= 0 ? "text-emerald-400" : "text-red-400"}
             />
-            <StatCard label="ჩანაწერები" value={String(activeGroup.count)} />
+            <ClickableFlowStat label="ჩანაწერები" value={String(activeGroup.count)} />
           </div>
           {activeGroup.opening && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <StatCard
+              <ClickableFlowStat
                 label="💵 ქეში (დღის დასაწყისი)"
                 value={formatMoney(activeGroup.opening.cash)}
                 accent="text-zinc-400"
               />
-              <StatCard
+              <ClickableFlowStat
                 label="🏦 ანგარიში (ბარათი+ანგარიში, დღის დასაწყისი)"
                 value={formatMoney(accountTotal(activeGroup.opening))}
                 accent="text-zinc-400"
@@ -604,14 +553,14 @@ export default function OverviewPanel({
             </div>
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <StatCard label="💵 ქეში" value={formatMoney(activeGroup.cash)} accent="text-emerald-300" hint={balanceHint} />
-            <StatCard
+            <ClickableFlowStat label="💵 ქეში" value={formatMoney(activeGroup.cash)} accent="text-emerald-300" hint={balanceHint} />
+            <ClickableFlowStat
               label="🏦 ანგარიში (ბარათი + ანგარიში)"
               value={formatMoney(accountTotal(activeGroup))}
               accent="text-violet-400"
               hint={balanceHint}
               onClick={() => toggleDetail("account", KUTAISI_DISTRIB_LABEL)}
-              active={detailDrill?.kind === "account" && detailDrill.scope === KUTAISI_DISTRIB_LABEL}
+              active={drillActive("account", KUTAISI_DISTRIB_LABEL)}
             />
           </div>
           {detailDrillPanel}

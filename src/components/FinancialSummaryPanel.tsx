@@ -5,6 +5,8 @@ import type { Branch, FinancialSummaryRow } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import { formatMoney, monthStartEnd } from "@/lib/utils";
+import type { FlowBranchScope, FlowDetailKind } from "@/lib/flow-detail";
+import type { FlowDrillState } from "@/components/FlowDrillDown";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -23,9 +25,10 @@ type Mode = "month" | "period" | "months";
 
 type Props = {
   refreshSignal?: number;
+  onDrillToggle?: (state: FlowDrillState) => void;
 };
 
-export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
+export default function FinancialSummaryPanel({ refreshSignal = 0, onDrillToggle }: Props) {
   const [mode, setMode] = useState<Mode>("month");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -138,6 +141,16 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
     return r.month ?? (r.from === r.to ? r.from : `${r.from} — ${r.to}`);
   }
 
+  function openDrill(kind: FlowDetailKind, scope: FlowBranchScope, row: FinancialSummaryRow) {
+    onDrillToggle?.({
+      kind,
+      scope,
+      from: row.from,
+      to: row.to,
+      rangeLabel: periodLabel(row),
+    });
+  }
+
   return (
     <div className="rounded-xl border border-teal-900/40 bg-teal-950/20 p-5">
       <h2 className="mb-1 font-semibold text-teal-200">ფინანსური ანგარიში — თვე / პერიოდი</h2>
@@ -226,10 +239,34 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
                 {rows.map((r) => (
                   <tr key={periodLabel(r)} className="border-b border-zinc-800/50">
                     <td className="py-2 pr-3 font-medium">{periodLabel(r)}</td>
-                    <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(r.revenue)}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {onDrillToggle ? (
+                        <button
+                          type="button"
+                          className="text-emerald-400 hover:underline"
+                          onClick={() => openDrill("revenue", "ყველა", r)}
+                        >
+                          {formatMoney(r.revenue)}
+                        </button>
+                      ) : (
+                        <span className="text-emerald-400">{formatMoney(r.revenue)}</span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(r.founderDeposits)}</td>
                     <td className="py-2 pr-3 text-right text-sky-300/70">{formatMoney(r.otherDeposits)}</td>
-                    <td className="py-2 pr-3 text-right text-red-400">{formatMoney(r.expenses)}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {onDrillToggle ? (
+                        <button
+                          type="button"
+                          className="text-red-400 hover:underline"
+                          onClick={() => openDrill("expense", "ყველა", r)}
+                        >
+                          {formatMoney(r.expenses)}
+                        </button>
+                      ) : (
+                        <span className="text-red-400">{formatMoney(r.expenses)}</span>
+                      )}
+                    </td>
                     <td className={`py-2 pr-3 text-right ${r.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {formatMoney(r.net)}
                     </td>
@@ -260,9 +297,33 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
                   {rows[0].byBranch.map((b) => (
                     <tr key={b.branch} className="border-b border-zinc-800/50">
                       <td className="py-2 pr-3 font-medium">{b.branch}</td>
-                      <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(b.revenue)}</td>
+                      <td className="py-2 pr-3 text-right">
+                        {onDrillToggle ? (
+                          <button
+                            type="button"
+                            className="text-emerald-400 hover:underline"
+                            onClick={() => openDrill("revenue", b.branch as Branch, rows[0])}
+                          >
+                            {formatMoney(b.revenue)}
+                          </button>
+                        ) : (
+                          <span className="text-emerald-400">{formatMoney(b.revenue)}</span>
+                        )}
+                      </td>
                       <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(b.founderDeposits)}</td>
-                      <td className="py-2 pr-3 text-right text-red-400">{formatMoney(b.expenses)}</td>
+                      <td className="py-2 pr-3 text-right">
+                        {onDrillToggle ? (
+                          <button
+                            type="button"
+                            className="text-red-400 hover:underline"
+                            onClick={() => openDrill("expense", b.branch as Branch, rows[0])}
+                          >
+                            {formatMoney(b.expenses)}
+                          </button>
+                        ) : (
+                          <span className="text-red-400">{formatMoney(b.expenses)}</span>
+                        )}
+                      </td>
                       <td className={`py-2 pr-3 text-right ${b.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {formatMoney(b.net)}
                       </td>
@@ -305,7 +366,19 @@ export default function FinancialSummaryPanel({ refreshSignal = 0 }: Props) {
                                   <div className="text-sky-400/80">+{formatMoney(b.founderDeposits)}</div>
                                 )}
                                 {b.expenses > 0 && (
-                                  <div className="text-red-400/80">−{formatMoney(b.expenses)}</div>
+                                  <button
+                                    type="button"
+                                    className="block w-full text-right text-red-400/80 hover:underline"
+                                    onClick={() => onDrillToggle?.({
+                                      kind: "expense",
+                                      scope: br,
+                                      from: r.from,
+                                      to: r.to,
+                                      rangeLabel: periodLabel(r),
+                                    })}
+                                  >
+                                    −{formatMoney(b.expenses)}
+                                  </button>
                                 )}
                               </div>
                             ) : (
