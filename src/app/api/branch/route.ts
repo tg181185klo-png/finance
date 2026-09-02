@@ -12,7 +12,7 @@ import {
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
-import { buildClientSaleMeta } from "@/lib/branch-sales-sync";
+import { buildClientSaleMeta, appendToBranchReport } from "@/lib/branch-sales-sync";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import type {
   Branch,
@@ -45,8 +45,28 @@ type SubmitBody = {
   skipDuplicateCheck?: boolean;
 };
 
+function findDayReport(store: Store, branch: Branch, day: string) {
+  return store.branchReports.find((r) => r.branch === branch && r.date === day);
+}
+
 function reportExists(store: Store, branch: Branch, day: string) {
-  return store.branchReports.some((r) => r.branch === branch && r.date === day);
+  return Boolean(findDayReport(store, branch, day));
+}
+
+function parseClientSales(body: SubmitBody) {
+  const clientSales = (body.clientSales ?? []).filter((c) => {
+    const hasProducts = (c.products?.length ?? 0) > 0;
+    if (!hasProducts) return false;
+    const personType = c.personType ?? "physical";
+    if (personType === "legal") {
+      return Boolean(c.companyName?.trim() && c.companyId?.trim());
+    }
+    return Boolean(c.customerFirstName?.trim() && c.customerLastName?.trim() && c.phone?.trim());
+  });
+  for (const c of clientSales) {
+    if (!c.clientSaleId) c.clientSaleId = uid();
+  }
+  return clientSales;
 }
 
 function buildWageExpenseLine(employee: Employee, branch: Branch): BranchExpenseLine | null {
@@ -77,32 +97,79 @@ async function submitBranchReport(body: SubmitBody) {
 
   const submittedBy = reportingEmployee.name;
   const day = dateOnly(body.date || new Date().toISOString());
+  const existingReport = !body.skipDuplicateCheck ? findDayReport(preview, branch, day) : undefined;
 
-  if (!body.skipDuplicateCheck && reportExists(preview, branch, day)) {
+  if (existingReport && body.zeroReport) {
     return {
-      error: "ამ დღის რეპორტი უკვე გაგზავნილია. ადმინმა შეუძლია წაშლა ან აღდგენა.",
+      error: "ამ დღის რეპორტი უკვე არსებობს. დაამატეთ გაყიდვები ან ხარჯები.",
       status: 400 as const,
     };
   }
 
-  const clientSales = (body.clientSales ?? []).filter((c) => {
-    const hasProducts = (c.products?.length ?? 0) > 0;
-    if (!hasProducts) return false;
-    const personType = c.personType ?? "physical";
-    if (personType === "legal") {
-      return Boolean(c.companyName?.trim() && c.companyId?.trim());
-    }
-    return Boolean(c.customerFirstName?.trim() && c.customerLastName?.trim() && c.phone?.trim());
-  });
-  for (const c of clientSales) {
-    if (!c.clientSaleId) c.clientSaleId = uid();
-  }
+  const clientSales = parseClientSales(body);
   const now = new Date().toISOString();
   const incomes = body.incomes ?? [];
   const legacySales = body.sales ?? [];
-  const expenses: BranchExpenseLine[] = [...(body.expenses ?? [])];
-
   const wageLine = buildWageExpenseLine(reportingEmployee, branch);
+
+  if (existingReport) {
+    const mergeExpenses: BranchExpenseLine[] = [...(body.expenses ?? [])];
+    if (
+      !clientSales.length &&
+      !mergeExpenses.length &&
+      !incomes.length &&
+      !legacySales.length
+    ) {
+      return { error: "დაამატეთ გაყიდვა ან ხარჯი", status: 400 as const };
+    }
+    let mergedReport: BranchDailyReport | null = null;
+    await updateStore((store) => {
+      const employee = (store.employees ?? []).find(
+        (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
+      );
+      if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
+
+      const hasAttendance = (store.attendance ?? []).some(
+        (a) => a.employeeId === reportingEmployee.id && a.date === day
+      );
+      if (!hasAttendance) {
+        addEmployeeAttendance(store, employee, day, "დღის", branch);
+      }
+
+      mergedReport = appendToBranchReport(store, existingReport.id, {
+        clientSales,
+        expenses: mergeExpenses,
+        incomes,
+        legacySales,
+        reportingEmployee,
+        wageLine,
+        now,
+      });
+
+      if (!store.customers) store.customers = [];
+      for (const client of clientSales) {
+        const saleWithDriver: BranchClientSale = {
+          ...client,
+          personType: client.personType ?? "physical",
+          driverEmployeeId: client.driverEmployeeId ?? reportingEmployee.id,
+          driverEmployeeName: client.driverEmployeeName ?? reportingEmployee.name,
+        };
+        upsertCustomer(
+          store,
+          customerFromBranchSale(saleWithDriver, {
+            branch,
+            registeredByEmployeeId: reportingEmployee.id,
+            registeredByEmployeeName: reportingEmployee.name,
+            registeredAt: now,
+          })
+        );
+      }
+    });
+
+    return { ok: true as const, report: mergedReport!, merged: true as const };
+  }
+
+  const expenses: BranchExpenseLine[] = [...(body.expenses ?? [])];
   if (wageLine && !expenses.some((e) => e.category === "ხელფასი" && e.comment.includes(reportingEmployee.name))) {
     expenses.push(wageLine);
   }

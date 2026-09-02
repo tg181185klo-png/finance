@@ -204,7 +204,6 @@ export function buildReportTransactions(
   return txs;
 }
 
-/** წაშლის ძველ ტრანზაქციებს და ახლიდან ქმნის რეპორტიდან — რეპორტები/შემოსავალი/ხარჯი სინქრონში რჩება */
 export function syncReportTransactions(store: Store, reportId: string): BranchDailyReport {
   const report = store.branchReports.find((r) => r.id === reportId);
   if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
@@ -236,6 +235,79 @@ export function syncReportTransactions(store: Store, reportId: string): BranchDa
   }
 
   store.transactions = [...newTxs, ...store.transactions];
+  return report;
+}
+
+export function appendToBranchReport(
+  store: Store,
+  reportId: string,
+  payload: {
+    clientSales: BranchClientSale[];
+    expenses: BranchExpenseLine[];
+    incomes?: BranchIncomeLine[];
+    legacySales?: BranchSaleLine[];
+    reportingEmployee: { id: string; name: string };
+    wageLine: BranchExpenseLine | null;
+    now: string;
+  }
+): BranchDailyReport {
+  const report = store.branchReports.find((r) => r.id === reportId);
+  if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
+
+  ensureClientSaleIds(report);
+
+  for (const c of payload.clientSales) {
+    if (!c.clientSaleId) c.clientSaleId = uid();
+    report.clientSales = [...(report.clientSales ?? []), c];
+  }
+
+  if (payload.incomes?.length) {
+    report.incomes = [...(report.incomes ?? []), ...payload.incomes];
+  }
+  if (payload.legacySales?.length) {
+    report.sales = [...(report.sales ?? []), ...payload.legacySales];
+  }
+
+  const mergedExpenses = [...(report.expenses ?? [])];
+  for (const e of payload.expenses) {
+    const dupWage =
+      e.category === "ხელფასი" &&
+      mergedExpenses.some(
+        (x) => x.category === "ხელფასი" && x.comment.includes(payload.reportingEmployee.name)
+      );
+    if (dupWage) continue;
+    mergedExpenses.push(e);
+  }
+  if (
+    payload.wageLine &&
+    !mergedExpenses.some(
+      (e) => e.category === "ხელფასი" && e.comment.includes(payload.reportingEmployee.name)
+    )
+  ) {
+    mergedExpenses.push(payload.wageLine);
+  }
+  report.expenses = mergedExpenses;
+
+  const wageAmount = payload.wageLine?.amount ?? 0;
+  if (wageAmount > 0) {
+    const worked = report.workedEmployees ?? [];
+    if (!worked.some((w) => w.employeeId === payload.reportingEmployee.id)) {
+      report.workedEmployees = [
+        ...worked,
+        {
+          employeeId: payload.reportingEmployee.id,
+          employeeName: payload.reportingEmployee.name,
+          shift: "დღის",
+          wageAmount,
+        },
+      ];
+    }
+  }
+
+  recalculateReportTotals(report);
+  report.submittedAt = payload.now;
+
+  syncReportTransactions(store, reportId);
   return report;
 }
 

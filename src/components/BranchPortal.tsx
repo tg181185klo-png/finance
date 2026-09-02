@@ -367,11 +367,13 @@ export default function BranchPortal({ token }: { token: string }) {
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-zinc-950 px-4 py-6 text-zinc-100">
       <h1 className="text-2xl font-bold">{branch}</h1>
-      <p className="mb-5 text-sm text-zinc-500">დღის რეპორტი</p>
+      <p className="mb-5 text-sm text-zinc-500">
+        დღის რეპორტი · შეგიძლიათ რამდენჯერაც გინდოთ გაგზავნოთ — ერთი სამუშაო დღე დაფიქსირდება
+      </p>
 
       {ok && (
         <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          ✓ გაგზავნილია! სამუშაო დღე დაფიქსირდა.
+          ✓ გაგზავნილია! ადმინ პანელში მაშინვე გამოჩნდება. იგივე დღეში კიდევ შეგიძლიათ გაგზავნა.
         </div>
       )}
       {err && branch && (

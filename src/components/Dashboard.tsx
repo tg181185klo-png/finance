@@ -62,7 +62,7 @@ import {
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
 import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions } from "@/lib/period-filter";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
-import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
+import { PRODUCTS_REFRESH_MS, STORE_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
 function branchLink(token: string) {
@@ -271,12 +271,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, [loadProducts]);
 
   useEffect(() => {
-    if (tab !== "inventory" && tab !== "branches" && tab !== "employees") return;
+    if (loading) return;
     const id = setInterval(() => {
       loadStore().catch(() => {});
-    }, 30_000);
+    }, STORE_REFRESH_MS);
     return () => clearInterval(id);
-  }, [tab, loadStore]);
+  }, [loading, loadStore]);
 
   const activeStore = store ?? mergeStore({});
   const tx = activeStore.transactions;
