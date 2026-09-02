@@ -5,10 +5,9 @@ import type { Branch, BranchCash, BranchDailyReport, PaymentMethod, Transaction 
 import { BRANCHES, KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
-import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
+import { effectiveTxBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { calcBalancesUpToDate, emptyBranchCash, formatDate, formatMoney } from "@/lib/utils";
-import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 
@@ -38,6 +37,17 @@ function txMatchesScope(t: Transaction, scope: ViewScope) {
     return br === "ქუთაისი" || br === "დისტრიბუცია";
   }
   return effectiveTxBranch(t) === scope;
+}
+
+function scopeToBranches(scope: ViewScope): Branch[] | undefined {
+  if (scope === "company") return undefined;
+  if (scope === KUTAISI_DISTRIB_LABEL) return [...KUTAISI_DISTRIB_BRANCHES];
+  return [scope];
+}
+
+function scopeLabel(scope: ViewScope) {
+  if (scope === "company") return "კომპანია";
+  return scope;
 }
 
 function buildGroupStats(
@@ -118,7 +128,6 @@ type Props = {
   branchReports: BranchDailyReport[];
   branchCash: Record<Branch, BranchCash>;
   period: ResolvedPeriod;
-  branchFilter: Branch | "ყველა";
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
 };
@@ -128,7 +137,6 @@ export default function OverviewPanel({
   branchReports,
   branchCash,
   period,
-  branchFilter,
   onDelete,
   onUpdatePayment,
 }: Props) {
@@ -148,10 +156,7 @@ export default function OverviewPanel({
     return BRANCHES.map((branch) => {
       const flow = periodFlow(transactions, branch, from, to);
       const txs = transactions.filter(
-        (t) =>
-          effectiveTxBranch(t) === branch &&
-          txInPeriod(t.date, from, to) &&
-          !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t))
+        (t) => effectiveTxBranch(t) === branch && txInPeriod(t.date, from, to)
       );
       const closing = calcBalancesUpToDate(transactions, branch, branchCash, to);
       const opening =
@@ -186,11 +191,7 @@ export default function OverviewPanel({
 
   const companyFlow = useMemo(() => {
     const flow = periodFlow(transactions, "ყველა", from, to);
-    const txs = transactions.filter(
-      (t) =>
-        txInPeriod(t.date, from, to) &&
-        !(t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t))
-    );
+    const txs = transactions.filter((t) => txInPeriod(t.date, from, to));
     return { ...flow, count: txs.length };
   }, [transactions, from, to]);
 
@@ -206,14 +207,11 @@ export default function OverviewPanel({
 
   const tableRows = useMemo(() => {
     return transactions
-      .filter((t) => {
-        if (!txInPeriod(t.date, from, to)) return false;
-        if (branchFilter !== "ყველა" && !txMatchesBranchFilter(t, branchFilter)) return false;
-        if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) return false;
-        return txMatchesScope(t, scope);
-      })
+      .filter((t) => txInPeriod(t.date, from, to) && txMatchesScope(t, scope))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, scope, from, to, branchFilter]);
+  }, [transactions, scope, from, to]);
+
+  const activityScopeBranches = useMemo(() => scopeToBranches(scope), [scope]);
 
   const activeBranch =
     scope === "company" || scope === KUTAISI_DISTRIB_LABEL
@@ -223,7 +221,12 @@ export default function OverviewPanel({
   const balanceHint =
     rangeMode === "day"
       ? `${formatDate(to)}-ის ბოლომდე`
-      : `${formatDate(to)}-ის ბოლომდე (პერიოდის ბოლო)`;
+      : `${formatDate(from)} — ${formatDate(to)} პერიოდის ბოლო`;
+
+  const txSectionHint =
+    rangeMode === "day"
+      ? `${scopeLabel(scope)} · ${formatDate(selectedDay)} — იმ დღის ყველა ტრანზაქცია`
+      : `${scopeLabel(scope)} · ${rangeLabel} — პერიოდის ყველა ტრანზაქცია`;
 
   return (
     <section className="space-y-6">
@@ -467,12 +470,13 @@ export default function OverviewPanel({
       )}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h3 className="mb-2 font-semibold">
-          {scope === "company" ? "ტრანზაქციები — კომპანია" : `ტრანზაქციები — ${scope}`}
+        <h3 className="mb-1 font-semibold">
+          ტრანზაქციები — {scopeLabel(scope)}
           <span className="ml-2 text-sm font-normal text-zinc-500">
             ({tableRows.length}) · {rangeLabel}
           </span>
         </h3>
+        <p className="mb-3 text-xs text-zinc-500">{txSectionHint}</p>
         <TransactionTable
           rows={tableRows}
           showBranch={scope === "company" || scope === KUTAISI_DISTRIB_LABEL}
@@ -484,7 +488,7 @@ export default function OverviewPanel({
       <BranchActivityPanel
         branchReports={branchReports}
         period={period}
-        branchFilter={branchFilter}
+        scopeBranches={activityScopeBranches}
         dayFilter={rangeMode === "day" ? selectedDay : undefined}
       />
     </section>

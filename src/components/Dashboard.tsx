@@ -1545,7 +1545,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchReports={branchReports}
           branchCash={activeStore.branchCash}
           period={period}
-          branchFilter={filter}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
         />

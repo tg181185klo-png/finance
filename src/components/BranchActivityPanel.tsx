@@ -11,6 +11,7 @@ type Props = {
   branchReports: BranchDailyReport[];
   period: ResolvedPeriod;
   branchFilter?: Branch | "ყველა";
+  scopeBranches?: Branch[];
   dayFilter?: string;
   limit?: number;
 };
@@ -24,6 +25,7 @@ export default function BranchActivityPanel({
   branchReports,
   period,
   branchFilter = "ყველა",
+  scopeBranches,
   dayFilter,
   limit = 50,
 }: Props) {
@@ -35,7 +37,11 @@ export default function BranchActivityPanel({
     const out: ActivityItem[] = [];
     for (const report of branchReports) {
       if (report.date < from || report.date > to) continue;
-      if (branchFilter !== "ყველა" && report.branch !== branchFilter) continue;
+      if (scopeBranches?.length) {
+        if (!scopeBranches.includes(report.branch)) continue;
+      } else if (branchFilter !== "ყველა" && report.branch !== branchFilter) {
+        continue;
+      }
       const submittedBy = report.submittedBy ?? "—";
 
       for (const sale of report.clientSales ?? []) {
@@ -81,7 +87,7 @@ export default function BranchActivityPanel({
     return out
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, limit);
-  }, [branchReports, from, to, branchFilter, limit]);
+  }, [branchReports, from, to, branchFilter, scopeBranches, limit]);
 
   const byBranch = useMemo(() => {
     const map = new Map<Branch, number>();
