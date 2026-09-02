@@ -10,6 +10,7 @@ import type {
   Expense,
   ExpenseBranch,
   ExpenseCategory,
+  ExpensePaymentMethod,
   Obligation,
   PaymentMethod,
   PaymentStatus,
@@ -36,6 +37,7 @@ import {
   BRANCHES,
   CATEGORIES,
   EXPENSE_BRANCHES,
+  EXPENSE_PAYMENT_METHODS,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   TX_RECURRENCE,
@@ -176,6 +178,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [eAmount, setEAmount] = useState("");
   const [eRecurrence, setERecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [eComment, setEComment] = useState("");
+  const [ePayMethod, setEPayMethod] = useState<ExpensePaymentMethod>("ქეში (ნაღდი)");
   const [eDate, setEDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sDate, setSDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -656,6 +659,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       comment: eComment.trim() || category,
       recurrence: eRecurrence,
       source: "admin",
+      expensePaymentMethod: ePayMethod,
     };
     try {
       const data = await apiTx("POST", { transaction: expense });
@@ -1271,6 +1275,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   </select>
                 </Field>
                 <Field label="თანხა (₾)"><input className={inputCls} type="number" min={0} step={0.01} value={eAmount} onChange={(e) => setEAmount(e.target.value)} required /></Field>
+                <Field label="გადახდის მეთოდი">
+                  <select className={inputCls} value={ePayMethod} onChange={(e) => setEPayMethod(e.target.value as ExpensePaymentMethod)}>
+                    {EXPENSE_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </Field>
                 <Field label="ტიპი (მოგება-ზარალი)">
                   <select className={inputCls} value={eRecurrence} onChange={(e) => setERecurrence(e.target.value as TxRecurrence)}>
                     {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
