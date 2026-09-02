@@ -213,6 +213,8 @@ export interface BranchClientSale {
   paymentMethod: PaymentMethod;
   comment?: string;
   products: BranchSaleLine[];
+  /** როდის გაიგზავნა ეს ხაზი */
+  recordedAt?: string;
 }
 
 export interface BranchIncomeLine {
@@ -225,6 +227,7 @@ export interface BranchExpenseLine {
   amount: number;
   paymentMethod: ExpensePaymentMethod;
   comment: string;
+  recordedAt?: string;
 }
 
 export interface BranchWorkedEmployee {
@@ -232,6 +235,12 @@ export interface BranchWorkedEmployee {
   employeeName: string;
   shift: WorkShift;
   wageAmount: number;
+}
+
+export interface BranchReportSubmission {
+  submittedAt: string;
+  submittedEmployeeId: string;
+  submittedBy: string;
 }
 
 export interface BranchDailyReport {
@@ -245,6 +254,8 @@ export interface BranchDailyReport {
   submittedAt: string;
   submittedBy?: string;
   submittedEmployeeId?: string;
+  /** ყოველი გაგზავნა ცალკე — დუბლიკატის შესამოწმებლად */
+  submissionHistory?: BranchReportSubmission[];
   incomes?: BranchIncomeLine[];
   sales?: BranchSaleLine[];
   clientSales?: BranchClientSale[];

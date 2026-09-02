@@ -11,6 +11,7 @@ import type {
   Product,
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
+import { formatReportDay } from "@/lib/branch-tx-date";
 import { formatMoney, formatDate, uid } from "@/lib/utils";
 
 const inputCls =
@@ -377,7 +378,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
   return (
     <div className="mx-auto min-h-screen max-w-lg bg-zinc-950 px-4 py-6 text-zinc-100">
       <h1 className="text-2xl font-bold">{branch}</h1>
-      <p className="mt-1 text-sm font-medium text-emerald-300">რეპორტის თარიღი: {formatDate(date)}</p>
+      <p className="mt-1 text-sm font-medium text-emerald-300">რეპორტის თარიღი: {formatReportDay(date)}</p>
       <p className="mb-5 text-sm text-zinc-500">
         დღის რეპორტი · თარიღის შეცვლა შეუძლებელია · შეგიძლიათ რამდენჯერაც გინდოთ გაგზავნოთ
       </p>

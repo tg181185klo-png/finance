@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Branch, BranchDailyReport, Employee } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { branchSaleBuyerName } from "@/lib/customers";
+import { formatReportDay, isReportSuspicious, reportSubmissionWarnings } from "@/lib/branch-tx-date";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -317,15 +318,39 @@ export default function BranchesPanel({
           <p className="text-sm text-zinc-500">ამ ფილტრით რეპორტები არ არის</p>
         ) : (
           <div className="space-y-3">
-            {filtered.map((r) => (
-              <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
+            {filtered.map((r) => {
+              const warnings = reportSubmissionWarnings(r);
+              const suspicious = isReportSuspicious(r);
+              return (
+              <div
+                key={r.id}
+                className={`rounded-lg border p-4 text-sm ${
+                  suspicious
+                    ? "border-amber-600/60 bg-amber-950/25"
+                    : "border-zinc-800 bg-zinc-900/50"
+                }`}
+              >
                 <div className="mb-2 flex flex-wrap justify-between gap-2">
                   <span className="font-medium">
-                    {r.branch} · {r.date}
+                    {r.branch} · {formatReportDay(r.date)}
                     {r.submittedBy ? ` · ${r.submittedBy}` : ""}
                   </span>
                   <span className="text-zinc-500">{formatDate(r.submittedAt)}</span>
                 </div>
+                {warnings.length > 0 && (
+                  <p className="mb-2 text-xs font-medium text-amber-300">
+                    ⚠ {warnings.join(" · ")}
+                  </p>
+                )}
+                {(r.submissionHistory?.length ?? 0) > 1 && (
+                  <div className="mb-2 space-y-0.5 text-xs text-amber-200/80">
+                    {r.submissionHistory!.map((h, i) => (
+                      <p key={`${h.submittedAt}-${i}`}>
+                        გაგზავნა {i + 1}: {h.submittedBy} · {formatDate(h.submittedAt)}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <div className="mb-2 flex flex-wrap gap-4 text-xs">
                   <span className="text-emerald-400">+{formatMoney(r.salesTotal)} შემოსავალი</span>
                   <span className="text-red-400">-{formatMoney(r.expensesTotal)} ხარჯი</span>
@@ -393,7 +418,8 @@ export default function BranchesPanel({
                   წაშლა (ხელახლა შეავსონ / აღადგინოთ)
                 </button>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

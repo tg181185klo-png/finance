@@ -1,4 +1,5 @@
 import { branchSaleBuyerName } from "@/lib/customers";
+import { branchTransactionDate } from "@/lib/branch-tx-date";
 import type {
   BranchClientSale,
   BranchDailyReport,
@@ -133,10 +134,11 @@ export function buildReportTransactions(
   submittedBy: string
 ): (Sale | Expense)[] {
   ensureClientSaleIds(report);
-  const txDate = `${report.date}T20:00:00.000Z`;
   const txs: (Sale | Expense)[] = [];
+  const defaultTxDate = branchTransactionDate(report.date, report.submittedAt);
 
   for (const client of report.clientSales ?? []) {
+    const txDate = branchTransactionDate(report.date, client.recordedAt ?? report.submittedAt);
     for (const p of client.products) {
       const sale = buildSaleTx(client, p, report, submittedBy, txDate);
       if (sale) txs.push(sale);
@@ -147,7 +149,7 @@ export function buildReportTransactions(
     txs.push({
       id: uid(),
       type: "sale",
-      date: txDate,
+      date: defaultTxDate,
       branch: report.branch,
       productCode: "—",
       productName: "დღის შემოსავალი",
@@ -168,7 +170,7 @@ export function buildReportTransactions(
       txs.push({
         id: uid(),
         type: "sale",
-        date: txDate,
+        date: defaultTxDate,
         branch: report.branch,
         productCode: s.productCode,
         productName: s.productName,
@@ -186,6 +188,7 @@ export function buildReportTransactions(
   }
 
   for (const e of report.expenses ?? []) {
+    const txDate = branchTransactionDate(report.date, e.recordedAt ?? report.submittedAt);
     txs.push({
       id: uid(),
       type: "expense",
@@ -265,6 +268,7 @@ export function appendToBranchReport(
 
   for (const c of payload.clientSales) {
     if (!c.clientSaleId) c.clientSaleId = uid();
+    c.recordedAt = c.recordedAt ?? payload.now;
     report.clientSales = [...(report.clientSales ?? []), c];
   }
 
@@ -277,7 +281,10 @@ export function appendToBranchReport(
 
   const mergedExpenses = withoutAutoDailyWageExpenses([
     ...(report.expenses ?? []),
-    ...withoutAutoDailyWageExpenses(payload.expenses),
+    ...withoutAutoDailyWageExpenses(payload.expenses).map((e) => ({
+      ...e,
+      recordedAt: e.recordedAt ?? payload.now,
+    })),
   ]);
   report.expenses = mergedExpenses;
 

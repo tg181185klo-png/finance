@@ -13,6 +13,7 @@ import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses } from "@/lib/branch-sales-sync";
+import { branchTransactionDate } from "@/lib/branch-tx-date";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import type {
   Branch,
@@ -20,6 +21,7 @@ import type {
   BranchDailyReport,
   BranchExpenseLine,
   BranchIncomeLine,
+  BranchReportSubmission,
   BranchSaleLine,
   Employee,
   Expense,
@@ -52,6 +54,22 @@ function findDayReport(store: Store, branch: Branch, day: string) {
 
 function reportExists(store: Store, branch: Branch, day: string) {
   return Boolean(findDayReport(store, branch, day));
+}
+
+function recordSubmission(
+  report: BranchDailyReport,
+  employee: { id: string; name: string },
+  at: string
+) {
+  const entry: BranchReportSubmission = {
+    submittedAt: at,
+    submittedEmployeeId: employee.id,
+    submittedBy: employee.name,
+  };
+  report.submissionHistory = [...(report.submissionHistory ?? []), entry];
+  report.submittedAt = at;
+  report.submittedBy = employee.name;
+  report.submittedEmployeeId = employee.id;
 }
 
 function parseClientSales(body: SubmitBody) {
@@ -96,20 +114,41 @@ async function submitBranchReport(body: SubmitBody) {
   }
 
   const day = lockedDay;
+  const now = new Date().toISOString();
+  const clientSales = parseClientSales(body);
+  const incomes = body.incomes ?? [];
+  const legacySales = body.sales ?? [];
   const existingReport = !body.skipDuplicateCheck ? findDayReport(preview, branch, day) : undefined;
 
   if (existingReport && body.zeroReport) {
-    return {
-      error: "ამ დღის რეპორტი უკვე არსებობს. დაამატეთ გაყიდვები ან ხარჯები.",
-      status: 400 as const,
-    };
+    const mergeExpenses = withoutAutoDailyWageExpenses(body.expenses ?? []);
+    const clientSalesEarly = parseClientSales(body);
+    if (
+      !clientSalesEarly.length &&
+      !mergeExpenses.length &&
+      !(body.incomes ?? []).length &&
+      !(body.sales ?? []).length
+    ) {
+      let noopReport: BranchDailyReport | null = null;
+      await updateStore((store) => {
+        const report = store.branchReports.find((r) => r.id === existingReport.id);
+        if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
+        const employee = (store.employees ?? []).find(
+          (item) => item.id === reportingEmployee.id && item.branch === branch && item.active
+        );
+        if (!employee) throw new Error("არჩეული თანამშრომელი ვერ მოიძებნა");
+        const hasAttendance = (store.attendance ?? []).some(
+          (a) => a.employeeId === reportingEmployee.id && a.date === day
+        );
+        if (!hasAttendance) {
+          addEmployeeAttendance(store, employee, day, "დღის", branch);
+        }
+        recordSubmission(report, reportingEmployee, now);
+        noopReport = report;
+      });
+      return { ok: true as const, report: noopReport!, merged: true as const, noop: true as const };
+    }
   }
-
-  const clientSales = parseClientSales(body);
-  const now = new Date().toISOString();
-  const incomes = body.incomes ?? [];
-  const legacySales = body.sales ?? [];
-  const wageAmount = wageForShift(reportingEmployee.dailyWage, "დღის", branch);
 
   if (existingReport) {
     const mergeExpenses = withoutAutoDailyWageExpenses(body.expenses ?? []);
@@ -147,6 +186,9 @@ async function submitBranchReport(body: SubmitBody) {
         },
         now,
       });
+      if (mergedReport) {
+        recordSubmission(mergedReport, reportingEmployee, now);
+      }
 
       if (!store.customers) store.customers = [];
       for (const client of clientSales) {
@@ -172,6 +214,8 @@ async function submitBranchReport(body: SubmitBody) {
 
     return { ok: true as const, report: mergedReport!, merged: true as const };
   }
+
+  const wageAmount = wageForShift(reportingEmployee.dailyWage, "დღის", branch);
 
   const expenses = withoutAutoDailyWageExpenses(body.expenses ?? []);
 
@@ -214,6 +258,13 @@ async function submitBranchReport(body: SubmitBody) {
       ? expenses.map((e) => `${e.category}: ${e.comment} (${e.paymentMethod})`).join("; ")
       : body.expensesNote?.trim() || (body.zeroReport ? "" : "");
 
+  for (const c of clientSales) {
+    c.recordedAt = now;
+  }
+  for (const e of expenses) {
+    e.recordedAt = now;
+  }
+
   const reportId = uid();
   const report: BranchDailyReport = {
     id: reportId,
@@ -226,6 +277,13 @@ async function submitBranchReport(body: SubmitBody) {
     submittedAt: now,
     submittedBy,
     submittedEmployeeId: reportingEmployee.id,
+    submissionHistory: [
+      {
+        submittedAt: now,
+        submittedEmployeeId: reportingEmployee.id,
+        submittedBy,
+      },
+    ],
     incomes,
     sales,
     clientSales,
@@ -243,7 +301,7 @@ async function submitBranchReport(body: SubmitBody) {
   };
 
   const txs: (Sale | Expense)[] = [];
-  const txDate = `${day}T20:00:00.000Z`;
+  const txDate = branchTransactionDate(day, now);
 
   for (const client of clientSales) {
     const buyerName = branchSaleBuyerName(client);
