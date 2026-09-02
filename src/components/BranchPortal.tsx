@@ -399,11 +399,6 @@ export default function BranchPortal({ token }: { token: string }) {
                   </option>
                 ))}
               </select>
-              {selectedEmployee && (
-                <p className="mt-2 text-xs text-teal-400">
-                  დღიური ხელფასი: {formatMoney(selectedEmployee.dailyWage)}
-                </p>
-              )}
             </>
           )}
           <div className="mt-3">
@@ -841,7 +836,7 @@ export default function BranchPortal({ token }: { token: string }) {
           disabled={submitting || employees.length === 0 || !selectedEmployeeId}
           onClick={(e) => submit(e, true)}
         >
-          გაყიდვა არ ყოფილა (ნულოვანი რეპორტი + ხელფასის ხარჯი)
+          გაყიდვა არ ყოფილა (ნულოვანი რეპორტი)
         </button>
       </form>
 
