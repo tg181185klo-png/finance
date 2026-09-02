@@ -3,9 +3,12 @@
 import { useMemo, useState } from "react";
 import type { PaymentMethod, Transaction, TxRecurrence } from "@/lib/types";
 import {
+  accountChannelLabel,
   filterFlowDetailTransactions,
   flowDetailTitle,
   flowDrillShowBranch,
+  isAccountDrillKind,
+  type AccountChannel,
   type FlowBranchScope,
   type FlowDetailKind,
 } from "@/lib/flow-detail";
@@ -18,7 +21,13 @@ export type FlowDrillState = {
   to: string;
   rangeLabel: string;
   recurrence?: TxRecurrence;
+  accountChannel?: AccountChannel;
 };
+
+const channelBtn = (on: boolean) =>
+  `rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+    on ? "bg-violet-700 text-white" : "border border-zinc-700 text-zinc-400 hover:border-zinc-600"
+  }`;
 
 function drillMatches(a: FlowDrillState | null, b: FlowDrillState) {
   if (!a) return false;
@@ -46,7 +55,11 @@ export function useFlowDrill() {
     return drillMatches(drill, { kind, scope, from, to, rangeLabel: "", recurrence });
   }
 
-  return { drill, toggle, close, isActive };
+  function setAccountChannel(channel: AccountChannel) {
+    setDrill((prev) => (prev ? { ...prev, accountChannel: channel } : null));
+  }
+
+  return { drill, toggle, close, isActive, setAccountChannel };
 }
 
 export function ClickableFlowStat({
@@ -108,6 +121,7 @@ type FlowDrillPanelProps = {
   drill: FlowDrillState | null;
   transactions: Transaction[];
   onClose: () => void;
+  onSetAccountChannel?: (channel: AccountChannel) => void;
   onDelete?: (id: string) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   className?: string;
@@ -117,25 +131,32 @@ export function FlowDrillPanel({
   drill,
   transactions,
   onClose,
+  onSetAccountChannel,
   onDelete,
   onUpdatePayment,
   className,
 }: FlowDrillPanelProps) {
   const rows = useMemo(() => {
     if (!drill) return [];
+    if (isAccountDrillKind(drill.kind) && !drill.accountChannel) return [];
     return filterFlowDetailTransactions(transactions, drill.kind, drill.scope, drill.from, drill.to, {
       recurrence: drill.recurrence,
+      accountChannel: drill.accountChannel,
     });
   }, [drill, transactions]);
 
   if (!drill) return null;
 
+  const needsChannel = isAccountDrillKind(drill.kind);
+
   return (
     <div className={`rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-5 ${className ?? ""}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-emerald-200">
-          {flowDetailTitle(drill.kind, drill.scope, drill.rangeLabel)}
-          <span className="ml-2 text-sm font-normal text-zinc-500">({rows.length})</span>
+          {flowDetailTitle(drill.kind, drill.scope, drill.rangeLabel, drill.accountChannel)}
+          {(!needsChannel || drill.accountChannel) && (
+            <span className="ml-2 text-sm font-normal text-zinc-500">({rows.length})</span>
+          )}
         </h3>
         <button
           type="button"
@@ -145,7 +166,26 @@ export function FlowDrillPanel({
           დახურვა
         </button>
       </div>
-      {rows.length === 0 ? (
+
+      {needsChannel && onSetAccountChannel && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-zinc-500">აირჩიეთ:</span>
+          {(["card", "bank"] as const).map((channel) => (
+            <button
+              key={channel}
+              type="button"
+              className={channelBtn(drill.accountChannel === channel)}
+              onClick={() => onSetAccountChannel(channel)}
+            >
+              {accountChannelLabel(channel)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {needsChannel && !drill.accountChannel ? (
+        <p className="text-sm text-zinc-500">აირჩიეთ ბარათი ან გადარიცხვა ტრანზაქციების სანახავად.</p>
+      ) : rows.length === 0 ? (
         <p className="text-sm text-zinc-500">ამ პერიოდში ტრანზაქცია არ არის.</p>
       ) : (
         <TransactionTable

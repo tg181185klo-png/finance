@@ -13,6 +13,7 @@ import {
   KUTAISI_DISTRIB_BRANCHES,
   KUTAISI_DISTRIB_LABEL,
   txMatchesFlowScope,
+  accountTotal,
   type FlowBranchScope,
   type FlowDetailKind,
   type ScopePeriodStats,
@@ -68,6 +69,7 @@ function OverviewBreakdown({
   stats,
   cashBalance,
   cardBalance,
+  bankBalance,
   scope,
   balanceHint,
   compact,
@@ -76,11 +78,15 @@ function OverviewBreakdown({
   stats: ScopePeriodStats;
   cashBalance: number;
   cardBalance: number;
+  bankBalance: number;
   scope: ViewScope;
   balanceHint?: string;
   compact?: boolean;
   drill: BreakdownDrill;
 }) {
+  const accountRevenue = stats.revenueCard + stats.revenueBank;
+  const accountExpense = stats.expenseCard + stats.expenseBank;
+  const accountBalance = accountTotal({ card: cardBalance, bank: bankBalance });
   const cell = (
     kind: FlowDetailKind,
     label: string,
@@ -104,12 +110,11 @@ function OverviewBreakdown({
     <div className={`grid gap-3 ${compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}`}>
       {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400")}
       {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
-      {cell("revenue_card", "შემოსავალი ბარათი", stats.revenueCard, "text-sky-400")}
-      {cell("revenue_bank", "შემოსავალი ანგარიში", stats.revenueBank, "text-violet-400")}
+      {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
       {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
-      {cell("expense_card", "ხარჯი ბარათი", stats.expenseCard, "text-red-300")}
+      {cell("expense_account", "ხარჯი ანგარიში", accountExpense, "text-red-300")}
       {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
-      {cell("balance_card", "ნაშთი ბარათი", cardBalance, "text-sky-400", balanceHint)}
+      {cell("balance_account", "ნაშთი ანგარიში", accountBalance, "text-violet-400", balanceHint)}
       {!compact && (
         <>
           <ClickableFlowStat
@@ -202,7 +207,7 @@ export default function OverviewPanel({
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
   const [selectedDay, setSelectedDay] = useState(today);
-  const { drill, toggle, close, isActive } = useFlowDrill();
+  const { drill, toggle, close, isActive, setAccountChannel } = useFlowDrill();
 
   const { from, to, rangeLabel } = useMemo(() => {
     if (rangeMode === "day") {
@@ -301,6 +306,7 @@ export default function OverviewPanel({
       drill={drill}
       transactions={transactions}
       onClose={close}
+      onSetAccountChannel={setAccountChannel}
       onDelete={readOnly ? undefined : onDelete}
       onUpdatePayment={readOnly ? undefined : onUpdatePayment}
     />
@@ -393,6 +399,7 @@ export default function OverviewPanel({
               stats={companyChannelStats}
               cashBalance={companyBal.cash}
               cardBalance={companyBal.card}
+              bankBalance={companyBal.bank}
               scope="company"
               balanceHint={balanceHint}
               drill={breakdownDrill}
@@ -423,6 +430,7 @@ export default function OverviewPanel({
                     stats={b.channel}
                     cashBalance={b.cash}
                     cardBalance={b.card}
+                    bankBalance={b.bank}
                     scope={b.branch}
                     balanceHint={balanceHint}
                     compact
@@ -445,6 +453,7 @@ export default function OverviewPanel({
                   stats={kutaisiDistribChannelStats}
                   cashBalance={kutaisiDistribStats.cash}
                   cardBalance={kutaisiDistribStats.card}
+                  bankBalance={kutaisiDistribStats.bank}
                   scope={KUTAISI_DISTRIB_LABEL}
                   balanceHint={balanceHint}
                   compact
@@ -465,6 +474,7 @@ export default function OverviewPanel({
             stats={activeBranch.channel}
             cashBalance={activeBranch.cash}
             cardBalance={activeBranch.card}
+            bankBalance={activeBranch.bank}
             scope={activeBranch.branch}
             balanceHint={balanceHint}
             drill={breakdownDrill}
@@ -482,6 +492,7 @@ export default function OverviewPanel({
             stats={kutaisiDistribChannelStats}
             cashBalance={activeGroup.cash}
             cardBalance={activeGroup.card}
+            bankBalance={activeGroup.bank}
             scope={KUTAISI_DISTRIB_LABEL}
             balanceHint={balanceHint}
             drill={breakdownDrill}

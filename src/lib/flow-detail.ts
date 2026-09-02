@@ -7,19 +7,32 @@ import { countsTowardOperatingExpenses, txPaymentMethod, txRecurrence } from "./
 
 export type FlowBranchScope = Branch | "ყველა" | typeof KUTAISI_DISTRIB_LABEL;
 
+export type AccountChannel = "card" | "bank";
+
 export type FlowDetailKind =
   | "revenue"
   | "revenue_cash"
   | "revenue_card"
   | "revenue_bank"
+  | "revenue_account"
   | "expense"
   | "expense_cash"
   | "expense_card"
   | "expense_bank"
+  | "expense_account"
   | "balance_cash"
   | "balance_card"
   | "balance_bank"
+  | "balance_account"
   | "account";
+
+export function accountChannelLabel(channel: AccountChannel) {
+  return channel === "card" ? "ბარათი" : "გადარიცხვა";
+}
+
+export function isAccountDrillKind(kind: FlowDetailKind) {
+  return kind === "revenue_account" || kind === "expense_account" || kind === "balance_account";
+}
 
 export type ScopePeriodStats = {
   revenueTotal: number;
@@ -119,6 +132,8 @@ function matchesChannelKind(t: Transaction, kind: FlowDetailKind): boolean {
       return t.type === "sale" && method === CARD_METHOD;
     case "revenue_bank":
       return t.type === "sale" && method === BANK_METHOD;
+    case "revenue_account":
+      return t.type === "sale" && isNonCashPayment(method);
     case "expense":
       return t.type === "expense" && countsTowardOperatingExpenses(t);
     case "expense_cash":
@@ -127,12 +142,16 @@ function matchesChannelKind(t: Transaction, kind: FlowDetailKind): boolean {
       return t.type === "expense" && method === CARD_METHOD;
     case "expense_bank":
       return t.type === "expense" && method === BANK_METHOD;
+    case "expense_account":
+      return t.type === "expense" && isNonCashPayment(method);
     case "balance_cash":
       return method === CASH_METHOD;
     case "balance_card":
       return method === CARD_METHOD;
     case "balance_bank":
       return method === BANK_METHOD;
+    case "balance_account":
+      return isNonCashPayment(method);
     case "account":
       return isNonCashPayment(method);
     default:
@@ -146,32 +165,56 @@ export function filterFlowDetailTransactions(
   scope: FlowBranchScope,
   from: string,
   to: string,
-  options?: { recurrence?: TxRecurrence }
+  options?: { recurrence?: TxRecurrence; accountChannel?: AccountChannel }
 ): Transaction[] {
+  const resolvedKind =
+    options?.accountChannel && isAccountDrillKind(kind)
+      ? kind === "revenue_account"
+        ? options.accountChannel === "card"
+          ? "revenue_card"
+          : "revenue_bank"
+        : kind === "expense_account"
+          ? options.accountChannel === "card"
+            ? "expense_card"
+            : "expense_bank"
+          : options.accountChannel === "card"
+            ? "balance_card"
+            : "balance_bank"
+      : kind;
+
   return transactions
     .filter((t) => {
       if (!txInPeriod(t.date, from, to)) return false;
       if (!txMatchesFlowScope(t, scope)) return false;
       if (options?.recurrence && txRecurrence(t) !== options.recurrence) return false;
-      return matchesChannelKind(t, kind);
+      return matchesChannelKind(t, resolvedKind);
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export function flowDetailTitle(kind: FlowDetailKind, scope: FlowBranchScope, rangeLabel: string) {
+export function flowDetailTitle(
+  kind: FlowDetailKind,
+  scope: FlowBranchScope,
+  rangeLabel: string,
+  accountChannel?: AccountChannel
+) {
   const scopeName = flowScopeLabel(scope);
+  const channelSuffix = accountChannel ? ` · ${accountChannelLabel(accountChannel)}` : "";
   const titles: Record<FlowDetailKind, string> = {
     revenue: `მთლიანი შემოსავალი — ${scopeName} · ${rangeLabel}`,
     revenue_cash: `შემოსავალი (ქეში) — ${scopeName} · ${rangeLabel}`,
     revenue_card: `შემოსავალი (ბარათი) — ${scopeName} · ${rangeLabel}`,
     revenue_bank: `შემოსავალი (ანგარიში) — ${scopeName} · ${rangeLabel}`,
+    revenue_account: `შემოსავალი (ანგარიში) — ${scopeName} · ${rangeLabel}${channelSuffix}`,
     expense: `ხარჯი (ოპერაციული) — ${scopeName} · ${rangeLabel}`,
     expense_cash: `ხარჯი (ქეში) — ${scopeName} · ${rangeLabel}`,
     expense_card: `ხარჯი (ბარათი) — ${scopeName} · ${rangeLabel}`,
     expense_bank: `ხარჯი (ანგარიში) — ${scopeName} · ${rangeLabel}`,
+    expense_account: `ხარჯი (ანგარიში) — ${scopeName} · ${rangeLabel}${channelSuffix}`,
     balance_cash: `ქეში — მოძრაობა · ${scopeName} · ${rangeLabel}`,
     balance_card: `ბარათი — მოძრაობა · ${scopeName} · ${rangeLabel}`,
     balance_bank: `ანგარიში — მოძრაობა · ${scopeName} · ${rangeLabel}`,
+    balance_account: `ანგარიში — ნაშთის მოძრაობა · ${scopeName} · ${rangeLabel}${channelSuffix}`,
     account: `ანგარიშის ტრანზაქციები (ბარათი + ანგარიში) — ${scopeName} · ${rangeLabel}`,
   };
   return titles[kind];
