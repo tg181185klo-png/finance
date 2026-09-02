@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       migrate?: Transaction[];
       action?: "delete" | "updateRecurrence" | "updatePaymentMethod";
       id?: string;
+      clientSaleId?: string;
       recurrence?: string;
       paymentMethod?: PaymentMethod;
     };
@@ -71,27 +72,39 @@ export async function POST(req: NextRequest) {
 
     if (body.action === "updatePaymentMethod") {
       const paymentMethod = body.paymentMethod as PaymentMethod | undefined;
-      if (!body.id || !paymentMethod) {
-        return NextResponse.json({ error: "id და paymentMethod საჭიროა" }, { status: 400 });
+      if (!paymentMethod) {
+        return NextResponse.json({ error: "paymentMethod საჭიროა" }, { status: 400 });
+      }
+      if (!body.id && !body.clientSaleId) {
+        return NextResponse.json({ error: "id ან clientSaleId საჭიროა" }, { status: 400 });
       }
       const valid: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
       if (!valid.includes(paymentMethod)) {
         return NextResponse.json({ error: "არასწორი გადახდის მეთოდი" }, { status: 400 });
       }
 
+      let updated = 0;
       const store = await updateStore((s) => {
-        const t = s.transactions.find((x) => x.id === body.id);
-        if (!t) throw new Error("ჩანაწერი ვერ მოიძებნა");
-        if (t.type === "sale") {
-          t.paymentMethod = paymentMethod;
-        } else if (t.type === "expense") {
-          t.expensePaymentMethod = paymentMethod;
-        } else {
-          t.depositPaymentMethod = paymentMethod;
+        for (const t of s.transactions) {
+          const match =
+            (body.id && t.id === body.id) ||
+            (body.clientSaleId && t.type === "sale" && t.clientSaleId === body.clientSaleId);
+          if (!match) continue;
+          if (t.type === "sale") {
+            t.paymentMethod = paymentMethod;
+            updated += 1;
+          } else if (t.type === "expense") {
+            t.expensePaymentMethod = paymentMethod;
+            updated += 1;
+          } else {
+            t.depositPaymentMethod = paymentMethod;
+            updated += 1;
+          }
         }
+        if (updated === 0) throw new Error("ჩანაწერი ვერ მოიძებნა");
       });
 
-      return NextResponse.json({ ok: true, transactions: store.transactions });
+      return NextResponse.json({ ok: true, updated, transactions: store.transactions });
     }
 
     let savedTx: Transaction | null = null;

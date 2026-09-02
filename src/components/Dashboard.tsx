@@ -26,7 +26,8 @@ import EmployeesPanel from "@/components/EmployeesPanel";
 import EmployeeBonusPanel from "@/components/EmployeeBonusPanel";
 import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
-import DistribucionPanel from "@/components/DistribucionPanel";
+import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
+import BankAccountPanel from "@/components/BankAccountPanel";
 import {
   BRANCHES,
   CATEGORIES,
@@ -90,7 +91,7 @@ function parseNum(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "distribution" | "inventory" | "employees" | "employee-bonus";
+type Tab = "main" | "overview" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "payments" | "bank" | "inventory" | "employees" | "employee-bonus";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -939,8 +940,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         </button>
         <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
         <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
-        <button type="button" className={tabCls(tab === "distribution")} onClick={() => setTab("distribution")}>
-          დისტრიბუცია
+        <button type="button" className={tabCls(tab === "payments")} onClick={() => setTab("payments")}>
+          გადახდები
+        </button>
+        <button type="button" className={tabCls(tab === "bank")} onClick={() => setTab("bank")}>
+          საბანკო ანგარიში
         </button>
         <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
           ვალდებულებები
@@ -1697,12 +1701,20 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         />
       )}
 
-      {tab === "distribution" && !loading && (
-        <DistribucionPanel
+      {tab === "payments" && !loading && (
+        <BranchesPaymentsHub
           transactions={activeStore.transactions}
           onRefresh={async () => {
             await refresh();
           }}
+        />
+      )}
+
+      {tab === "bank" && !loading && (
+        <BankAccountPanel
+          transactions={tx}
+          branchCash={activeStore.branchCash}
+          onUpdatePayment={updateTxPayment}
         />
       )}
 
