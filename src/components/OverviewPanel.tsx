@@ -82,6 +82,7 @@ function OverviewBreakdown({
   drill: BreakdownDrill;
 }) {
   const isCompanySummary = scope === "company";
+  const sectioned = !compact;
   const accountRevenue = stats.revenueCard + stats.revenueBank;
   const accountExpense = stats.expenseCard + stats.expenseBank;
   const cell = (
@@ -89,7 +90,8 @@ function OverviewBreakdown({
     label: string,
     value: number,
     accent: string,
-    hint?: string
+    hint?: string,
+    large?: boolean
   ) => (
     <ClickableFlowStat
       key={kind}
@@ -97,38 +99,67 @@ function OverviewBreakdown({
       value={formatMoney(value)}
       accent={accent}
       hint={hint}
-      large={!compact && kind === "revenue"}
+      large={large}
       onClick={() => drill.onDrill(kind, scope)}
       active={drill.drillActive(kind, scope)}
     />
   );
 
-  return (
-    <div className={`grid gap-3 ${compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}`}>
-      {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400")}
-      {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
-      {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
-      {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
-      {isCompanySummary && cell("expense_account", "ხარჯი ანგარიში", accountExpense, "text-red-300")}
-      {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
-      {isCompanySummary &&
-        cell("balance_bank", "ნაშთი ჩამური ანგარიში", bankBalance, "text-violet-400", balanceHint)}
-      {!compact && (
-        <>
-          <ClickableFlowStat
-            label="ოპ. ხარჯი (ჯამი)"
-            value={formatMoney(stats.expenseOperating)}
-            accent="text-red-400"
-            onClick={() => drill.onDrill("expense", scope)}
-            active={drill.drillActive("expense", scope)}
-          />
+  if (sectioned) {
+    return (
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+        <div className="min-w-0 flex-1 space-y-4">
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">შემოსავლები</p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400", undefined, true)}
+              {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
+              {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ხარჯები</p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
+              {isCompanySummary && cell("expense_account", "ხარჯი ანგარიში", accountExpense, "text-red-300")}
+              <ClickableFlowStat
+                label="ოპ. ხარჯი (ჯამი)"
+                value={formatMoney(stats.expenseOperating)}
+                accent="text-red-400"
+                onClick={() => drill.onDrill("expense", scope)}
+                active={drill.drillActive("expense", scope)}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ნაშთი</p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
+              {isCompanySummary &&
+                cell("balance_bank", "ნაშთი ჩამური ანგარიში", bankBalance, "text-violet-400", balanceHint)}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 lg:w-52 lg:flex-col lg:justify-center">
           <ClickableFlowStat
             label="მოგება / ზარალი"
             value={formatMoney(stats.net)}
             accent={stats.net >= 0 ? "text-emerald-400" : "text-red-400"}
+            large
+            className="w-full border-emerald-900/40 bg-emerald-950/30 lg:h-full lg:min-h-[8rem]"
           />
-        </>
-      )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400")}
+      {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
+      {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
+      {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
+      {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
     </div>
   );
 }

@@ -27,7 +27,7 @@ export type FlowDetailKind =
   | "account";
 
 export function accountChannelLabel(channel: AccountChannel) {
-  if (channel === "all") return "ყველა";
+  if (channel === "all") return "ანგარიში";
   return channel === "card" ? "ბარათი" : "გადარიცხვა";
 }
 

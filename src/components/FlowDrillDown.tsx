@@ -48,10 +48,9 @@ export function useFlowDrill() {
   }
 
   function toggle(next: FlowDrillState) {
-    const withDefaultChannel =
-      isAccountDrillKind(next.kind) && next.scope === "ყველა" && next.kind === "expense_account"
-        ? { ...next, accountChannel: next.accountChannel ?? "all" }
-        : next;
+    const withDefaultChannel = isAccountDrillKind(next.kind)
+      ? { ...next, accountChannel: next.accountChannel ?? "all" }
+      : next;
     setDrill((prev) => (drillMatches(prev, withDefaultChannel) ? null : withDefaultChannel));
   }
 
@@ -152,11 +151,7 @@ export function FlowDrillPanel({
   if (!drill) return null;
 
   const needsChannel = isAccountDrillKind(drill.kind);
-  const showAllChannel =
-    needsChannel && drill.kind === "expense_account" && drill.scope === "ყველა";
-  const channelOptions: AccountChannel[] = showAllChannel
-    ? ["all", "card", "bank"]
-    : ["card", "bank"];
+  const channelOptions: AccountChannel[] = ["all", "card", "bank"];
 
   return (
     <div className={`rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-5 ${className ?? ""}`}>
@@ -193,7 +188,7 @@ export function FlowDrillPanel({
       )}
 
       {needsChannel && !drill.accountChannel ? (
-        <p className="text-sm text-zinc-500">აირჩიეთ ბარათი ან გადარიცხვა ტრანზაქციების სანახავად.</p>
+        <p className="text-sm text-zinc-500">აირჩიეთ ანგარიში, ბარათი ან გადარიცხვა ტრანზაქციების სანახავად.</p>
       ) : rows.length === 0 ? (
         <p className="text-sm text-zinc-500">ამ პერიოდში ტრანზაქცია არ არის.</p>
       ) : (
