@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Branch, Employee, PaymentMethod, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
+import type { Branch, Customer, Employee, PaymentMethod, PeriodReport, Transaction, TxRecurrence } from "@/lib/types";
 import type { ReportSnapshotMeta } from "@/lib/report-snapshots";
 import { BRANCHES, TX_RECURRENCE, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { REPORT_HISTORY_MONTHS } from "@/lib/report-config";
@@ -9,6 +9,7 @@ import ImportSalesPanel from "@/components/ImportSalesPanel";
 import ImportExpensesPanel from "@/components/ImportExpensesPanel";
 import FinancialSummaryPanel from "@/components/FinancialSummaryPanel";
 import ReportsExportHub from "@/components/ReportsExportHub";
+import ClientPurchasesReportPanel from "@/components/ClientPurchasesReportPanel";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import type { FlowBranchScope, FlowDetailKind } from "@/lib/flow-detail";
 import type { ResolvedPeriod } from "@/lib/period-filter";
@@ -136,6 +137,7 @@ type Props = {
   employees: Employee[];
   period: ResolvedPeriod;
   transactions: Transaction[];
+  customers: Customer[];
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onTransactionsUpdate: () => void | Promise<void>;
@@ -145,6 +147,7 @@ export default function ReportsPanel({
   employees,
   period,
   transactions,
+  customers,
   onDelete,
   onUpdatePayment,
   onTransactionsUpdate,
@@ -383,6 +386,12 @@ export default function ReportsPanel({
         onViewSnapshot={(id) => void viewSnapshot(id)}
         onDeleteSnapshot={(id) => void deleteSnapshot(id)}
         onRefreshSnapshots={loadSnapshots}
+      />
+
+      <ClientPurchasesReportPanel
+        transactions={transactions}
+        customers={customers}
+        period={period}
       />
 
       <ImportSalesPanel employees={employees} onImported={handleImportComplete} />

@@ -1804,6 +1804,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           employees={activeStore.employees ?? []}
           period={period}
           transactions={operationalTx}
+          customers={activeStore.customers ?? []}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
           onTransactionsUpdate={async () => {
