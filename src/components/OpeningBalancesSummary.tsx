@@ -1,7 +1,7 @@
 "use client";
 
 import type { Branch, BranchCash, Transaction } from "@/lib/types";
-import { BRANCHES } from "@/lib/dashboard-data";
+import { KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "@/lib/constants";
 import { OPENING_BALANCE_DATE, buildBranchBalanceRows, sumOpening } from "@/lib/opening-balances";
 import { calcBalances, emptyBranchCash, formatMoney } from "@/lib/utils";
 
@@ -9,7 +9,7 @@ type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
   compact?: boolean;
-  /** ჩაწერა გვერდი: ბარათი + ანგარიში ერთ ხაზად */
+  /** ჩაწერა გვერდი: ბარათი + ანგარიში ერთ ხაზად (მხოლოდ კომპანიის ჯამში) */
   mergeCardBank?: boolean;
   highlightBranch?: Branch;
 };
@@ -36,48 +36,43 @@ export default function OpeningBalancesSummary({
   if (compact) {
     const shown = highlightBranch ? rows.filter((r) => r.branch === highlightBranch) : rows;
     const companyBal = calcBalances(transactions, "ყველა", branchCash);
-    const accountLabel = mergeCardBank ? "ანგარიში" : "ბარათი";
-    const accountOf = (c: { card: number; bank: number }) =>
-      mergeCardBank ? c.card + c.bank : c.card;
+    const companyAccount = mergeCardBank
+      ? companyBal.card + companyBal.bank
+      : companyBal.bank;
+    const kutaisiDistribCash = KUTAISI_DISTRIB_BRANCHES.reduce((sum, br) => {
+      const row = rows.find((r) => r.branch === br);
+      return sum + (row?.current.cash ?? 0);
+    }, 0);
 
     return (
       <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/15 p-4">
         <p className="mb-2 text-xs text-emerald-300/80">მიმდინარე ნაშთები</p>
-        {mergeCardBank && (
-          <p className="mb-2 text-[10px] text-zinc-500">ბარათით გადახდილი თანხაც ანგარიშზე ირიცხება</p>
-        )}
-        <div className={`grid gap-2 ${shown.length === 1 ? "grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-4"}`}>
+        <div
+          className={`grid gap-2 ${
+            shown.length === 1 ? "grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+          }`}
+        >
           {shown.map((r) => (
             <div key={r.branch} className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs">
               <p className="mb-1 font-semibold text-zinc-200">{r.branch}</p>
               <p className="text-emerald-400">ქეში: {formatMoney(r.current.cash)}</p>
-              {mergeCardBank ? (
-                <p className="text-violet-400">
-                  {accountLabel}: {formatMoney(accountOf(r.current))}
-                </p>
-              ) : (
-                <>
-                  <p className="text-sky-400">ბარათი: {formatMoney(r.current.card)}</p>
-                  <p className="text-violet-400">ანგარიში: {formatMoney(r.current.bank)}</p>
-                </>
-              )}
             </div>
           ))}
+          {!highlightBranch && (
+            <div className="rounded-lg border border-violet-900/50 bg-violet-950/20 px-3 py-2 text-xs">
+              <p className="mb-1 font-semibold text-violet-200">{KUTAISI_DISTRIB_LABEL}</p>
+              <p className="text-emerald-400">ქეში: {formatMoney(kutaisiDistribCash)}</p>
+            </div>
+          )}
         </div>
         {!highlightBranch && (
           <div className="mt-3 rounded-lg border border-emerald-900/40 bg-emerald-950/30 px-3 py-2 text-xs">
             <p className="mb-1 font-semibold text-emerald-300">კომპანია (ჯამი)</p>
-            <p className="text-emerald-400">ქეში: {formatMoney(companyBal.cash)}</p>
-            {mergeCardBank ? (
-              <p className="text-violet-400">
-                {accountLabel}: {formatMoney(accountOf(companyBal))}
-              </p>
-            ) : (
-              <>
-                <p className="text-sky-400">ბარათი: {formatMoney(companyBal.card)}</p>
-                <p className="text-violet-400">ანგარიში: {formatMoney(companyBal.bank)}</p>
-              </>
+            {mergeCardBank && (
+              <p className="mb-1 text-[10px] text-zinc-500">ბარათით გადახდილი თანხაც ანგარიშზე ირიცხება</p>
             )}
+            <p className="text-emerald-400">ქეში: {formatMoney(companyBal.cash)}</p>
+            <p className="text-violet-400">ანგარიში: {formatMoney(companyAccount)}</p>
           </div>
         )}
       </div>
