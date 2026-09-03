@@ -32,6 +32,7 @@ import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
+import ThemeToggle from "@/components/ThemeToggle";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import {
@@ -1005,6 +1006,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             </>
           )}
           <span className="hidden text-xs text-zinc-500 sm:inline">{period.label}</span>
+          <ThemeToggle />
           {onLogout && (
             <button
               type="button"

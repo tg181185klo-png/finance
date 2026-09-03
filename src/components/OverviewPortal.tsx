@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Branch, BranchCash, BranchDailyReport, Transaction } from "@/lib/types";
 import OverviewPanel from "@/components/OverviewPanel";
+import ThemeToggle from "@/components/ThemeToggle";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { clampPeriodFrom, resolvePeriod } from "@/lib/period-filter";
 import { currentMonth, monthStartEnd } from "@/lib/utils";
@@ -73,10 +74,15 @@ export default function OverviewPortal({ token }: Props) {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-7xl px-4 py-6">
         <header className="mb-6 border-b border-zinc-800 pb-4">
-          <h1 className="text-2xl font-bold text-emerald-400">მიმოხილვა — საჯარო რეპორტი</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            მხოლოდ საინფორმაციო · მონაცემები {OPERATIONAL_DATA_FROM}-დან · ცვლილება შეუძლებელია
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-400">მიმოხილვა — საჯარო რეპორტი</h1>
+              <p className="mt-1 text-sm text-zinc-500">
+                მხოლოდ საინფორმაციო · მონაცემები {OPERATIONAL_DATA_FROM}-დან · ცვლილება შეუძლებელია
+              </p>
+            </div>
+            <ThemeToggle />
+          </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <div>
               <p className="mb-1 text-xs text-zinc-500">თვე</p>

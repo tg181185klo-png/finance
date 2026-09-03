@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const inputCls =
   "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none";
 const btnCls =
-  "w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
+  "w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40";
 
 type Props = {
   onSuccess: () => void;
@@ -39,11 +40,14 @@ export default function LoginScreen({ onSuccess }: Props) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <form
         onSubmit={submit}
         className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl"
       >
-        <h1 className="mb-1 text-xl font-semibold text-white">ფინანსური Dashboard</h1>
+        <h1 className="mb-1 text-xl font-semibold text-zinc-100">ფინანსური Dashboard</h1>
         <p className="mb-6 text-sm text-zinc-500">შესვლა საჭიროა გასაგრძელებლად</p>
 
         <label className="mb-1 block text-xs text-zinc-400">მომხმარებელი</label>
