@@ -810,6 +810,38 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
+  async function updateTxDriver(
+    id: string,
+    driverEmployeeId: string,
+    driverEmployeeName: string
+  ): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateDriver", id, driverEmployeeId, driverEmployeeName }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: d.transactions ?? prev.transactions,
+              branchReports: d.branchReports ?? prev.branchReports,
+            }
+          : prev
+      );
+      setSaveMsg("მომზიდავი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   async function toggleBankLedgerReview(id: string, reviewed: boolean): Promise<boolean> {
     try {
       setError("");
@@ -1118,8 +1150,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             drill={mainDrill}
             transactions={operationalTx}
             onClose={closeMainDrill}
+            employees={activeStore.employees ?? []}
+            bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
             onDelete={deleteTx}
             onUpdatePayment={updateTxPayment}
+            onUpdateDriver={updateTxDriver}
+            onToggleReview={toggleBankLedgerReview}
             className="mb-6"
           />
 
@@ -1349,8 +1385,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <TransactionTable
               rows={mainTabRows}
               showBranch={filter === "ყველა"}
+              employees={activeStore.employees ?? []}
+              bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
               onDelete={deleteTx}
               onUpdatePayment={updateTxPayment}
+              onUpdateDriver={updateTxDriver}
+              onToggleReview={toggleBankLedgerReview}
             />
           </section>
 
@@ -1598,8 +1638,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchReports={branchReports}
           branchCash={activeStore.branchCash}
           period={period}
+          employees={activeStore.employees ?? []}
+          bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
+          onUpdateDriver={updateTxDriver}
+          onToggleReview={toggleBankLedgerReview}
         />
       )}
 
@@ -1607,8 +1651,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <BalancesPanel
           transactions={operationalTx}
           branchCash={activeStore.branchCash}
+          employees={activeStore.employees ?? []}
+          bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
+          onUpdateDriver={updateTxDriver}
+          onToggleReview={toggleBankLedgerReview}
         />
       )}
 
@@ -1805,8 +1853,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           period={period}
           transactions={operationalTx}
           customers={activeStore.customers ?? []}
+          bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
+          onUpdateDriver={updateTxDriver}
+          onToggleReview={toggleBankLedgerReview}
           onTransactionsUpdate={async () => {
             await loadStore();
           }}

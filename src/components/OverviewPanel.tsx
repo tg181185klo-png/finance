@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, BranchDailyReport, PaymentMethod, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, BranchDailyReport, Employee, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
@@ -208,8 +208,12 @@ type Props = {
   branchCash: Record<Branch, BranchCash>;
   period: ResolvedPeriod;
   readOnly?: boolean;
+  employees?: Employee[];
+  bankLedgerReviewed?: Record<string, string>;
   onDelete?: (id: string) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
+  onToggleReview?: (id: string, reviewed: boolean) => Promise<boolean>;
 };
 
 export default function OverviewPanel({
@@ -218,8 +222,12 @@ export default function OverviewPanel({
   branchCash,
   period,
   readOnly = false,
+  employees,
+  bankLedgerReviewed,
   onDelete,
   onUpdatePayment,
+  onUpdateDriver,
+  onToggleReview,
 }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [scope, setScope] = useState<ViewScope>("company");
@@ -325,8 +333,12 @@ export default function OverviewPanel({
       transactions={transactions}
       onClose={close}
       onSetAccountChannel={setAccountChannel}
+      employees={readOnly ? undefined : employees}
+      bankLedgerReviewed={bankLedgerReviewed}
       onDelete={readOnly ? undefined : onDelete}
       onUpdatePayment={readOnly ? undefined : onUpdatePayment}
+      onUpdateDriver={readOnly ? undefined : onUpdateDriver}
+      onToggleReview={readOnly ? undefined : onToggleReview}
     />
   );
 
@@ -526,8 +538,12 @@ export default function OverviewPanel({
         <TransactionTable
           rows={tableRows}
           showBranch={scope === "company" || scope === KUTAISI_DISTRIB_LABEL}
+          employees={readOnly ? undefined : employees}
+          bankLedgerReviewed={bankLedgerReviewed}
           onDelete={readOnly ? undefined : onDelete}
           onUpdatePayment={readOnly ? undefined : onUpdatePayment}
+          onUpdateDriver={readOnly ? undefined : onUpdateDriver}
+          onToggleReview={readOnly ? undefined : onToggleReview}
         />
       </div>
 

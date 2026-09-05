@@ -138,8 +138,11 @@ type Props = {
   period: ResolvedPeriod;
   transactions: Transaction[];
   customers: Customer[];
+  bankLedgerReviewed?: Record<string, string>;
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
+  onToggleReview?: (id: string, reviewed: boolean) => Promise<boolean>;
   onTransactionsUpdate: () => void | Promise<void>;
 };
 
@@ -148,8 +151,11 @@ export default function ReportsPanel({
   period,
   transactions,
   customers,
+  bankLedgerReviewed,
   onDelete,
   onUpdatePayment,
+  onUpdateDriver,
+  onToggleReview,
   onTransactionsUpdate,
 }: Props) {
   const { drill, toggle, close, isActive } = useFlowDrill();
@@ -407,8 +413,12 @@ export default function ReportsPanel({
         drill={drill}
         transactions={transactions}
         onClose={close}
+        employees={employees}
+        bankLedgerReviewed={bankLedgerReviewed}
         onDelete={onDelete}
         onUpdatePayment={onUpdatePayment}
+        onUpdateDriver={onUpdateDriver}
+        onToggleReview={onToggleReview}
       />
 
       {snapshots.length > 0 && (

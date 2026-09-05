@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, Employee, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { effectiveDepositBranch, effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { calcBalances, currentMonth, emptyBranchCash, formatMoney, monthStartEnd, operatingExpenseAmount } from "@/lib/utils";
@@ -64,11 +64,24 @@ function companyFlow(
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  employees?: Employee[];
+  bankLedgerReviewed?: Record<string, string>;
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
+  onToggleReview?: (id: string, reviewed: boolean) => Promise<boolean>;
 };
 
-export default function BalancesPanel({ transactions, branchCash, onDelete, onUpdatePayment }: Props) {
+export default function BalancesPanel({
+  transactions,
+  branchCash,
+  employees,
+  bankLedgerReviewed,
+  onDelete,
+  onUpdatePayment,
+  onUpdateDriver,
+  onToggleReview,
+}: Props) {
   const [period, setPeriod] = useState<Period>("month");
   const range = periodRange(period);
   const { drill, toggle, close, isActive } = useFlowDrill();
@@ -255,8 +268,12 @@ export default function BalancesPanel({ transactions, branchCash, onDelete, onUp
         drill={drill}
         transactions={transactions}
         onClose={close}
+        employees={employees}
+        bankLedgerReviewed={bankLedgerReviewed}
         onDelete={onDelete}
         onUpdatePayment={onUpdatePayment}
+        onUpdateDriver={onUpdateDriver}
+        onToggleReview={onToggleReview}
       />
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">

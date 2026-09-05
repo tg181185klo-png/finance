@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { PaymentMethod, Transaction, TxRecurrence } from "@/lib/types";
+import type { PaymentMethod, Transaction, TxRecurrence, Employee } from "@/lib/types";
 import {
   accountChannelLabel,
   filterFlowDetailTransactions,
@@ -124,9 +124,13 @@ type FlowDrillPanelProps = {
   drill: FlowDrillState | null;
   transactions: Transaction[];
   onClose: () => void;
+  employees?: Employee[];
+  bankLedgerReviewed?: Record<string, string>;
   onSetAccountChannel?: (channel: AccountChannel) => void;
   onDelete?: (id: string) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
+  onToggleReview?: (id: string, reviewed: boolean) => Promise<boolean>;
   className?: string;
 };
 
@@ -134,9 +138,13 @@ export function FlowDrillPanel({
   drill,
   transactions,
   onClose,
+  employees,
+  bankLedgerReviewed,
   onSetAccountChannel,
   onDelete,
   onUpdatePayment,
+  onUpdateDriver,
+  onToggleReview,
   className,
 }: FlowDrillPanelProps) {
   const rows = useMemo(() => {
@@ -195,8 +203,12 @@ export function FlowDrillPanel({
         <TransactionTable
           rows={rows}
           showBranch={flowDrillShowBranch(drill.scope)}
+          employees={employees}
+          bankLedgerReviewed={bankLedgerReviewed}
           onDelete={onDelete}
           onUpdatePayment={onUpdatePayment}
+          onUpdateDriver={onUpdateDriver}
+          onToggleReview={onToggleReview}
         />
       )}
     </div>

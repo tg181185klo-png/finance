@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
+import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
@@ -34,12 +35,19 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       transaction?: Transaction;
       migrate?: Transaction[];
-      action?: "delete" | "updateRecurrence" | "updatePaymentMethod" | "toggleBankLedgerReview";
+      action?:
+        | "delete"
+        | "updateRecurrence"
+        | "updatePaymentMethod"
+        | "toggleBankLedgerReview"
+        | "updateDriver";
       id?: string;
       clientSaleId?: string;
       recurrence?: string;
       paymentMethod?: PaymentMethod;
       reviewed?: boolean;
+      driverEmployeeId?: string;
+      driverEmployeeName?: string;
     };
 
     if (body.action === "delete") {
@@ -123,6 +131,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         bankLedgerReviewed: store.bankLedgerReviewed ?? {},
+      });
+    }
+
+    if (body.action === "updateDriver") {
+      if (!body.id) {
+        return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
+      }
+      const driverEmployeeId = body.driverEmployeeId?.trim() ?? "";
+      const driverEmployeeName = body.driverEmployeeName?.trim() ?? "";
+      if (!driverEmployeeId || !driverEmployeeName) {
+        return NextResponse.json({ error: "მომზიდავი თანამშრომელი საჭიროა" }, { status: 400 });
+      }
+
+      const store = await updateStore((s) => {
+        const sale = s.transactions.find((t) => t.id === body.id && t.type === "sale");
+        if (!sale || sale.type !== "sale") throw new Error("გაყიდვა ვერ მოიძებნა");
+
+        if (sale.reportId && sale.clientSaleId) {
+          try {
+            updateClientSaleDriverInStore(
+              s,
+              sale.reportId,
+              sale.clientSaleId,
+              driverEmployeeId,
+              driverEmployeeName
+            );
+            return;
+          } catch {
+            /* fall through — update txs directly */
+          }
+        }
+
+        const groupId = sale.clientSaleId;
+        for (const t of s.transactions) {
+          if (t.type !== "sale") continue;
+          const match = groupId ? t.clientSaleId === groupId : t.id === sale.id;
+          if (match) t.employeeName = driverEmployeeName;
+        }
+      });
+
+      return NextResponse.json({
+        ok: true,
+        transactions: store.transactions,
+        branchReports: store.branchReports,
       });
     }
 
