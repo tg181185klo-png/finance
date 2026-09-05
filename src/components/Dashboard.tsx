@@ -193,6 +193,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
   const [obComment, setObComment] = useState("");
   const [obRecurring, setObRecurring] = useState(true);
+  const [obEmployeeId, setObEmployeeId] = useState("");
 
   // Obligation payment
   const [obPayInputs, setObPayInputs] = useState<Record<string, string>>({});
@@ -426,6 +427,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     () => obligationSummary(activeStore.obligations, obMonth, filter),
     [activeStore.obligations, obMonth, filter]
   );
+
+  const salaryEmployees = useMemo(() => {
+    const list = (activeStore.employees ?? []).filter((e) => e.active !== false);
+    const filtered =
+      obBranch === "ყველა" ? list : list.filter((e) => e.branch === obBranch);
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name, "ka"));
+  }, [activeStore.employees, obBranch]);
 
   const recurringList = activeStore.recurringObligations;
 
@@ -939,9 +947,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setObName("");
       setObAmount("");
       setObComment("");
+      setObEmployeeId("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
     }
+  }
+
+  function selectSalaryEmployee(employeeId: string) {
+    setObEmployeeId(employeeId);
+    const emp = (activeStore.employees ?? []).find((e) => e.id === employeeId);
+    if (!emp) {
+      if (!employeeId) setObName("");
+      return;
+    }
+    setObName(`${emp.name} — ხელფასი`);
+    setObBranch(emp.branch);
+    setObCategory("ხელფასი");
   }
 
   function deleteRecurring(recurringId: string) {
@@ -1709,17 +1730,89 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           <form onSubmit={addObligation} className="rounded-xl border border-violet-900/50 bg-violet-950/10 p-5">
             <h2 className="mb-4 text-lg font-semibold text-violet-300">ახალი ვალდებულება</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="დასახელება"><input className={inputCls} value={obName} onChange={(e) => setObName(e.target.value)} placeholder="მაგ: გიორგი ხელფასი" required /></Field>
-              <Field label="თანხა"><input className={inputCls} type="number" min={0} step={0.01} value={obAmount} onChange={(e) => setObAmount(e.target.value)} required /></Field>
-              <Field label="ფილიალი">
-                <select className={inputCls} value={obBranch} onChange={(e) => setObBranch(e.target.value as ExpenseBranch | "ყველა")}>
-                  <option value="ყველა">ყველა</option>
-                  {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+              <Field label="კატეგორია">
+                <select
+                  className={inputCls}
+                  value={obCategory}
+                  onChange={(e) => {
+                    const next = e.target.value as ExpenseCategory;
+                    setObCategory(next);
+                    if (next !== "ხელფასი") setObEmployeeId("");
+                  }}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </Field>
-              <Field label="კატეგორია">
-                <select className={inputCls} value={obCategory} onChange={(e) => setObCategory(e.target.value as ExpenseCategory)}>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {obCategory === "ხელფასი" ? (
+                <Field label="თანამშრომელი">
+                  <select
+                    className={inputCls}
+                    value={obEmployeeId}
+                    onChange={(e) => selectSalaryEmployee(e.target.value)}
+                    required
+                  >
+                    <option value="">— აირჩიეთ სახელი და გვარი —</option>
+                    {salaryEmployees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name}
+                        {obBranch === "ყველა" ? ` · ${emp.branch}` : ""}
+                        {emp.dailyWage > 0 ? ` · ${emp.dailyWage}₾/დღე` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="დასახელება">
+                  <input
+                    className={inputCls}
+                    value={obName}
+                    onChange={(e) => setObName(e.target.value)}
+                    placeholder="მაგ: იჯარა, კომუნალური..."
+                    required
+                  />
+                </Field>
+              )}
+              {obCategory === "ხელფასი" && (
+                <Field label="დასახელება">
+                  <input
+                    className={inputCls}
+                    value={obName}
+                    onChange={(e) => setObName(e.target.value)}
+                    placeholder="ავტომატურად: სახელი — ხელფასი"
+                    required
+                  />
+                </Field>
+              )}
+              <Field label="თანხა">
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={obAmount}
+                  onChange={(e) => setObAmount(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="ფილიალი">
+                <select
+                  className={inputCls}
+                  value={obBranch}
+                  onChange={(e) => {
+                    setObBranch(e.target.value as ExpenseBranch | "ყველა");
+                    setObEmployeeId("");
+                  }}
+                >
+                  <option value="ყველა">ყველა</option>
+                  {EXPENSE_BRANCHES.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
                 </select>
               </Field>
               <div className="sm:col-span-2 lg:col-span-4">
@@ -1733,11 +1826,18 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 </Field>
               </div>
             </div>
+            {obCategory === "ხელფასი" && salaryEmployees.length === 0 && (
+              <p className="mt-2 text-xs text-amber-400">
+                ამ ფილიალში აქტიური თანამშრომელი არ არის — დაამატეთ ტაბში „თანამშრომლები“.
+              </p>
+            )}
             <label className="mt-3 flex items-center gap-2 text-sm text-violet-200">
               <input type="checkbox" checked={obRecurring} onChange={(e) => setObRecurring(e.target.checked)} />
               ყოველთვიური ფიქსირებული ხარჯი (ყოველ თვეში ავტომატურად გამოჩნდება)
             </label>
-            <button type="submit" className={`${btnCls} mt-4`}>დამატება და შენახვა</button>
+            <button type="submit" className={`${btnCls} mt-4`}>
+              დამატება და შენახვა
+            </button>
           </form>
 
           {recurringList.length > 0 && (
