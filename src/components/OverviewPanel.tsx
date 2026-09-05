@@ -233,6 +233,8 @@ export default function OverviewPanel({
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
   const [selectedDay, setSelectedDay] = useState(today);
+  const [companyOpen, setCompanyOpen] = useState(true);
+  const [objectsOpen, setObjectsOpen] = useState(true);
   const { drill, toggle, close, isActive, setAccountChannel } = useFlowDrill();
 
   const { from, to, rangeLabel } = useMemo(() => {
@@ -424,70 +426,94 @@ export default function OverviewPanel({
       {scope === "company" && (
         <>
           <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
-            <h3 className="mb-3 text-lg font-semibold text-emerald-200">კომპანია (ჯამი) · {rangeLabel}</h3>
-            <OverviewBreakdown
-              stats={companyChannelStats}
-              cashBalance={companyBal.cash}
-              bankBalance={companyBal.bank}
-              scope="company"
-              balanceHint={balanceHint}
-              drill={breakdownDrill}
-            />
+            <button
+              type="button"
+              className="mb-0 flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setCompanyOpen((v) => !v)}
+              aria-expanded={companyOpen}
+            >
+              <h3 className="text-lg font-semibold text-emerald-200">
+                კომპანია (ჯამი) · {rangeLabel}
+              </h3>
+              <span className="shrink-0 text-sm text-emerald-400/80">{companyOpen ? "▲" : "▼"}</span>
+            </button>
+            {companyOpen && (
+              <div className="mt-3">
+                <OverviewBreakdown
+                  stats={companyChannelStats}
+                  cashBalance={companyBal.cash}
+                  bankBalance={companyBal.bank}
+                  scope="company"
+                  balanceHint={balanceHint}
+                  drill={breakdownDrill}
+                />
+              </div>
+            )}
           </div>
 
-          {detailDrillPanel}
+          {companyOpen && detailDrillPanel}
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-zinc-300">ობიექტებით — {rangeLabel}</h3>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {branchStats.map((b) => (
-                <div
-                  key={b.branch}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
-                >
+            <button
+              type="button"
+              className="mb-0 flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setObjectsOpen((v) => !v)}
+              aria-expanded={objectsOpen}
+            >
+              <h3 className="text-sm font-semibold text-zinc-300">ობიექტებით — {rangeLabel}</h3>
+              <span className="shrink-0 text-sm text-zinc-500">{objectsOpen ? "▲" : "▼"}</span>
+            </button>
+            {objectsOpen && (
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                {branchStats.map((b) => (
+                  <div
+                    key={b.branch}
+                    className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="text-left font-bold text-zinc-100 hover:text-emerald-300"
+                        onClick={() => setScope(b.branch)}
+                      >
+                        {b.branch}
+                      </button>
+                      <span className="text-xs text-zinc-500">{b.count} ჩანაწერი</span>
+                    </div>
+                    <OverviewBreakdown
+                      stats={b.channel}
+                      cashBalance={b.cash}
+                      bankBalance={b.bank}
+                      scope={b.branch}
+                      balanceHint={balanceHint}
+                      compact
+                      drill={breakdownDrill}
+                    />
+                  </div>
+                ))}
+                <div className="rounded-xl border border-violet-900/50 bg-violet-950/30 p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      className="text-left font-bold text-zinc-100 hover:text-emerald-300"
-                      onClick={() => setScope(b.branch)}
+                      className="text-left font-bold text-violet-200 hover:text-violet-100"
+                      onClick={() => setScope(KUTAISI_DISTRIB_LABEL)}
                     >
-                      {b.branch}
+                      {KUTAISI_DISTRIB_LABEL}
                     </button>
-                    <span className="text-xs text-zinc-500">{b.count} ჩანაწერი</span>
+                    <span className="text-xs text-zinc-500">{kutaisiDistribStats.count} ჩანაწერი</span>
                   </div>
                   <OverviewBreakdown
-                    stats={b.channel}
-                    cashBalance={b.cash}
-                    bankBalance={b.bank}
-                    scope={b.branch}
+                    stats={kutaisiDistribChannelStats}
+                    cashBalance={kutaisiDistribStats.cash}
+                    bankBalance={kutaisiDistribStats.bank}
+                    scope={KUTAISI_DISTRIB_LABEL}
                     balanceHint={balanceHint}
                     compact
                     drill={breakdownDrill}
                   />
                 </div>
-              ))}
-              <div className="rounded-xl border border-violet-900/50 bg-violet-950/30 p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    className="text-left font-bold text-violet-200 hover:text-violet-100"
-                    onClick={() => setScope(KUTAISI_DISTRIB_LABEL)}
-                  >
-                    {KUTAISI_DISTRIB_LABEL}
-                  </button>
-                  <span className="text-xs text-zinc-500">{kutaisiDistribStats.count} ჩანაწერი</span>
-                </div>
-                <OverviewBreakdown
-                  stats={kutaisiDistribChannelStats}
-                  cashBalance={kutaisiDistribStats.cash}
-                  bankBalance={kutaisiDistribStats.bank}
-                  scope={KUTAISI_DISTRIB_LABEL}
-                  balanceHint={balanceHint}
-                  compact
-                  drill={breakdownDrill}
-                />
               </div>
-            </div>
+            )}
           </div>
         </>
       )}
