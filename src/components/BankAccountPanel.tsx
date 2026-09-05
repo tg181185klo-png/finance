@@ -19,6 +19,7 @@ import {
   monthStartEnd,
   paymentMethodLabel,
 } from "@/lib/utils";
+import BankStatementMatchPanel from "@/components/BankStatementMatchPanel";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-violet-500";
 const smallInputCls = "w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs focus:border-violet-500";
@@ -242,6 +243,8 @@ export default function BankAccountPanel({
         {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       </div>
+
+      <BankStatementMatchPanel onMarked={onRefresh} />
 
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
