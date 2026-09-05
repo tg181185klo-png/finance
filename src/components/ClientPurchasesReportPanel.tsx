@@ -137,6 +137,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                   <th className="pb-2 pr-3">ტიპი</th>
                   <th className="pb-2 pr-3">ს/კ / პირადი</th>
                   <th className="pb-2 pr-3">ტელეფონი</th>
+                  <th className="pb-2 pr-3">შეიყვანა</th>
                   <th className="pb-2 pr-3 text-right">შეკვეთა</th>
                   <th className="pb-2 pr-3 text-right">შეძენილი</th>
                   <th className="pb-2 pr-3 text-right">გადახდილი</th>
@@ -157,6 +158,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                     <td className="py-2 pr-3 text-xs text-zinc-400">{r.personTypeLabel}</td>
                     <td className="py-2 pr-3 text-zinc-400">{r.identity || "—"}</td>
                     <td className="py-2 pr-3 text-zinc-400">{r.phone || "—"}</td>
+                    <td className="py-2 pr-3 text-violet-300">{r.enteredBy}</td>
                     <td className="py-2 pr-3 text-right">{r.orders}</td>
                     <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(r.orderedTotal)}</td>
                     <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(r.paidTotal)}</td>
@@ -180,6 +182,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pr-3">კლიენტი</th>
                   <th className="pb-2 pr-3">ტიპი</th>
+                  <th className="pb-2 pr-3">შეიყვანა</th>
                   <th className="pb-2 pr-3">პროდუქტი</th>
                   <th className="pb-2 pr-3 text-right">რაოდენობა</th>
                   <th className="pb-2 pr-3 text-right">თანხა</th>
@@ -191,6 +194,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                     <tr key={`${r.key}-${p.productName}-${i}`} className="border-b border-zinc-800/50">
                       <td className="py-2 pr-3 font-medium">{r.name}</td>
                       <td className="py-2 pr-3 text-xs text-zinc-400">{r.personTypeLabel}</td>
+                      <td className="py-2 pr-3 text-violet-300">{r.enteredBy}</td>
                       <td className="py-2 pr-3">
                         {p.productName}
                         {p.productCode ? <span className="text-zinc-500"> · {p.productCode}</span> : null}
@@ -216,6 +220,9 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                 {selected.identity ? ` · ${selected.identity}` : ""}
                 {selected.phone ? ` · ${selected.phone}` : ""}
                 {selected.branches ? ` · ${selected.branches}` : ""}
+                {selected.enteredBy && selected.enteredBy !== "—"
+                  ? ` · შეიყვანა: ${selected.enteredBy}`
+                  : ""}
               </p>
               <p className="mt-1 text-xs text-zinc-400">
                 შეძენილი {formatMoney(selected.orderedTotal)} · გადახდილი{" "}
@@ -269,6 +276,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                   <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                     <th className="pb-2 pr-3">თარიღი</th>
                     <th className="pb-2 pr-3">ფილიალი</th>
+                    <th className="pb-2 pr-3">შეიყვანა</th>
                     <th className="pb-2 pr-3">პროდუქტი</th>
                     <th className="pb-2 pr-3 text-right">თანხა</th>
                     <th className="pb-2 pr-3 text-right">გადახდილი</th>
@@ -280,6 +288,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                     <tr key={l.id} className="border-b border-zinc-800/40">
                       <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-400">{formatDate(l.date)}</td>
                       <td className="py-1.5 pr-3">{l.branch}</td>
+                      <td className="py-1.5 pr-3 text-violet-300">{l.enteredBy}</td>
                       <td className="py-1.5 pr-3">
                         {l.productName} × {l.quantity}
                       </td>

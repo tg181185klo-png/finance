@@ -23,6 +23,7 @@ export type ClientPurchaseLine = {
   paid: number;
   remaining: number;
   paymentLabel: string;
+  enteredBy: string;
 };
 
 export type ClientPurchaseRow = {
@@ -33,6 +34,7 @@ export type ClientPurchaseRow = {
   identity: string;
   phone: string;
   branches: string;
+  enteredBy: string;
   orders: number;
   lines: number;
   orderedTotal: number;
@@ -148,6 +150,18 @@ function matchCustomer(id: ParsedIdentity, customers: Customer[]): Customer | nu
   return null;
 }
 
+function enteredByLabel(sale: Sale) {
+  return sale.employeeName?.trim() || "—";
+}
+
+function mergeEnteredBy(existing: string, next: string) {
+  if (!next || next === "—") return existing || "—";
+  if (!existing || existing === "—") return next;
+  const parts = existing.split(", ").filter(Boolean);
+  if (!parts.includes(next)) parts.push(next);
+  return parts.join(", ");
+}
+
 function orderGroupKey(sale: Sale) {
   return sale.clientSaleId || sale.distribuciaOrderId || sale.id;
 }
@@ -199,6 +213,7 @@ export function buildClientPurchaseReport(
 
     const paid = salePaidAmount(sale);
     const remaining = Math.max(0, sale.amount - paid);
+    const enteredBy = enteredByLabel(sale);
     const detail: ClientPurchaseLine = {
       id: sale.id,
       date: sale.date,
@@ -210,6 +225,7 @@ export function buildClientPurchaseReport(
       paid,
       remaining,
       paymentLabel: paymentLabel(sale),
+      enteredBy,
     };
 
     let row = byClient.get(key);
@@ -222,6 +238,7 @@ export function buildClientPurchaseReport(
         identity: identityCode,
         phone,
         branches: sale.branch,
+        enteredBy,
         orders: 0,
         lines: 0,
         orderedTotal: 0,
@@ -238,6 +255,7 @@ export function buildClientPurchaseReport(
     row.orderedTotal += sale.amount;
     row.paidTotal += paid;
     row.remainingTotal += remaining;
+    row.enteredBy = mergeEnteredBy(row.enteredBy, enteredBy);
     if (sale.date > row.lastDate) row.lastDate = sale.date;
     if (!row.branches.split(", ").includes(sale.branch)) {
       row.branches = [...row.branches.split(", "), sale.branch].filter(Boolean).join(", ");
@@ -286,7 +304,14 @@ export function buildClientPurchaseReport(
   let rows = [...byClient.values()];
   if (search) {
     rows = rows.filter((r) => {
-      const hay = [r.name, r.phone, r.identity, r.personTypeLabel, ...r.products.map((p) => p.productName)]
+      const hay = [
+        r.name,
+        r.phone,
+        r.identity,
+        r.personTypeLabel,
+        r.enteredBy,
+        ...r.products.map((p) => p.productName),
+      ]
         .join(" ")
         .toLowerCase();
       return hay.includes(search);
