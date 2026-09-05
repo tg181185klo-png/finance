@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Branch, Customer, Transaction } from "@/lib/types";
 import {
-  buildClientPurchaseTxRows,
+  buildClientPurchaseOrderRows,
   type ClientPersonKind,
 } from "@/lib/client-purchase-report";
 import type { ResolvedPeriod } from "@/lib/period-filter";
@@ -28,10 +28,11 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
   const [branch, setBranch] = useState<Branch | "ყველა">("ყველა");
   const [personType, setPersonType] = useState<ClientPersonKind | "all">("all");
   const [search, setSearch] = useState("");
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const rows = useMemo(
     () =>
-      buildClientPurchaseTxRows(transactions, customers, period.from, period.to, {
+      buildClientPurchaseOrderRows(transactions, customers, period.from, period.to, {
         branch,
         personType,
         search,
@@ -58,7 +59,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
       <div>
         <h2 className="text-lg font-semibold text-sky-200">კლიენტის შესყიდვები</h2>
         <p className="text-xs text-zinc-500">
-          თითო ტრანზაქცია ცალკე · დროის მიხედვით ·{" "}
+          ერთიანი შეკვეთა ერთ ხაზად · პროდუქტები დაჭერისას ·{" "}
           <span className="text-zinc-400">{period.label}</span>
         </p>
       </div>
@@ -100,7 +101,7 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-          <p className="text-xs text-zinc-500">ტრანზაქციები</p>
+          <p className="text-xs text-zinc-500">შეკვეთები</p>
           <p className="mt-1 text-xl font-semibold">{totals.count}</p>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
@@ -135,30 +136,75 @@ export default function ClientPurchasesReportPanel({ transactions, customers, pe
                 <th className="pb-2 pr-3">ტელეფონი</th>
                 <th className="pb-2 pr-3">შეიყვანა</th>
                 <th className="pb-2 pr-3">ფილიალი</th>
-                <th className="pb-2 pr-3">პროდუქტი</th>
+                <th className="pb-2 pr-3 text-right">პროდუქტი</th>
                 <th className="pb-2 pr-3">გადახდა</th>
                 <th className="pb-2 pr-3 text-right">თანხა</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-zinc-800/50">
-                  <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(r.date)}</td>
-                  <td className="py-2 pr-3 font-medium">{r.name}</td>
-                  <td className="py-2 pr-3 text-xs text-zinc-400">{r.personTypeLabel}</td>
-                  <td className="py-2 pr-3 text-zinc-400">{r.identity || "—"}</td>
-                  <td className="py-2 pr-3 text-zinc-400">{r.phone || "—"}</td>
-                  <td className="py-2 pr-3 text-violet-300">{r.enteredBy}</td>
-                  <td className="py-2 pr-3">{r.branch}</td>
-                  <td className="py-2 pr-3">
-                    {r.productName} × {r.quantity}
-                  </td>
-                  <td className={`py-2 pr-3 font-medium ${paymentAccent(r.paymentMethodLabel)}`}>
-                    {r.paymentMethodLabel}
-                  </td>
-                  <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(r.paid)}</td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const open = openKey === r.key;
+                return (
+                  <Fragment key={r.key}>
+                    <tr
+                      className={`cursor-pointer border-b border-zinc-800/50 hover:bg-zinc-800/40 ${
+                        open ? "bg-sky-950/30" : ""
+                      }`}
+                      onClick={() => setOpenKey((prev) => (prev === r.key ? null : r.key))}
+                    >
+                      <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(r.date)}</td>
+                      <td className="py-2 pr-3 font-medium">{r.name}</td>
+                      <td className="py-2 pr-3 text-xs text-zinc-400">{r.personTypeLabel}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{r.identity || "—"}</td>
+                      <td className="py-2 pr-3 text-zinc-400">{r.phone || "—"}</td>
+                      <td className="py-2 pr-3 text-violet-300">{r.enteredBy}</td>
+                      <td className="py-2 pr-3">{r.branch}</td>
+                      <td className="py-2 pr-3 text-right text-zinc-400">
+                        {r.productCount}
+                        <span className="ml-1 text-[10px] text-zinc-600">{open ? "▲" : "▼"}</span>
+                      </td>
+                      <td className={`py-2 pr-3 font-medium ${paymentAccent(r.paymentMethodLabel)}`}>
+                        {r.paymentMethodLabel}
+                      </td>
+                      <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(r.paid)}</td>
+                    </tr>
+                    {open && (
+                      <tr className="border-b border-sky-900/40 bg-zinc-950/40">
+                        <td colSpan={10} className="px-4 py-3">
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-sky-300/80">
+                            პროდუქტები — {r.name}
+                          </p>
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-xs text-zinc-500">
+                                <th className="pb-1 pr-3">პროდუქტი</th>
+                                <th className="pb-1 pr-3 text-right">რაოდენობა</th>
+                                <th className="pb-1 text-right">თანხა</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {r.products.map((p) => (
+                                <tr key={p.id} className="border-t border-zinc-800/60">
+                                  <td className="py-1.5 pr-3">
+                                    {p.productName}
+                                    {p.productCode ? (
+                                      <span className="text-zinc-500"> · {p.productCode}</span>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-1.5 pr-3 text-right">{p.quantity}</td>
+                                  <td className="py-1.5 text-right text-emerald-400">
+                                    {formatMoney(p.paid)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

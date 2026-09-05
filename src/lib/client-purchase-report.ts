@@ -1,12 +1,23 @@
 import type { Branch, Customer, CustomerPersonType, PaymentMethod, Sale, Transaction } from "./types";
+import { saleGroupKey } from "./branch-payments";
 import { customerDedupeKey, customerDisplayName, normalizeId, normalizePhone } from "./customers";
 import { txInPeriod } from "./period-filter";
 import { paymentMethodLabel, saleCreditPaid, txPaymentMethod } from "./utils";
 
 export type ClientPersonKind = CustomerPersonType | "unknown";
 
-export type ClientPurchaseTxRow = {
+export type ClientPurchaseProductLine = {
   id: string;
+  productCode?: string;
+  productName: string;
+  quantity: number;
+  amount: number;
+  paid: number;
+};
+
+export type ClientPurchaseOrderRow = {
+  /** შეკვეთის ჯგუფის გასაღები — ერთიანად შეყვანილი პროდუქტები */
+  key: string;
   date: string;
   branch: Branch;
   name: string;
@@ -15,13 +26,13 @@ export type ClientPurchaseTxRow = {
   identity: string;
   phone: string;
   enteredBy: string;
-  productCode?: string;
-  productName: string;
-  quantity: number;
+  productCount: number;
+  quantityTotal: number;
   amount: number;
   paid: number;
   paymentMethod: PaymentMethod;
   paymentMethodLabel: string;
+  products: ClientPurchaseProductLine[];
 };
 
 function personTypeLabel(t: ClientPersonKind) {
@@ -120,8 +131,11 @@ function matchCustomer(id: ParsedIdentity, customers: Customer[]): Customer | nu
   return null;
 }
 
-/** თითო გაყიდვა ცალკე ხაზად, დროის მიხედვით (ახლიდან ძველისკენ) — დაჯგუფების გარეშე */
-export function buildClientPurchaseTxRows(
+/**
+ * ერთიანად შეყვანილი შეკვეთა = ერთი ხაზი (clientSaleId / distribuciaOrderId).
+ * პროდუქტები products[]-შია — UI-ში დაჭერისას იშლება.
+ */
+export function buildClientPurchaseOrderRows(
   transactions: Transaction[],
   customers: Customer[],
   from: string,
@@ -131,21 +145,31 @@ export function buildClientPurchaseTxRows(
     personType?: ClientPersonKind | "all";
     search?: string;
   }
-): ClientPurchaseTxRow[] {
+): ClientPurchaseOrderRow[] {
   const branch = options?.branch ?? "ყველა";
   const typeFilter = options?.personType ?? "all";
   const search = (options?.search ?? "").trim().toLowerCase();
 
-  const rows: ClientPurchaseTxRow[] = [];
+  const groups = new Map<string, Sale[]>();
 
   for (const t of transactions) {
     if (t.type !== "sale") continue;
     if (!txInPeriod(t.date, from, to)) continue;
     if (branch !== "ყველა" && t.branch !== branch) continue;
+    if (!parseSaleIdentity(t)) continue;
 
-    const identity = parseSaleIdentity(t);
-    if (!identity) continue;
+    const key = saleGroupKey(t);
+    const list = groups.get(key) ?? [];
+    list.push(t);
+    groups.set(key, list);
+  }
 
+  const rows: ClientPurchaseOrderRow[] = [];
+
+  for (const [key, sales] of groups) {
+    sales.sort((a, b) => a.productName.localeCompare(b.productName, "ka"));
+    const first = sales[0];
+    const identity = parseSaleIdentity(first)!;
     const matched = matchCustomer(identity, customers);
     const personType: ClientPersonKind = matched?.personType ?? identity.personType;
     if (typeFilter !== "all" && personType !== typeFilter) continue;
@@ -157,27 +181,39 @@ export function buildClientPurchaseTxRows(
         ? matched?.companyId || identity.companyId || ""
         : matched?.personalId || identity.personalId || "";
 
-    const method = txPaymentMethod(t);
-    const paid = salePaidAmount(t);
-    const enteredBy = t.employeeName?.trim() || "—";
+    const method = txPaymentMethod(first);
+    const enteredBy = first.employeeName?.trim() || "—";
+    const date = sales.reduce((max, s) => (s.date > max ? s.date : max), first.date);
+    const products: ClientPurchaseProductLine[] = sales.map((s) => ({
+      id: s.id,
+      productCode: s.productCode,
+      productName: s.productName,
+      quantity: s.quantity,
+      amount: s.amount,
+      paid: salePaidAmount(s),
+    }));
 
-    const row: ClientPurchaseTxRow = {
-      id: t.id,
-      date: t.date,
-      branch: t.branch,
+    const amount = products.reduce((s, p) => s + p.amount, 0);
+    const paid = products.reduce((s, p) => s + p.paid, 0);
+    const quantityTotal = products.reduce((s, p) => s + p.quantity, 0);
+
+    const row: ClientPurchaseOrderRow = {
+      key,
+      date,
+      branch: first.branch,
       name,
       personType,
       personTypeLabel: personTypeLabel(personType),
       identity: identityCode,
       phone,
       enteredBy,
-      productCode: t.productCode,
-      productName: t.productName,
-      quantity: t.quantity,
-      amount: t.amount,
+      productCount: products.length,
+      quantityTotal,
+      amount,
       paid,
       paymentMethod: method,
       paymentMethodLabel: paymentMethodLabel(method),
+      products,
     };
 
     if (search) {
@@ -187,10 +223,9 @@ export function buildClientPurchaseTxRows(
         row.identity,
         row.personTypeLabel,
         row.enteredBy,
-        row.productName,
-        row.productCode,
         row.paymentMethodLabel,
         row.branch,
+        ...row.products.map((p) => `${p.productName} ${p.productCode ?? ""}`),
       ]
         .filter(Boolean)
         .join(" ")
@@ -204,6 +239,6 @@ export function buildClientPurchaseTxRows(
   return rows.sort((a, b) => {
     const byDate = b.date.localeCompare(a.date);
     if (byDate !== 0) return byDate;
-    return b.id.localeCompare(a.id);
+    return b.key.localeCompare(a.key);
   });
 }
