@@ -1,48 +1,27 @@
-import type { Branch, Customer, CustomerPersonType, Sale, Transaction } from "./types";
+import type { Branch, Customer, CustomerPersonType, PaymentMethod, Sale, Transaction } from "./types";
 import { customerDedupeKey, customerDisplayName, normalizeId, normalizePhone } from "./customers";
 import { txInPeriod } from "./period-filter";
-import { isCreditOrder, saleCreditPaid } from "./utils";
+import { paymentMethodLabel, saleCreditPaid, txPaymentMethod } from "./utils";
 
 export type ClientPersonKind = CustomerPersonType | "unknown";
 
-export type ClientPurchaseProduct = {
-  productCode?: string;
-  productName: string;
-  quantity: number;
-  amount: number;
-};
-
-export type ClientPurchaseLine = {
+export type ClientPurchaseTxRow = {
   id: string;
   date: string;
   branch: Branch;
-  productCode?: string;
-  productName: string;
-  quantity: number;
-  amount: number;
-  paid: number;
-  remaining: number;
-  paymentLabel: string;
-  enteredBy: string;
-};
-
-export type ClientPurchaseRow = {
-  key: string;
   name: string;
   personType: ClientPersonKind;
   personTypeLabel: string;
   identity: string;
   phone: string;
-  branches: string;
   enteredBy: string;
-  orders: number;
-  lines: number;
-  orderedTotal: number;
-  paidTotal: number;
-  remainingTotal: number;
-  lastDate: string;
-  products: ClientPurchaseProduct[];
-  detailLines: ClientPurchaseLine[];
+  productCode?: string;
+  productName: string;
+  quantity: number;
+  amount: number;
+  paid: number;
+  paymentMethod: PaymentMethod;
+  paymentMethodLabel: string;
 };
 
 function personTypeLabel(t: ClientPersonKind) {
@@ -51,18 +30,8 @@ function personTypeLabel(t: ClientPersonKind) {
   return "—";
 }
 
-function paymentLabel(sale: Sale) {
-  if (sale.paymentStatus === "ბე (ავანსი)" || isCreditOrder(sale)) {
-    const paid = saleCreditPaid(sale);
-    if (paid <= 0) return "ბე (გადაუხდელი)";
-    if (paid >= sale.amount) return "ბე (დაფარული)";
-    return "ბე (ნაწილობრივი)";
-  }
-  return "სრულად გადახდილი";
-}
-
 export function salePaidAmount(sale: Sale): number {
-  if (sale.paymentStatus === "ბე (ავანსი)" || isCreditOrder(sale)) {
+  if (sale.paymentStatus === "ბე (ავანსი)") {
     return Math.min(sale.amount, saleCreditPaid(sale));
   }
   return sale.amount;
@@ -106,7 +75,9 @@ export function parseSaleIdentity(sale: Sale): ParsedIdentity | null {
   let phone = meta.phone;
   if (!phone) {
     const parts = (sale.comment || "").split(" · ").map((p) => p.trim());
-    const raw = parts.find((p, i) => i > 0 && /[\d+]/.test(p) && !p.startsWith("ს/კ") && !p.startsWith("პირადი"));
+    const raw = parts.find(
+      (p, i) => i > 0 && /[\d+]/.test(p) && !p.startsWith("ს/კ") && !p.startsWith("პირადი")
+    );
     if (raw) phone = normalizePhone(raw);
   }
 
@@ -124,20 +95,20 @@ export function parseSaleIdentity(sale: Sale): ParsedIdentity | null {
   };
 }
 
-function clientKeyFromIdentity(id: ParsedIdentity): string {
-  if (id.companyId.length >= 7) return `legal:${id.companyId}`;
-  if (id.personalId.length >= 9) return `physical:pid:${id.personalId}`;
-  if (id.phone.length >= 9) return `physical:phone:${id.phone}`;
-  return `name:${id.name.toLowerCase()}`;
-}
-
 function matchCustomer(id: ParsedIdentity, customers: Customer[]): Customer | null {
-  const key = clientKeyFromIdentity(id);
+  const keyCandidates = [
+    id.companyId.length >= 7 ? `legal:${id.companyId}` : null,
+    id.personalId.length >= 9 ? `physical:pid:${id.personalId}` : null,
+    id.phone.length >= 9 ? `physical:phone:${id.phone}` : null,
+  ].filter(Boolean) as string[];
+
   for (const c of customers) {
     const ck = customerDedupeKey(c);
-    if (ck && ck === key) return c;
+    if (ck && keyCandidates.includes(ck)) return c;
     if (id.companyId && c.personType === "legal" && normalizeId(c.companyId ?? "") === id.companyId) return c;
-    if (id.personalId && c.personType === "physical" && normalizeId(c.personalId ?? "") === id.personalId) return c;
+    if (id.personalId && c.personType === "physical" && normalizeId(c.personalId ?? "") === id.personalId) {
+      return c;
+    }
     if (
       id.phone &&
       c.personType === "physical" &&
@@ -145,28 +116,12 @@ function matchCustomer(id: ParsedIdentity, customers: Customer[]): Customer | nu
     ) {
       return c;
     }
-    if (customerDisplayName(c).toLowerCase() === id.name.toLowerCase()) return c;
   }
   return null;
 }
 
-function enteredByLabel(sale: Sale) {
-  return sale.employeeName?.trim() || "—";
-}
-
-function mergeEnteredBy(existing: string, next: string) {
-  if (!next || next === "—") return existing || "—";
-  if (!existing || existing === "—") return next;
-  const parts = existing.split(", ").filter(Boolean);
-  if (!parts.includes(next)) parts.push(next);
-  return parts.join(", ");
-}
-
-function orderGroupKey(sale: Sale) {
-  return sale.clientSaleId || sale.distribuciaOrderId || sale.id;
-}
-
-export function buildClientPurchaseReport(
+/** თითო გაყიდვა ცალკე ხაზად, დროის მიხედვით (ახლიდან ძველისკენ) — დაჯგუფების გარეშე */
+export function buildClientPurchaseTxRows(
   transactions: Transaction[],
   customers: Customer[],
   from: string,
@@ -176,152 +131,79 @@ export function buildClientPurchaseReport(
     personType?: ClientPersonKind | "all";
     search?: string;
   }
-): ClientPurchaseRow[] {
+): ClientPurchaseTxRow[] {
   const branch = options?.branch ?? "ყველა";
   const typeFilter = options?.personType ?? "all";
   const search = (options?.search ?? "").trim().toLowerCase();
 
-  const sales = transactions.filter((t): t is Sale => {
-    if (t.type !== "sale") return false;
-    if (!txInPeriod(t.date, from, to)) return false;
-    if (branch !== "ყველა" && t.branch !== branch) return false;
-    return Boolean(parseSaleIdentity(t));
-  });
+  const rows: ClientPurchaseTxRow[] = [];
 
-  const byClient = new Map<string, ClientPurchaseRow>();
+  for (const t of transactions) {
+    if (t.type !== "sale") continue;
+    if (!txInPeriod(t.date, from, to)) continue;
+    if (branch !== "ყველა" && t.branch !== branch) continue;
 
-  for (const sale of sales) {
-    const identity = parseSaleIdentity(sale)!;
+    const identity = parseSaleIdentity(t);
+    if (!identity) continue;
+
     const matched = matchCustomer(identity, customers);
     const personType: ClientPersonKind = matched?.personType ?? identity.personType;
+    if (typeFilter !== "all" && personType !== typeFilter) continue;
+
     const name = matched ? customerDisplayName(matched) : identity.name;
-    const phone =
-      matched?.phone ||
-      matched?.contactPhone ||
-      identity.phone ||
-      "";
+    const phone = matched?.phone || matched?.contactPhone || identity.phone || "";
     const identityCode =
       personType === "legal"
         ? matched?.companyId || identity.companyId || ""
         : matched?.personalId || identity.personalId || "";
 
-    const key =
-      (matched && customerDedupeKey(matched)) ||
-      clientKeyFromIdentity({ ...identity, personType, name, phone });
+    const method = txPaymentMethod(t);
+    const paid = salePaidAmount(t);
+    const enteredBy = t.employeeName?.trim() || "—";
 
-    if (typeFilter !== "all" && personType !== typeFilter) continue;
-
-    const paid = salePaidAmount(sale);
-    const remaining = Math.max(0, sale.amount - paid);
-    const enteredBy = enteredByLabel(sale);
-    const detail: ClientPurchaseLine = {
-      id: sale.id,
-      date: sale.date,
-      branch: sale.branch,
-      productCode: sale.productCode,
-      productName: sale.productName,
-      quantity: sale.quantity,
-      amount: sale.amount,
-      paid,
-      remaining,
-      paymentLabel: paymentLabel(sale),
+    const row: ClientPurchaseTxRow = {
+      id: t.id,
+      date: t.date,
+      branch: t.branch,
+      name,
+      personType,
+      personTypeLabel: personTypeLabel(personType),
+      identity: identityCode,
+      phone,
       enteredBy,
+      productCode: t.productCode,
+      productName: t.productName,
+      quantity: t.quantity,
+      amount: t.amount,
+      paid,
+      paymentMethod: method,
+      paymentMethodLabel: paymentMethodLabel(method),
     };
 
-    let row = byClient.get(key);
-    if (!row) {
-      row = {
-        key,
-        name,
-        personType,
-        personTypeLabel: personTypeLabel(personType),
-        identity: identityCode,
-        phone,
-        branches: sale.branch,
-        enteredBy,
-        orders: 0,
-        lines: 0,
-        orderedTotal: 0,
-        paidTotal: 0,
-        remainingTotal: 0,
-        lastDate: sale.date,
-        products: [],
-        detailLines: [],
-      };
-      byClient.set(key, row);
-    }
-
-    row.lines += 1;
-    row.orderedTotal += sale.amount;
-    row.paidTotal += paid;
-    row.remainingTotal += remaining;
-    row.enteredBy = mergeEnteredBy(row.enteredBy, enteredBy);
-    if (sale.date > row.lastDate) row.lastDate = sale.date;
-    if (!row.branches.split(", ").includes(sale.branch)) {
-      row.branches = [...row.branches.split(", "), sale.branch].filter(Boolean).join(", ");
-    }
-    row.detailLines.push(detail);
-
-    const productKey = `${sale.productCode ?? ""}|${sale.productName}`;
-    const existingProduct = row.products.find(
-      (p) => `${p.productCode ?? ""}|${p.productName}` === productKey
-    );
-    if (existingProduct) {
-      existingProduct.quantity += sale.quantity;
-      existingProduct.amount += sale.amount;
-    } else {
-      row.products.push({
-        productCode: sale.productCode,
-        productName: sale.productName,
-        quantity: sale.quantity,
-        amount: sale.amount,
-      });
-    }
-  }
-
-  // Count distinct orders per client
-  const ordersByClient = new Map<string, Set<string>>();
-  for (const sale of sales) {
-    const identity = parseSaleIdentity(sale)!;
-    const matched = matchCustomer(identity, customers);
-    const key =
-      (matched && customerDedupeKey(matched)) ||
-      clientKeyFromIdentity({
-        ...identity,
-        personType: matched?.personType ?? identity.personType,
-        name: matched ? customerDisplayName(matched) : identity.name,
-      });
-    if (!byClient.has(key)) continue;
-    const set = ordersByClient.get(key) ?? new Set();
-    set.add(orderGroupKey(sale));
-    ordersByClient.set(key, set);
-  }
-  for (const [key, set] of ordersByClient) {
-    const row = byClient.get(key);
-    if (row) row.orders = set.size;
-  }
-
-  let rows = [...byClient.values()];
-  if (search) {
-    rows = rows.filter((r) => {
+    if (search) {
       const hay = [
-        r.name,
-        r.phone,
-        r.identity,
-        r.personTypeLabel,
-        r.enteredBy,
-        ...r.products.map((p) => p.productName),
+        row.name,
+        row.phone,
+        row.identity,
+        row.personTypeLabel,
+        row.enteredBy,
+        row.productName,
+        row.productCode,
+        row.paymentMethodLabel,
+        row.branch,
       ]
+        .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return hay.includes(search);
-    });
+      if (!hay.includes(search)) continue;
+    }
+
+    rows.push(row);
   }
 
-  for (const row of rows) {
-    row.products.sort((a, b) => b.amount - a.amount);
-    row.detailLines.sort((a, b) => b.date.localeCompare(a.date));
-  }
-
-  return rows.sort((a, b) => b.orderedTotal - a.orderedTotal);
+  return rows.sort((a, b) => {
+    const byDate = b.date.localeCompare(a.date);
+    if (byDate !== 0) return byDate;
+    return b.id.localeCompare(a.id);
+  });
 }
