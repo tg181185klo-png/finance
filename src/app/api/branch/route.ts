@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/require-admin";
+import { isAdminAuthenticated, requireAdminSession } from "@/lib/require-admin";
 import {
   uid,
   addEmployeeAttendance,
@@ -16,6 +16,7 @@ import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/l
 import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import type {
   Branch,
   BranchClientSale,
@@ -109,12 +110,20 @@ async function submitBranchReport(body: SubmitBody) {
   const linkDate = body.linkDate ? dateOnly(body.linkDate) : undefined;
   const requestedDay = dateOnly(body.date || today);
   const lockedDay = linkDate || today;
+  const isAdmin = await isAdminAuthenticated();
 
-  if (requestedDay !== lockedDay) {
+  if (!isAdmin && requestedDay !== lockedDay) {
     return { error: "თარიღის შეცვლა არ შეიძლება — გამოიყენეთ ადმინისგან გაგზავნილი ლინკი", status: 400 as const };
   }
 
-  const day = lockedDay;
+  if (requestedDay < OPERATIONAL_DATA_FROM) {
+    return { error: `თარიღი ${OPERATIONAL_DATA_FROM}-დან უნდა იყოს`, status: 400 as const };
+  }
+  if (requestedDay > today) {
+    return { error: "მომავალი თარიღი არ შეიძლება", status: 400 as const };
+  }
+
+  const day = isAdmin ? requestedDay : lockedDay;
   const now = new Date().toISOString();
   const clientSales = parseClientSales(body);
   const incomes = body.incomes ?? [];

@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatReportDay } from "@/lib/branch-tx-date";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { formatMoney, formatDate, uid, branchExpenseOperatingAmount } from "@/lib/utils";
 
 const inputCls =
@@ -90,7 +91,8 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
   const [branch, setBranch] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState(false);
-  const [date] = useState(resolvedDate);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [date, setDate] = useState(resolvedDate);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -123,6 +125,16 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
   const [addPrice, setAddPrice] = useState("");
 
   useEffect(() => {
+    fetch("/api/auth", { cache: "no-store" })
+      .then((r) => setIsAdmin(r.ok))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  useEffect(() => {
+    setDate(resolvedDate);
+  }, [resolvedDate]);
+
+  useEffect(() => {
     fetch(`/api/branch?token=${token}&date=${date}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((branchData) => {
@@ -143,6 +155,19 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
       .catch(() => setErr("კავშირის შეცდომა"))
       .finally(() => setLoading(false));
   }, [token, date]);
+
+  function changeAdminDate(next: string) {
+    if (!isAdmin) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+    if (next < OPERATIONAL_DATA_FROM || next > today) return;
+    setLoading(true);
+    setErr("");
+    setOk(false);
+    setCompletedSales([]);
+    setCart([]);
+    setExpenses([]);
+    setDate(next);
+  }
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   const driverEmployee = driverEmployees.find((e) => e.id === (driverEmployeeId || selectedEmployeeId));
@@ -334,7 +359,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
         body: JSON.stringify({
           token,
           date,
-          linkDate: date,
+          linkDate: isAdmin ? undefined : date,
           clientSales: asZero ? [] : validClients,
           expenses: asZero ? [] : validExpenses,
           submittedBy: selectedEmployee?.name,
@@ -419,8 +444,26 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           )}
           <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-4 py-3">
             <p className="text-xs text-zinc-500">თარიღი</p>
-            <p className="mt-0.5 text-lg font-semibold text-emerald-200">{formatDate(date)}</p>
-            <p className="mt-1 text-[11px] text-zinc-600">ფიქსირებულია ლინკით — შეცვლა შეუძლებელია</p>
+            {isAdmin ? (
+              <>
+                <input
+                  type="date"
+                  className={`${inputCls} mt-1`}
+                  value={date}
+                  min={OPERATIONAL_DATA_FROM}
+                  max={today}
+                  onChange={(e) => changeAdminDate(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-amber-300/90">
+                  ადმინი: შეგიძლიათ თარიღის შეცვლა და იმ დღის გაყიდვის ჩაწერა
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-0.5 text-lg font-semibold text-emerald-200">{formatDate(date)}</p>
+                <p className="mt-1 text-[11px] text-zinc-600">ფიქსირებულია ლინკით — შეცვლა შეუძლებელია</p>
+              </>
+            )}
           </div>
         </section>
 
