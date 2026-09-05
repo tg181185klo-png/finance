@@ -35,6 +35,7 @@ import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/Fl
 import ThemeToggle from "@/components/ThemeToggle";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
+import { groupTransactionsForDisplay } from "@/lib/tx-display-groups";
 import {
   BRANCHES,
   CATEGORIES,
@@ -321,6 +322,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [operationalTx, filter, period.from, period.to]);
+
+  const mainTabGroupCount = useMemo(
+    () => groupTransactionsForDisplay(mainTabRows).length,
+    [mainTabRows]
+  );
 
   function ensureSaleVisibleInPeriod(saleDate: string) {
     const d = saleDate.slice(0, 10);
@@ -842,13 +848,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
-  async function toggleBankLedgerReview(id: string, reviewed: boolean): Promise<boolean> {
+  async function toggleBankLedgerReview(idOrIds: string | string[], reviewed: boolean): Promise<boolean> {
     try {
       setError("");
+      const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggleBankLedgerReview", id, reviewed }),
+        body: JSON.stringify({ action: "toggleBankLedgerReview", ids, reviewed }),
         cache: "no-store",
       });
       const d = await res.json().catch(() => ({}));
@@ -1376,11 +1383,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <h3 className="mb-2 font-semibold">
               {filter === "ყველა" ? "ტრანზაქციები" : `ტრანზაქციები — ${filter}`}
               <span className="ml-2 text-sm font-normal text-zinc-500">
-                ({mainTabRows.length}) · {period.label}
+                ({mainTabGroupCount}) · {period.label}
               </span>
             </h3>
             <p className="mb-3 text-xs text-zinc-500">
-              გაყიდვა/ხარჯის დაფიქსირების შემდეგ ჩანაწერი მაშინვე ჩანს არჩეული ფილიალის სიაში
+              ერთი გატარება = ერთი ხაზი · პროდუქტები დაჭერისას · „აისახა“ — ანგარიშზე/ბარათზე ჩარიცხვა
             </p>
             <TransactionTable
               rows={mainTabRows}

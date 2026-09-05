@@ -35,7 +35,7 @@ type Props = {
   branchCash: Record<Branch, BranchCash>;
   bankLedgerReviewed: Record<string, string>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
-  onToggleReview: (id: string, reviewed: boolean) => Promise<boolean>;
+  onToggleReview: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
   onRefresh: () => void | Promise<void>;
 };
 

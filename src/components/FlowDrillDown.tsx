@@ -130,7 +130,7 @@ type FlowDrillPanelProps = {
   onDelete?: (id: string) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
-  onToggleReview?: (id: string, reviewed: boolean) => Promise<boolean>;
+  onToggleReview?: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
   className?: string;
 };
 

@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         | "toggleBankLedgerReview"
         | "updateDriver";
       id?: string;
+      ids?: string[];
       clientSaleId?: string;
       recurrence?: string;
       paymentMethod?: PaymentMethod;
@@ -117,15 +118,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === "toggleBankLedgerReview") {
-      if (!body.id) {
-        return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
+      const ids = [
+        ...(body.ids ?? []),
+        ...(body.id ? [body.id] : []),
+      ].filter((id, i, arr) => Boolean(id) && arr.indexOf(id) === i);
+
+      if (ids.length === 0) {
+        return NextResponse.json({ error: "id ან ids საჭიროა" }, { status: 400 });
       }
+
       const store = await updateStore((s) => {
         if (!s.bankLedgerReviewed) s.bankLedgerReviewed = {};
-        if (body.reviewed === false || s.bankLedgerReviewed[body.id!]) {
-          delete s.bankLedgerReviewed[body.id!];
-        } else {
-          s.bankLedgerReviewed[body.id!] = new Date().toISOString();
+        const now = new Date().toISOString();
+        const mark = body.reviewed !== false;
+        for (const id of ids) {
+          if (mark) s.bankLedgerReviewed![id] = now;
+          else delete s.bankLedgerReviewed![id];
         }
       });
       return NextResponse.json({
