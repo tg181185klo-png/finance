@@ -8,6 +8,9 @@ export type StatementDirection = "in" | "out";
 
 export type BankStatementLine = {
   key: string;
+  /** ბანკის ამონაწერის თარიღი (სვეტი) */
+  statementDate: string;
+  /** გადახდის/ოპერაციის თარიღი (აღწერიდან თუ არის, სხვა შემთხვევაში statementDate) */
   date: string;
   documentNo: string;
   debit: number;
@@ -31,6 +34,8 @@ export type MatchCandidate = {
   date: string;
   amount: number;
   channel: "card" | "bank";
+  branch: string;
+  kind: "sale" | "deposit";
   label: string;
   buyerName: string;
 };
@@ -40,11 +45,22 @@ export type StatementMatchRow = {
   status: "matched" | "unmatched" | "skipped";
   candidate: MatchCandidate | null;
   note: string;
+  /** აპის თანხა − ამონაწერში ჩარიცხული (საკომისიო/სხვაობა) */
+  commission: number | null;
 };
 
 export type AppUnmatchedRow = {
   candidate: MatchCandidate;
   note: string;
+};
+
+/** ტრანზაქციის id → ამონაწერის შედარების ინფო (მოძრაობის ცხრილისთვის) */
+export type StatementLedgerHint = {
+  statementDate: string;
+  statementSender: string;
+  statementAmount: number;
+  commission: number | null;
+  status: "matched" | "unmatched";
 };
 
 export type BankStatementMatchResult = {
@@ -171,10 +187,10 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const dateRaw = row[0];
     if (dateRaw === "" || dateRaw == null) continue;
 
-    let date = "";
-    if (typeof dateRaw === "number") date = excelSerialToIso(dateRaw);
-    else date = parseDdMmYyyy(cellStr(dateRaw)) ?? "";
-    if (!date) continue;
+    let statementDate = "";
+    if (typeof dateRaw === "number") statementDate = excelSerialToIso(dateRaw);
+    else statementDate = parseDdMmYyyy(cellStr(dateRaw)) ?? "";
+    if (!statementDate) continue;
 
     const documentNo = cellStr(row[1]);
     const debit = cellNum(row[3]);
@@ -199,13 +215,14 @@ export function parseBankStatementExcel(buffer: Buffer): {
 
     const grossAmount = direction === "in" ? extractGrossFromDescription(description) : null;
     const payDate = extractPaymentDate(description);
-    if (payDate) date = payDate;
+    const date = payDate || statementDate;
 
     const absAmount = Math.abs(signed) || credit || debit;
     const matchAmount = grossAmount ?? (direction === "in" ? credit || absAmount : debit || absAmount);
 
     lines.push({
-      key: `${date}|${opId || documentNo}|${absAmount}|${i}`,
+      key: `${statementDate}|${opId || documentNo}|${absAmount}|${i}`,
+      statementDate,
       date,
       documentNo,
       debit,
@@ -261,6 +278,8 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
         date: d,
         amount: t.amount,
         channel: method === CARD_METHOD ? "card" : "bank",
+        branch: t.branch,
+        kind: "deposit",
         label: t.comment?.trim() || (t.kind === "founder" ? "დამფუძნებლის შენატანი" : "შენატანი"),
         buyerName: t.comment?.trim() || "",
       });
@@ -279,6 +298,8 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
       date: primary.date.slice(0, 10),
       amount,
       channel: method === CARD_METHOD ? "card" : "bank",
+      branch: primary.branch,
+      kind: "sale",
       label: saleGroupLabel(primary),
       buyerName: primary.buyerName?.trim() || "",
     });
@@ -322,6 +343,16 @@ function shouldSkipCredit(line: BankStatementLine): { skip: boolean; note: strin
   return { skip: false, note: "" };
 }
 
+function calcCommission(line: BankStatementLine, candidate: MatchCandidate | null): number | null {
+  if (!candidate) return null;
+  const bankNet = line.credit || line.amount;
+  const appGross = candidate.amount;
+  const diff = Math.round((appGross - bankNet) * 100) / 100;
+  if (Math.abs(diff) < 0.01) return null;
+  // საკომისიო ძირითადად ბარათზე; ანგარიშზეც ვაჩვენებთ თუ სხვაობაა
+  return diff;
+}
+
 export function matchBankStatement(
   lines: BankStatementLine[],
   candidates: MatchCandidate[],
@@ -356,7 +387,7 @@ export function matchBankStatement(
   for (const line of lines) {
     const skip = shouldSkipCredit(line);
     if (skip.skip) {
-      matches.push({ line, status: "skipped", candidate: null, note: skip.note });
+      matches.push({ line, status: "skipped", candidate: null, note: skip.note, commission: null });
       continue;
     }
     const c = lineMatched.get(line.key) ?? null;
@@ -365,7 +396,8 @@ export function matchBankStatement(
         line,
         status: "matched",
         candidate: c,
-        note: `${c.channel === "card" ? "ბარათი" : "ანგარიში"} · ${c.label}`,
+        note: `${c.channel === "card" ? "ბარათი" : "ანგარიში"} · ${c.branch} · ${c.label}`,
+        commission: calcCommission(line, c),
       });
     } else {
       matches.push({
@@ -373,6 +405,7 @@ export function matchBankStatement(
         status: "unmatched",
         candidate: null,
         note: "აპში შესაბამისი ჩანაწერი ვერ მოიძებნა",
+        commission: null,
       });
     }
   }
@@ -385,6 +418,25 @@ export function matchBankStatement(
     }));
 
   return { matches, appUnmatched };
+}
+
+/** მოძრაობის ცხრილისთვის: ტრანზაქციის id → ამონაწერის მონაცემები */
+export function buildStatementLedgerHints(matches: StatementMatchRow[]): Record<string, StatementLedgerHint> {
+  const out: Record<string, StatementLedgerHint> = {};
+  for (const m of matches) {
+    if (m.status !== "matched" || !m.candidate) continue;
+    const hint: StatementLedgerHint = {
+      statementDate: m.line.statementDate || m.line.date,
+      statementSender: m.line.senderName || m.line.purpose || "",
+      statementAmount: m.line.credit || m.line.amount,
+      commission: m.commission,
+      status: "matched",
+    };
+    for (const id of m.candidate.ids) {
+      out[id] = hint;
+    }
+  }
+  return out;
 }
 
 export function runBankStatementMatch(buffer: Buffer, transactions: Transaction[]): BankStatementMatchResult {

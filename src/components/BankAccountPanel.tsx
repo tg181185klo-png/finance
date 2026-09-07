@@ -7,8 +7,10 @@ import {
   buildAccountLedgerRows,
   ledgerTotals,
   nonCashOpening,
+  type AccountLedgerRow,
   type LedgerChannel,
 } from "@/lib/bank-ledger";
+import type { StatementLedgerHint } from "@/lib/bank-statement";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import {
   calcBalances,
@@ -61,6 +63,30 @@ function channelLabel(ch: LedgerChannel) {
   return ch === "bank" ? "ანგარიში" : "ბარათი";
 }
 
+function LedgerField({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+      <div className="mt-0.5 break-words text-sm text-zinc-200">{children}</div>
+    </div>
+  );
+}
+
+function typeLabel(row: AccountLedgerRow) {
+  if (row.direction === "out") return "გასავალი";
+  if (row.label.includes("შენატანი") || row.label.includes("დამფუძნებელ")) return "შენატანი";
+  if (row.label.includes("გაყიდვა")) return "გაყიდვა";
+  return "შემოსავალი";
+}
+
 export default function BankAccountPanel({
   transactions,
   branchCash,
@@ -79,6 +105,7 @@ export default function BankAccountPanel({
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [statementHints, setStatementHints] = useState<Record<string, StatementLedgerHint>>({});
 
   useEffect(() => {
     setOpenings({ ...branchCash });
@@ -107,9 +134,12 @@ export default function BankAccountPanel({
     }).filter((r) => {
       if (onlyUnreviewed && (r.direction !== "in" || bankLedgerReviewed[r.id])) return false;
       if (!q) return true;
-      return [r.label, r.comment, r.depositorName, r.branch, r.date].join(" ").toLowerCase().includes(q);
+      return [r.label, r.comment, r.depositorName, r.branch, r.date, statementHints[r.id]?.statementSender]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
     });
-  }, [transactions, from, to, branchFilter, channelFilter, search, onlyUnreviewed, bankLedgerReviewed]);
+  }, [transactions, from, to, branchFilter, channelFilter, search, onlyUnreviewed, bankLedgerReviewed, statementHints]);
 
   const unreviewedIncoming = useMemo(() => {
     return buildAccountLedgerRows(transactions, {
@@ -245,7 +275,7 @@ export default function BankAccountPanel({
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       </div>
 
-      <BankStatementMatchPanel onMarked={onRefresh} />
+      <BankStatementMatchPanel onMarked={onRefresh} onHints={setStatementHints} />
 
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -253,6 +283,7 @@ export default function BankAccountPanel({
             <h2 className="font-semibold text-violet-200">ბარათი და საბანკო ანგარიში — მოძრაობა</h2>
             <p className="mt-1 text-xs text-zinc-500">
               დღიური რეპორტიდან შემოსული (ბარათი/ანგარიში), ვალდებულებების გასტუმრება და ხარჯები
+              {Object.keys(statementHints).length > 0 ? " · ამონაწერთან შედარების ველები აქტიურია" : ""}
             </p>
             {unreviewedIncoming > 0 && (
               <p className="mt-1 text-xs font-medium text-amber-300">
@@ -332,7 +363,7 @@ export default function BankAccountPanel({
               className={inputCls}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ჩამრიცხავი, კომენტარი, კლიენტი, ხარჯი..."
+              placeholder="ჩამრიცხავი, ამონაწერის ჩარიცხავი, კომენტარი..."
             />
           </Field>
           <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
@@ -349,49 +380,41 @@ export default function BankAccountPanel({
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-500">ამ თვეში ბარათი/ანგარიშის მოძრაობა არ არის.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                  <th className="pb-2 pl-3 pr-3 pt-2">თარიღი</th>
-                  <th className="pb-2 pr-3">ფილიალი</th>
-                  <th className="pb-2 pr-3">ტიპი</th>
-                  <th className="pb-2 pr-3">ჩამრიცხავი</th>
-                  <th className="pb-2 pr-3">აღწერა</th>
-                  <th className="pb-2 pr-3">კომენტარი</th>
-                  <th className="pb-2 pr-3">არხი</th>
-                  <th className="pb-2 pr-3">გადახდა</th>
-                  <th className="pb-2 pr-3 text-right">თანხა</th>
-                  <th className="pb-2 pr-3 pt-2 text-center">ნანახია</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const reviewed = Boolean(bankLedgerReviewed[row.id]);
-                  const isIncoming = row.direction === "in";
-                  return (
-                  <tr
-                    key={row.id}
-                    className={`border-b border-zinc-800/50 ${isIncoming && !reviewed ? "bg-amber-950/20" : ""}`}
-                  >
-                    <td className="py-2 pl-3 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.date)}</td>
-                    <td className="py-2 pr-3">{row.branch}</td>
-                    <td className={`py-2 pr-3 text-xs ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}>
-                      {row.direction === "in" ? "შემოსავალი" : "გასავალი"}
-                    </td>
-                    <td className="py-2 pr-3 font-medium text-sky-200" title={row.depositorName}>
-                      {isIncoming ? row.depositorName || "—" : "—"}
-                    </td>
-                    <td className="py-2 pr-3 max-w-[160px] truncate text-zinc-300" title={row.label}>
-                      {row.label}
-                    </td>
-                    <td className="py-2 pr-3 max-w-[200px] truncate text-zinc-500" title={row.comment}>
-                      {row.comment}
-                    </td>
-                    <td className="py-2 pr-3 text-xs text-sky-300">{channelLabel(row.channel)}</td>
-                    <td className="py-2 pr-3">
+          <div className="space-y-3">
+            {rows.map((row) => {
+              const reviewed = Boolean(bankLedgerReviewed[row.id]);
+              const isIncoming = row.direction === "in";
+              const hint = statementHints[row.id];
+              const showCommission =
+                row.channel === "card" || (hint?.commission != null && hint.commission !== 0);
+              return (
+                <article
+                  key={row.id}
+                  className={`rounded-xl border p-4 ${
+                    isIncoming && !reviewed
+                      ? "border-amber-800/50 bg-amber-950/20"
+                      : hint
+                        ? "border-emerald-900/35 bg-emerald-950/10"
+                        : "border-zinc-800 bg-zinc-950/40"
+                  }`}
+                >
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <LedgerField label="გაყიდვის თარიღი">{formatDate(row.date)}</LedgerField>
+                    <LedgerField label="ფილიალი">{row.branch}</LedgerField>
+                    <LedgerField label="ტიპი">
+                      <span className={isIncoming ? "text-emerald-400" : "text-red-400"}>{typeLabel(row)}</span>
+                    </LedgerField>
+                    <LedgerField label="ჩამრიცხავი">
+                      <span className="font-medium text-sky-200">
+                        {isIncoming ? row.depositorName || "—" : "—"}
+                      </span>
+                    </LedgerField>
+                    <LedgerField label="არხი">
+                      <span className="text-sky-300">{channelLabel(row.channel)}</span>
+                    </LedgerField>
+                    <LedgerField label="გადახდა">
                       <select
-                        className={selectCls}
+                        className={`${selectCls} w-full max-w-[200px]`}
                         value={row.paymentMethod}
                         onChange={async (e) => {
                           await onUpdatePayment(row.id, e.target.value as PaymentMethod);
@@ -403,54 +426,82 @@ export default function BankAccountPanel({
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td
-                      className={`py-2 pr-3 text-right font-medium ${row.direction === "in" ? "text-emerald-400" : "text-red-400"}`}
-                    >
-                      {row.direction === "in" ? "+" : "−"}
-                      {formatMoney(row.amount)}
-                    </td>
-                    <td className="py-2 pr-3 text-center">
+                    </LedgerField>
+                    <LedgerField label="თანხა">
+                      <span className={`font-semibold ${isIncoming ? "text-emerald-400" : "text-red-400"}`}>
+                        {isIncoming ? "+" : "−"}
+                        {formatMoney(row.amount)}
+                      </span>
+                    </LedgerField>
+                    <LedgerField label="ნანახია">
                       {isIncoming ? (
                         <button
                           type="button"
                           title={reviewed ? "ნანახია — მონიშვნის მოხსნა" : "მონიშნე როგორც ნანახი"}
                           disabled={reviewBusy === row.id}
                           onClick={() => void toggleReview(row.id, reviewed)}
-                          className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm transition ${
+                          className={`inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-xs transition ${
                             reviewed
                               ? "border-emerald-600 bg-emerald-950/50 text-emerald-400"
-                              : "border-zinc-600 bg-zinc-900 text-zinc-600 hover:border-violet-500 hover:text-violet-300"
+                              : "border-zinc-600 bg-zinc-900 text-zinc-400 hover:border-violet-500 hover:text-violet-300"
                           }`}
                         >
-                          ✓
+                          <span>{reviewed ? "✓ ნანახია" : "მონიშვნა"}</span>
                         </button>
                       ) : (
-                        <span className="text-zinc-700">—</span>
+                        <span className="text-zinc-600">—</span>
                       )}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-zinc-700 font-semibold">
-                  <td colSpan={8} className="py-3 pl-3 pr-3 text-right text-zinc-400">
-                    თვის ჯამი (შემოსული − გასავალი)
-                  </td>
-                  <td className={`py-3 pr-3 text-right ${totals.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {totals.net >= 0 ? "+" : ""}
-                    {formatMoney(totals.net)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+                    </LedgerField>
+                    <LedgerField label="თარიღი ამონაწერის მიხედვით">
+                      {hint ? (
+                        <span className="text-violet-200">{formatDate(hint.statementDate)}</span>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
+                    </LedgerField>
+                    <LedgerField label="ჩარიცხული ამონაწერში (ვის მიერ)">
+                      {hint?.statementSender ? (
+                        <span className="font-medium text-sky-100">{hint.statementSender}</span>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
+                    </LedgerField>
+                    {showCommission && (
+                      <LedgerField label="სხვაობა (საკომისიო)">
+                        {hint?.commission != null ? (
+                          <span className="font-medium text-amber-200">{formatMoney(hint.commission)}</span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
+                      </LedgerField>
+                    )}
+                    {(row.comment || row.label) && (
+                      <LedgerField label="დეტალი" className="sm:col-span-2 xl:col-span-4">
+                        <span className="text-zinc-400">
+                          {row.label}
+                          {row.comment ? ` · ${row.comment}` : ""}
+                        </span>
+                      </LedgerField>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+
+            <div className="rounded-xl border border-zinc-700 bg-zinc-950/60 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-zinc-400">თვის ჯამი (შემოსული − გასავალი)</p>
+                <p className={`text-lg font-semibold ${totals.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {totals.net >= 0 ? "+" : ""}
+                  {formatMoney(totals.net)}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ჩარიცხვებზე ჩანს ვინ გადარიცხა; ბოლოში ✓ დააჭირეთ რომ ნანახად მონიშნოთ და არაფერი გამოგრჩეთ.
+          ამონაწერის შედარების შემდეგ აქ ჩანს ბანკის თარიღი, ჩარიცხავი და საკომისიო. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
         </p>
       </div>
     </section>
