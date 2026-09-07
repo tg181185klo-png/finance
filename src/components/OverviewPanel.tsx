@@ -1,30 +1,35 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, BranchDailyReport, Employee, PaymentMethod, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, BranchDailyReport, Employee, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
-import { calcBalancesUpToDate, emptyBranchCash, formatDate, formatMoney } from "@/lib/utils";
+import {
+  calcBalancesUpToDate,
+  emptyBranchCash,
+  formatDate,
+  formatMoney,
+  isCreditOrder,
+  isCreditOrderActive,
+} from "@/lib/utils";
 import {
   computeScopePeriodStats,
   KUTAISI_DISTRIB_BRANCHES,
   KUTAISI_DISTRIB_LABEL,
-  txMatchesFlowScope,
   type FlowBranchScope,
   type FlowDetailKind,
   type ScopePeriodStats,
 } from "@/lib/flow-detail";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
-import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
+import { branchSalesForPayments, groupBranchSales } from "@/lib/branch-payments";
 
 /** დროებით დამალული სექციები მიმოხილვაზე */
 const SHOW_OBJECTS_SECTION = false;
-const SHOW_TRANSACTIONS_SECTION = false;
 
 const scopeBtn = (on: boolean) =>
   `rounded-xl px-4 py-2 text-sm font-medium transition ${
@@ -41,10 +46,6 @@ type RangeMode = "period" | "day";
 
 function toFlowScope(scope: ViewScope): FlowBranchScope {
   return scope === "company" ? "ყველა" : scope;
-}
-
-function txMatchesScope(t: Transaction, scope: ViewScope) {
-  return txMatchesFlowScope(t, toFlowScope(scope));
 }
 
 function dayBefore(iso: string) {
@@ -321,11 +322,24 @@ export default function OverviewPanel({
     [transactions, branchCash, to]
   );
 
-  const tableRows = useMemo(() => {
-    return transactions
-      .filter((t) => txInPeriod(t.date, from, to) && txMatchesScope(t, scope))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, scope, from, to]);
+  const paymentSaleGroups = useMemo(() => {
+    const sales = transactions.filter(
+      (t): t is Sale => t.type === "sale" && !(isCreditOrder(t) && isCreditOrderActive(t))
+    );
+    const { from: monthFrom, to: monthTo } = (() => {
+      const [y, m] = paymentsMonth.split("-").map(Number);
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      return {
+        from: `${paymentsMonth}-01`,
+        to: `${paymentsMonth}-${String(last).padStart(2, "0")}`,
+      };
+    })();
+    let groups = 0;
+    for (const b of paymentBranches) {
+      groups += groupBranchSales(branchSalesForPayments(sales, b, monthFrom, monthTo)).length;
+    }
+    return groups;
+  }, [transactions, paymentBranches, paymentsMonth]);
 
   const activityScopeBranches = useMemo(() => scopeToBranches(scope), [scope]);
 
@@ -341,8 +355,8 @@ export default function OverviewPanel({
 
   const txSectionHint =
     rangeMode === "day"
-      ? `${scopeLabel(scope)} · ${formatDate(selectedDay)} — იმ დღის ყველა ტრანზაქცია`
-      : `${scopeLabel(scope)} · ${rangeLabel} — პერიოდის ყველა ტრანზაქცია`;
+      ? `${scopeLabel(scope)} · ${formatDate(selectedDay)} — იმ დღის გაყიდვები გადახდების მიხედვით`
+      : `${scopeLabel(scope)} · ${rangeLabel} — პერიოდის გაყიდვები გადახდების მიხედვით`;
 
   const detailDrillPanel = (
     <FlowDrillPanel
@@ -570,10 +584,19 @@ export default function OverviewPanel({
         </div>
       )}
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-zinc-300">
-          გადახდები დღეების მიხედვით · {paymentsMonth}
-        </h3>
+      <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div>
+          <h3 className="mb-1 font-semibold">
+            ტრანზაქციები — {scopeLabel(scope)}
+            <span className="ml-2 text-sm font-normal text-zinc-500">
+              ({paymentSaleGroups}) · {rangeLabel}
+            </span>
+          </h3>
+          <p className="mb-1 text-xs text-zinc-500">{txSectionHint}</p>
+          <p className="text-xs text-zinc-600">
+            დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
+          </p>
+        </div>
         {paymentBranches.map((b) => (
           <BranchPaymentsPanel
             key={b}
@@ -586,28 +609,6 @@ export default function OverviewPanel({
           />
         ))}
       </div>
-
-      {SHOW_TRANSACTIONS_SECTION && (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h3 className="mb-1 font-semibold">
-          ტრანზაქციები — {scopeLabel(scope)}
-          <span className="ml-2 text-sm font-normal text-zinc-500">
-            ({tableRows.length}) · {rangeLabel}
-          </span>
-        </h3>
-        <p className="mb-3 text-xs text-zinc-500">{txSectionHint}</p>
-        <TransactionTable
-          rows={tableRows}
-          showBranch={scope === "company" || scope === KUTAISI_DISTRIB_LABEL}
-          employees={readOnly ? undefined : employees}
-          bankLedgerReviewed={bankLedgerReviewed}
-          onDelete={readOnly ? undefined : onDelete}
-          onUpdatePayment={readOnly ? undefined : onUpdatePayment}
-          onUpdateDriver={readOnly ? undefined : onUpdateDriver}
-          onToggleReview={readOnly ? undefined : onToggleReview}
-        />
-      </div>
-      )}
 
       <BranchActivityPanel
         branchReports={branchReports}
