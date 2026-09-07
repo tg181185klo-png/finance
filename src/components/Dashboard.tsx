@@ -31,6 +31,7 @@ import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
+import AccountingSystemPanel from "@/components/AccountingSystemPanel";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import ThemeToggle from "@/components/ThemeToggle";
 import TransactionTable from "@/components/TransactionTable";
@@ -97,6 +98,7 @@ const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
 
 type Tab =
+  | "system"
   | "main"
   | "overview"
   | "balances"
@@ -112,6 +114,7 @@ type Tab =
   | "employee-bonus";
 
 const DASHBOARD_TABS: { id: Tab; label: string }[] = [
+  { id: "system", label: "ჩემი აღრიცხვის სისტემა" },
   { id: "main", label: "ჩაწერა" },
   { id: "overview", label: "მიმოხილვა" },
   { id: "balances", label: "ბალანსები" },
@@ -167,7 +170,7 @@ type DashboardProps = {
 };
 
 export default function Dashboard({ onLogout }: DashboardProps = {}) {
-  const [tab, setTab] = useState<Tab>("main");
+  const [tab, setTab] = useState<Tab>("system");
   const [store, setStore] = useState<Store | null>(null);
   const [storeWarning, setStoreWarning] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -1175,6 +1178,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             Google Sheets → გაზიარება → „ინტერნეტზე ყველას“ (მნახველი) ან ფაილი → გამოქვეყნება ვებზე
           </p>
         </div>
+      )}
+
+      {tab === "system" && (
+        <AccountingSystemPanel
+          onOpen={(next) => setTab(next)}
+        />
       )}
 
       {tab === "main" && (
