@@ -32,6 +32,7 @@ import BankAccountPanel from "@/components/BankAccountPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import AccountingSystemPanel from "@/components/AccountingSystemPanel";
+import OwnerMetricsPanel from "@/components/OwnerMetricsPanel";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import ThemeToggle from "@/components/ThemeToggle";
 import TransactionTable from "@/components/TransactionTable";
@@ -99,6 +100,7 @@ const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg
 
 type Tab =
   | "system"
+  | "owner"
   | "main"
   | "overview"
   | "balances"
@@ -115,6 +117,7 @@ type Tab =
 
 const DASHBOARD_TABS: { id: Tab; label: string }[] = [
   { id: "system", label: "ჩემი აღრიცხვის სისტემა" },
+  { id: "owner", label: "მფლობელის მაჩვენებლები" },
   { id: "main", label: "ჩაწერა" },
   { id: "overview", label: "მიმოხილვა" },
   { id: "balances", label: "ბალანსები" },
@@ -1182,6 +1185,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "system" && (
         <AccountingSystemPanel
+          onOpen={(next) => setTab(next)}
+        />
+      )}
+
+      {tab === "owner" && !loading && (
+        <OwnerMetricsPanel
+          transactions={operationalTx}
+          branchCash={activeStore.branchCash}
+          branchReports={branchReports}
+          obligations={activeStore.obligations}
+          bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
+          period={period}
+          branchFilter={filter}
           onOpen={(next) => setTab(next)}
         />
       )}
