@@ -142,6 +142,10 @@ export interface Obligation {
   comment?: string;
   recurringId?: string;
   employeeId?: string;
+  /** დაგეგმილი გასტუმრების თარიღი (YYYY-MM-DD) */
+  plannedPayDate?: string;
+  /** დაგეგმილი გადახდის საშუალება */
+  plannedPaymentMethod?: PaymentMethod;
 }
 
 /** ყოველთვიური ფიქსირებული ვალდებულების შაბლონი */
@@ -153,6 +157,8 @@ export interface RecurringObligation {
   category: ExpenseCategory;
   comment?: string;
   createdAt: string;
+  plannedPayDate?: string;
+  plannedPaymentMethod?: PaymentMethod;
 }
 
 /** ვალდებულების გადახდის ისტორია */

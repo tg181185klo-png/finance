@@ -221,6 +221,8 @@ export function ensureMonthObligations(store: Store, month: string) {
         month,
         recurringId: rec.id,
         comment: rec.comment,
+        plannedPayDate: rec.plannedPayDate,
+        plannedPaymentMethod: rec.plannedPaymentMethod,
       });
       changed = true;
     }
@@ -618,6 +620,8 @@ export function addRecurringObligation(
     month,
     recurringId: rec.id,
     comment: rec.comment,
+    plannedPayDate: rec.plannedPayDate,
+    plannedPaymentMethod: rec.plannedPaymentMethod,
   });
   return rec;
 }

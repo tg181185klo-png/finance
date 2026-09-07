@@ -227,6 +227,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obComment, setObComment] = useState("");
   const [obRecurring, setObRecurring] = useState(true);
   const [obEmployeeId, setObEmployeeId] = useState("");
+  const [obPlannedPayDate, setObPlannedPayDate] = useState("");
+  const [obPlannedPayMethod, setObPlannedPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
 
   // Obligation payment
   const [obPayInputs, setObPayInputs] = useState<Record<string, string>>({});
@@ -969,6 +971,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             category: obCategory,
             month: obMonth,
             comment: obComment.trim() || undefined,
+            plannedPayDate: obPlannedPayDate || undefined,
+            plannedPaymentMethod: obPlannedPayMethod,
           },
           recurring: obRecurring,
         }),
@@ -981,6 +985,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setObAmount("");
       setObComment("");
       setObEmployeeId("");
+      setObPlannedPayDate("");
+      setObPlannedPayMethod("ქეში (ნაღდი)");
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
     }
@@ -1195,10 +1201,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchCash={activeStore.branchCash}
           branchReports={branchReports}
           obligations={activeStore.obligations}
+          obligationPayments={activeStore.obligationPayments ?? []}
           bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           period={period}
           branchFilter={filter}
-          onOpen={(next) => setTab(next)}
         />
       )}
 
@@ -1897,6 +1903,27 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   />
                 </Field>
               </div>
+              <Field label="დაგეგმილი გასტუმრების თარიღი">
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={obPlannedPayDate}
+                  onChange={(e) => setObPlannedPayDate(e.target.value)}
+                />
+              </Field>
+              <Field label="დაგეგმილი გადახდის საშუალება">
+                <select
+                  className={inputCls}
+                  value={obPlannedPayMethod}
+                  onChange={(e) => setObPlannedPayMethod(e.target.value as PaymentMethod)}
+                >
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
             {obCategory === "ხელფასი" && salaryEmployees.length === 0 && (
               <p className="mt-2 text-xs text-amber-400">
@@ -1962,6 +1989,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                         <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
                       </div>
                       {o.comment && <p className="mb-1 text-xs text-zinc-500">{o.comment}</p>}
+                      {(o.plannedPayDate || o.plannedPaymentMethod) && (
+                        <p className="mb-1 text-xs text-violet-300/90">
+                          დაგეგმილი გასტუმრება:
+                          {o.plannedPayDate ? ` ${o.plannedPayDate}` : ""}
+                          {o.plannedPaymentMethod ? ` · ${o.plannedPaymentMethod}` : ""}
+                        </p>
+                      )}
                       <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
                         <div className={`h-full transition-all ${pct >= 100 ? "bg-emerald-500" : "bg-violet-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                       </div>

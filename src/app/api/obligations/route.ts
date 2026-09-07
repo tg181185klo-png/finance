@@ -124,6 +124,8 @@ export async function POST(req: NextRequest) {
             branch: body.obligation!.branch,
             category: body.obligation!.category,
             comment: body.obligation!.comment?.trim() || undefined,
+            plannedPayDate: body.obligation!.plannedPayDate || undefined,
+            plannedPaymentMethod: body.obligation!.plannedPaymentMethod || undefined,
           },
           month
         );
