@@ -40,6 +40,16 @@ html[data-theme="light"] {
 
 body {
   @apply bg-zinc-950 text-zinc-100 antialiased;
+  min-width: 0;
+}
+
+/* Mobile: prevent iOS input zoom by keeping form controls ≥16px */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 input,

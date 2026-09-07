@@ -72,7 +72,7 @@ export default function OverviewPortal({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="w-full px-3 py-4 sm:px-4 sm:py-6 lg:px-6 xl:px-8">
         <header className="mb-6 border-b border-zinc-800 pb-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

@@ -95,16 +95,43 @@ function adminPanelUrl() {
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
 const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
-const tabCls = (on: boolean) =>
-  `rounded-lg px-3 py-1.5 text-sm ${on ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`;
+
+type Tab =
+  | "main"
+  | "overview"
+  | "balances"
+  | "expenses"
+  | "clients"
+  | "obligations"
+  | "reports"
+  | "branches"
+  | "payments"
+  | "bank"
+  | "inventory"
+  | "employees"
+  | "employee-bonus";
+
+const DASHBOARD_TABS: { id: Tab; label: string }[] = [
+  { id: "main", label: "ჩაწერა" },
+  { id: "overview", label: "მიმოხილვა" },
+  { id: "balances", label: "ბალანსები" },
+  { id: "expenses", label: "ხარჯები" },
+  { id: "clients", label: "კლიენტები" },
+  { id: "employee-bonus", label: "გაყიდვის ბონუსი" },
+  { id: "reports", label: "რეპორტები" },
+  { id: "branches", label: "ფილიალები" },
+  { id: "payments", label: "გადახდები" },
+  { id: "bank", label: "საბანკო ანგარიში" },
+  { id: "obligations", label: "ვალდებულებები" },
+  { id: "employees", label: "თანამშრომლები" },
+  { id: "inventory", label: "მარაგი" },
+];
 
 function parseNum(raw: string): number {
   if (!raw.trim()) return 0;
   const n = parseFloat(raw);
   return Number.isFinite(n) ? n : 0;
 }
-
-type Tab = "main" | "overview" | "balances" | "expenses" | "clients" | "obligations" | "reports" | "branches" | "payments" | "bank" | "inventory" | "employees" | "employee-bonus";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -1031,87 +1058,106 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-6xl px-4 py-6">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">ფინანსური Dashboard</h1>
-          <p className="text-sm text-zinc-500">
-            {loading
-              ? "იტვირთება..."
-              : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
-            {saveMsg && <span className="ml-2 text-emerald-400">{saveMsg}</span>}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select className={`${inputCls} w-auto`} value={filter} onChange={(e) => setFilter(e.target.value as Branch | "ყველა")}>
-            <option value="ყველა">ყველა ფილიალი</option>
-            {BRANCHES.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
-          <select
-            className={`${inputCls} w-auto`}
-            value={periodMode}
-            onChange={(e) => setPeriodMode(e.target.value as PeriodMode)}
-          >
-            <option value="month">მიმდინარე თვე</option>
-            <option value="today">დღეს</option>
-            <option value="custom">პერიოდი...</option>
-          </select>
-          {periodMode === "custom" && (
-            <>
-              <input type="date" className={`${inputCls} w-auto`} value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <span className="text-zinc-500">—</span>
-              <input type="date" className={`${inputCls} w-auto`} value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-            </>
-          )}
-          <span className="hidden text-xs text-zinc-500 sm:inline">{period.label}</span>
-          <ThemeToggle />
-          {onLogout && (
-            <button
-              type="button"
-              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-              onClick={() => void onLogout()}
-            >
-              გასვლა
-            </button>
-          )}
+    <div className="min-h-screen w-full">
+      <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80">
+        <div className="flex w-full flex-col gap-3 px-3 py-3 sm:px-4 lg:px-6 xl:px-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">ფინანსური Dashboard</h1>
+              <p className="mt-0.5 text-xs text-zinc-500 sm:text-sm">
+                {loading
+                  ? "იტვირთება..."
+                  : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
+                {saveMsg && <span className="ml-2 text-emerald-400">{saveMsg}</span>}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <ThemeToggle />
+              {onLogout && (
+                <button
+                  type="button"
+                  className="min-h-10 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  onClick={() => void onLogout()}
+                >
+                  გასვლა
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <div>
+              <label className={labelCls}>მენიუ</label>
+              <select
+                className={`${inputCls} min-h-11 text-base font-medium sm:text-sm`}
+                value={tab}
+                onChange={(e) => setTab(e.target.value as Tab)}
+              >
+                {DASHBOARD_TABS.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>ფილიალი</label>
+              <select
+                className={`${inputCls} min-h-11 sm:text-sm`}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as Branch | "ყველა")}
+              >
+                <option value="ყველა">ყველა ფილიალი</option>
+                {BRANCHES.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>პერიოდი</label>
+              <select
+                className={`${inputCls} min-h-11 sm:text-sm`}
+                value={periodMode}
+                onChange={(e) => setPeriodMode(e.target.value as PeriodMode)}
+              >
+                <option value="month">მიმდინარე თვე</option>
+                <option value="today">დღეს</option>
+                <option value="custom">პერიოდი...</option>
+              </select>
+            </div>
+            {periodMode === "custom" ? (
+              <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-1 xl:col-span-2">
+                <div className="min-w-[9rem] flex-1">
+                  <label className={labelCls}>დან</label>
+                  <input
+                    type="date"
+                    className={`${inputCls} min-h-11`}
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                  />
+                </div>
+                <div className="min-w-[9rem] flex-1">
+                  <label className={labelCls}>მდე</label>
+                  <input
+                    type="date"
+                    className={`${inputCls} min-h-11`}
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-end">
+                <p className="pb-2.5 text-xs text-zinc-500">{period.label}</p>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      <nav className="mb-6 flex flex-wrap gap-2">
-        <button type="button" className={tabCls(tab === "main")} onClick={() => setTab("main")}>ჩაწერა</button>
-        <button type="button" className={tabCls(tab === "overview")} onClick={() => setTab("overview")}>
-          მიმოხილვა
-        </button>
-        <button type="button" className={tabCls(tab === "balances")} onClick={() => setTab("balances")}>
-          ბალანსები
-        </button>
-        <button type="button" className={tabCls(tab === "expenses")} onClick={() => setTab("expenses")}>
-          ხარჯები
-        </button>
-        <button type="button" className={tabCls(tab === "clients")} onClick={() => setTab("clients")}>
-          კლიენტები
-        </button>
-        <button type="button" className={tabCls(tab === "employee-bonus")} onClick={() => setTab("employee-bonus")}>
-          გაყიდვის ბონუსი
-        </button>
-        <button type="button" className={tabCls(tab === "reports")} onClick={() => setTab("reports")}>რეპორტები</button>
-        <button type="button" className={tabCls(tab === "branches")} onClick={() => setTab("branches")}>ფილიალები</button>
-        <button type="button" className={tabCls(tab === "payments")} onClick={() => setTab("payments")}>
-          გადახდები
-        </button>
-        <button type="button" className={tabCls(tab === "bank")} onClick={() => setTab("bank")}>
-          საბანკო ანგარიში
-        </button>
-        <button type="button" className={tabCls(tab === "obligations")} onClick={() => setTab("obligations")}>
-          ვალდებულებები
-        </button>
-        <button type="button" className={tabCls(tab === "employees")} onClick={() => setTab("employees")}>
-          თანამშრომლები
-        </button>
-      </nav>
-
+      <main className="w-full px-3 py-4 sm:px-4 sm:py-5 lg:px-6 xl:px-8">
       {error && (
         <div className="mb-4 rounded-lg border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">{error}</div>
       )}
@@ -2166,6 +2212,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           onRefresh={refresh}
         />
       )}
+      </main>
     </div>
   );
 }

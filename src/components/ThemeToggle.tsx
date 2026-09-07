@@ -9,7 +9,7 @@ import {
 } from "@/lib/theme";
 
 const btn = (on: boolean) =>
-  `rounded-lg px-3 py-1.5 text-sm transition ${
+  `rounded-lg px-2.5 py-1.5 text-xs sm:px-3 sm:text-sm transition min-h-9 ${
     on
       ? "bg-emerald-700 text-white"
       : "border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-200"
