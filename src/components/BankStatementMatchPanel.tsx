@@ -60,7 +60,7 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
         await onMarked?.();
       } else {
         setMsg(
-          `დამთხვეულ ჩარიცხვებს ქვემოთ სიაში მიეწერა ამონაწერის თარიღი, ჩარიცხავი და საკომისიო · ${data.fileName}`
+          `დამთხვეულ ჩარიცხვებს ქვემოთ სიაში მიეწერა ამონაწერის თარიღი, გადმომრიცხავი და საკომისიო · ${data.fileName}`
         );
       }
     } catch (e) {
@@ -74,8 +74,8 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
     <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-5">
       <h2 className="font-semibold text-sky-200">ბანკის ამონაწერი — შედარება</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        ატვირთეთ Excel ამონაწერი. დამთხვევის შემთხვევაში ქვემოთ თქვენს ჩარიცხვებზე მიეწერება ამონაწერის
-        თარიღი, ჩარიცხავი და სხვაობა (საკომისიო) — სია არ იცვლება.
+        ატვირთეთ Excel ამონაწერი. თანხითა და თარიღით დამთხვეულ ჩარიცხვებს ქვემოთ მიეწერება ამონაწერის თარიღი,
+        გადმომრიცხავის სახელი/გვარი და სხვაობა — სახელი აპში არასწორი რომ იყოს, მაინც მიეწერება.
       </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">

@@ -128,6 +128,28 @@ function extractPaymentDate(desc: string): string | null {
   return parseDdMmYyyy(m[1].replace(/\//g, "."));
 }
 
+/** ამონაწერიდან გადმომრიცხავის სახელი/გვარი (ან დასახელება) */
+function extractTransferorName(senderCol: string, description: string, purpose: string): string {
+  const fromCol = senderCol.replace(/\s+/g, " ").trim();
+  if (fromCol && !/^\d+$/.test(fromCol)) return fromCol;
+
+  const sources = [description, purpose].filter(Boolean);
+  for (const src of sources) {
+    const m =
+      src.match(/გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i) ||
+      src.match(/გადამრიცხავი\s*[:：]\s*([^\n|;]+)/i) ||
+      src.match(/payer\s*(?:name)?\s*[:：]\s*([^\n|;]+)/i) ||
+      src.match(/from\s*[:：]\s*([^\n|;]+)/i);
+    if (m?.[1]) {
+      const name = m[1].replace(/\s+/g, " ").trim();
+      if (name) return name;
+    }
+  }
+
+  if (purpose.replace(/\s+/g, " ").trim()) return purpose.replace(/\s+/g, " ").trim();
+  return fromCol;
+}
+
 function amountsClose(a: number, b: number, tol = 0.02): boolean {
   return Math.abs(a - b) <= tol;
 }
@@ -198,7 +220,7 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const description = cellStr(row[5]);
     const opType = cellStr(row[6]);
     const opId = cellStr(row[7]);
-    const senderName = cellStr(row[9]) || cellStr(row[26]);
+    const senderCol = cellStr(row[9]) || cellStr(row[26]) || cellStr(row[10]);
     const purpose = cellStr(row[19]) || cellStr(row[20]);
     const amountCell = cellNum(row[21]);
 
@@ -216,6 +238,7 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const grossAmount = direction === "in" ? extractGrossFromDescription(description) : null;
     const payDate = extractPaymentDate(description);
     const date = payDate || statementDate;
+    const senderName = extractTransferorName(senderCol, description, purpose);
 
     const absAmount = Math.abs(signed) || credit || debit;
     const matchAmount = grossAmount ?? (direction === "in" ? credit || absAmount : debit || absAmount);
@@ -315,10 +338,11 @@ function addDays(iso: string, n: number): string {
 }
 
 function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
+  // დამთხვევა: თანხა + თარიღი (სახელი არ არის სავალდებულო — არასწორი სახელიც მაინც მიებმება)
   if (!amountsClose(line.matchAmount, c.amount) && !amountsClose(line.amount, c.amount)) {
     return -1;
   }
-  const dayGap = daysApart(line.date, c.date);
+  const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
   if (dayGap > 2) return -1;
 
   let score = 100 - dayGap * 10;
@@ -328,9 +352,15 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   if (line.opType === "TRN" && c.channel === "card") score += 15;
   if (line.opType === "PMD" && c.channel === "bank") score += 15;
 
+  // სახელის დამთხვევა მხოლოდ ქულას ამატებს; არასწორი სახელი დამთხვევას არ ბლოკავს
   const sender = line.senderName.toLowerCase();
   const buyer = c.buyerName.toLowerCase();
-  if (sender && buyer && (sender.includes(buyer) || buyer.includes(sender))) score += 25;
+  if (sender && buyer) {
+    const senderParts = sender.split(/\s+/).filter((p) => p.length > 1);
+    const buyerParts = buyer.split(/\s+/).filter((p) => p.length > 1);
+    const overlap = senderParts.some((p) => buyer.includes(p)) || buyerParts.some((p) => sender.includes(p));
+    if (overlap) score += 25;
+  }
 
   return score;
 }
@@ -427,7 +457,7 @@ export function buildStatementLedgerHints(matches: StatementMatchRow[]): Record<
     if (m.status !== "matched" || !m.candidate) continue;
     const hint: StatementLedgerHint = {
       statementDate: m.line.statementDate || m.line.date,
-      statementSender: m.line.senderName || m.line.purpose || "",
+      statementSender: m.line.senderName || "",
       statementAmount: m.line.credit || m.line.amount,
       commission: m.commission,
       status: "matched",

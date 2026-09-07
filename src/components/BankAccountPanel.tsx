@@ -378,7 +378,7 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">თანხა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-center">ნანახია</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ამონაწერის თარიღი</th>
-                  <th className="whitespace-nowrap px-2.5 py-2">ჩარიცხული ამონაწერში</th>
+                  <th className="whitespace-nowrap px-2.5 py-2">გადმომრიცხავი</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">სხვაობა</th>
                 </tr>
               </thead>
@@ -460,7 +460,7 @@ export default function BankAccountPanel({
                       <td className="whitespace-nowrap px-2.5 py-2 text-xs text-violet-200">
                         {hint ? formatDate(hint.statementDate) : "—"}
                       </td>
-                      <td className="max-w-[200px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-100">
+                      <td className="max-w-[220px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-100">
                         {hint?.statementSender || "—"}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-2 text-right text-xs font-medium text-amber-200">
@@ -495,8 +495,8 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ამონაწერის ატვირთვისას დამთხვეულ ჩარიცხვებს ბოლოში მიეწერება ამონაწერის თარიღი, ჩარიცხავი და
-          საკომისიო. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
+          ამონაწერის ატვირთვისას თანხითა და თარიღით დამთხვეულ ჩარიცხვებს ბოლოში მიეწერება ამონაწერის თარიღი,
+          გადმომრიცხავის სახელი/გვარი და საკომისიო (სახელი აპში არასწორიც რომ იყოს). ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
         </p>
       </div>
     </section>
