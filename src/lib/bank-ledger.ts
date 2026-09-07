@@ -83,6 +83,9 @@ function depositorName(t: Transaction): string {
     if (t.kind === "loan_repayment") return "ვალის დაბრუნება";
     return "შენატანი";
   }
+  if (t.type === "expense") {
+    return t.comment?.trim() || t.category || "—";
+  }
   return "";
 }
 
@@ -157,7 +160,7 @@ export function buildAccountLedgerRows(
         channel: ch,
         label,
         comment,
-        depositorName: "",
+        depositorName: depositorName(t),
         amount: t.amount,
         source: t.source ?? "admin",
         paymentMethod: method,

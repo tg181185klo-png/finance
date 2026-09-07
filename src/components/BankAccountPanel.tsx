@@ -115,7 +115,7 @@ export default function BankAccountPanel({
       channelFilter,
       operationalFrom: OPERATIONAL_DATA_FROM,
     }).filter((r) => {
-      if (onlyUnreviewed && (r.direction !== "in" || bankLedgerReviewed[r.id])) return false;
+      if (onlyUnreviewed && bankLedgerReviewed[r.id]) return false;
       if (!q) return true;
       return [r.label, r.comment, r.depositorName, r.branch, r.date, statementHints[r.id]?.statementSender]
         .join(" ")
@@ -131,7 +131,7 @@ export default function BankAccountPanel({
       branch: branchFilter,
       channelFilter,
       operationalFrom: OPERATIONAL_DATA_FROM,
-    }).filter((r) => r.direction === "in" && !bankLedgerReviewed[r.id]).length;
+    }).filter((r) => !bankLedgerReviewed[r.id]).length;
   }, [transactions, from, to, branchFilter, channelFilter, bankLedgerReviewed]);
 
   const totals = useMemo(() => ledgerTotals(rows), [rows]);
@@ -358,7 +358,7 @@ export default function BankAccountPanel({
               checked={onlyUnreviewed}
               onChange={(e) => setOnlyUnreviewed(e.target.checked)}
             />
-            მხოლოდ უნახული ჩარიცხვები
+            მხოლოდ უნახული ჩანაწერები
           </label>
         </div>
 
@@ -372,13 +372,13 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2">გაყიდვის თარიღი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ფილიალი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ტიპი</th>
-                  <th className="whitespace-nowrap px-2.5 py-2">ჩამრიცხავი</th>
+                  <th className="whitespace-nowrap px-2.5 py-2">ჩამრიცხავი / აღწერა</th>
                   <th className="whitespace-nowrap px-2.5 py-2">არხი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">გადახდა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">თანხა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-center">ნანახია</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ამონაწერის თარიღი</th>
-                  <th className="whitespace-nowrap px-2.5 py-2">გადმომრიცხავი</th>
+                  <th className="whitespace-nowrap px-2.5 py-2">გადმომრიცხავი / მიმღები</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">სხვაობა</th>
                 </tr>
               </thead>
@@ -391,7 +391,7 @@ export default function BankAccountPanel({
                     <tr
                       key={row.id}
                       className={`border-b border-zinc-800/60 ${
-                        isIncoming && !reviewed
+                        !reviewed
                           ? "bg-amber-950/20"
                           : hint
                             ? "bg-emerald-950/10"
@@ -410,7 +410,7 @@ export default function BankAccountPanel({
                         {typeLabel(row)}
                       </td>
                       <td className="max-w-[160px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-200">
-                        {isIncoming ? row.depositorName || "—" : "—"}
+                        {row.depositorName || "—"}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-2 text-xs text-sky-300">
                         {channelLabel(row.channel)}
@@ -439,23 +439,19 @@ export default function BankAccountPanel({
                         {formatMoney(row.amount)}
                       </td>
                       <td className="px-2.5 py-2 text-center">
-                        {isIncoming ? (
-                          <button
-                            type="button"
-                            title={reviewed ? "ნანახია — მონიშვნის მოხსნა" : "მონიშნე როგორც ნანახი"}
-                            disabled={reviewBusy === row.id}
-                            onClick={() => void toggleReview(row.id, reviewed)}
-                            className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm transition ${
-                              reviewed
-                                ? "border-emerald-600 bg-emerald-950/50 text-emerald-400"
-                                : "border-zinc-600 bg-zinc-900 text-zinc-600 hover:border-violet-500 hover:text-violet-300"
-                            }`}
-                          >
-                            ✓
-                          </button>
-                        ) : (
-                          <span className="text-zinc-700">—</span>
-                        )}
+                        <button
+                          type="button"
+                          title={reviewed ? "ნანახია — მონიშვნის მოხსნა" : "მონიშნე როგორც ნანახი"}
+                          disabled={reviewBusy === row.id}
+                          onClick={() => void toggleReview(row.id, reviewed)}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm transition ${
+                            reviewed
+                              ? "border-emerald-600 bg-emerald-950/50 text-emerald-400"
+                              : "border-zinc-600 bg-zinc-900 text-zinc-600 hover:border-violet-500 hover:text-violet-300"
+                          }`}
+                        >
+                          ✓
+                        </button>
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-2 text-xs text-violet-200">
                         {hint ? formatDate(hint.statementDate) : "—"}
@@ -495,8 +491,8 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ამონაწერის ატვირთვისას თანხითა და თარიღით დამთხვეულ ჩარიცხვებს ბოლოში მიეწერება ამონაწერის თარიღი,
-          გადმომრიცხავის სახელი/გვარი და საკომისიო (სახელი აპში არასწორიც რომ იყოს). ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
+          ამონაწერის ატვირთვისას თანხითა და თარიღით დამთხვეულ შემოსავალსა და ხარჯს ბოლოში მიეწერება ამონაწერის
+          თარიღი, გადმომრიცხავი/მიმღები და სხვაობა. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
         </p>
       </div>
     </section>

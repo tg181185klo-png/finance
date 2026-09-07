@@ -35,7 +35,8 @@ export type MatchCandidate = {
   amount: number;
   channel: "card" | "bank";
   branch: string;
-  kind: "sale" | "deposit";
+  direction: StatementDirection;
+  kind: "sale" | "deposit" | "expense";
   label: string;
   buyerName: string;
 };
@@ -128,21 +129,40 @@ function extractPaymentDate(desc: string): string | null {
   return parseDdMmYyyy(m[1].replace(/\//g, "."));
 }
 
-/** ამონაწერიდან გადმომრიცხავის სახელი/გვარი (ან დასახელება) */
-function extractTransferorName(senderCol: string, description: string, purpose: string): string {
-  const fromCol = senderCol.replace(/\s+/g, " ").trim();
+/** ამონაწერიდან კონტრაგენტი: შემოსავალზე გადმომრიცხავი, გასავალზე მიმღები */
+function extractCounterpartyName(
+  direction: StatementDirection,
+  partyCol: string,
+  description: string,
+  purpose: string
+): string {
+  const fromCol = partyCol.replace(/\s+/g, " ").trim();
   if (fromCol && !/^\d+$/.test(fromCol)) return fromCol;
 
   const sources = [description, purpose].filter(Boolean);
+  const patterns =
+    direction === "in"
+      ? [
+          /გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i,
+          /გადამრიცხავი\s*[:：]\s*([^\n|;]+)/i,
+          /payer\s*(?:name)?\s*[:：]\s*([^\n|;]+)/i,
+          /from\s*[:：]\s*([^\n|;]+)/i,
+        ]
+      : [
+          /მიმღები\s*[:：]\s*([^\n|;]+)/i,
+          /ბენეფიციარი\s*[:：]\s*([^\n|;]+)/i,
+          /beneficiary\s*[:：]\s*([^\n|;]+)/i,
+          /to\s*[:：]\s*([^\n|;]+)/i,
+          /გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i,
+        ];
+
   for (const src of sources) {
-    const m =
-      src.match(/გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i) ||
-      src.match(/გადამრიცხავი\s*[:：]\s*([^\n|;]+)/i) ||
-      src.match(/payer\s*(?:name)?\s*[:：]\s*([^\n|;]+)/i) ||
-      src.match(/from\s*[:：]\s*([^\n|;]+)/i);
-    if (m?.[1]) {
-      const name = m[1].replace(/\s+/g, " ").trim();
-      if (name) return name;
+    for (const re of patterns) {
+      const m = src.match(re);
+      if (m?.[1]) {
+        const name = m[1].replace(/\s+/g, " ").trim();
+        if (name) return name;
+      }
     }
   }
 
@@ -220,7 +240,7 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const description = cellStr(row[5]);
     const opType = cellStr(row[6]);
     const opId = cellStr(row[7]);
-    const senderCol = cellStr(row[9]) || cellStr(row[26]) || cellStr(row[10]);
+    const partyCol = cellStr(row[9]) || cellStr(row[26]) || cellStr(row[10]);
     const purpose = cellStr(row[19]) || cellStr(row[20]);
     const amountCell = cellNum(row[21]);
 
@@ -238,7 +258,7 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const grossAmount = direction === "in" ? extractGrossFromDescription(description) : null;
     const payDate = extractPaymentDate(description);
     const date = payDate || statementDate;
-    const senderName = extractTransferorName(senderCol, description, purpose);
+    const senderName = extractCounterpartyName(direction, partyCol, description, purpose);
 
     const absAmount = Math.abs(signed) || credit || debit;
     const matchAmount = grossAmount ?? (direction === "in" ? credit || absAmount : debit || absAmount);
@@ -272,12 +292,13 @@ export function parseBankStatementExcel(buffer: Buffer): {
   return { periodLabel, periodFrom, periodTo, lines };
 }
 
-/** აპში ბარათი/ანგარიშის შემოსავლები (გაყიდვა ჯგუფებით + შენატანი) */
+/** აპში ბარათი/ანგარიშის შემოსავლები და გასავლები */
 export function buildMatchCandidates(transactions: Transaction[], from: string, to: string): MatchCandidate[] {
   const padFrom = addDays(from, -2);
   const padTo = addDays(to, 2);
   const salesByGroup = new Map<string, Extract<Transaction, { type: "sale" }>[]>();
   const deposits: MatchCandidate[] = [];
+  const expenses: MatchCandidate[] = [];
 
   for (const t of transactions) {
     const d = t.date.slice(0, 10);
@@ -302,14 +323,31 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
         amount: t.amount,
         channel: method === CARD_METHOD ? "card" : "bank",
         branch: t.branch,
+        direction: "in",
         kind: "deposit",
         label: t.comment?.trim() || (t.kind === "founder" ? "დამფუძნებლის შენატანი" : "შენატანი"),
         buyerName: t.comment?.trim() || "",
       });
+      continue;
+    }
+
+    if (t.type === "expense") {
+      expenses.push({
+        key: `exp:${t.id}`,
+        ids: [t.id],
+        date: d,
+        amount: t.amount,
+        channel: method === CARD_METHOD ? "card" : "bank",
+        branch: String(t.branch),
+        direction: "out",
+        kind: "expense",
+        label: t.comment?.trim() || t.category,
+        buyerName: t.comment?.trim() || t.category || "",
+      });
     }
   }
 
-  const out: MatchCandidate[] = [...deposits];
+  const out: MatchCandidate[] = [...deposits, ...expenses];
 
   for (const [gKey, sales] of salesByGroup) {
     const amount = sales.reduce((s, x) => s + x.amount, 0);
@@ -322,6 +360,7 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
       amount,
       channel: method === CARD_METHOD ? "card" : "bank",
       branch: primary.branch,
+      direction: "in",
       kind: "sale",
       label: saleGroupLabel(primary),
       buyerName: primary.buyerName?.trim() || "",
@@ -338,7 +377,7 @@ function addDays(iso: string, n: number): string {
 }
 
 function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
-  // დამთხვევა: თანხა + თარიღი (სახელი არ არის სავალდებულო — არასწორი სახელიც მაინც მიებმება)
+  if (line.direction !== c.direction) return -1;
   if (!amountsClose(line.matchAmount, c.amount) && !amountsClose(line.amount, c.amount)) {
     return -1;
   }
@@ -350,23 +389,21 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   else if (amountsClose(line.amount, c.amount)) score += 5;
 
   if (line.opType === "TRN" && c.channel === "card") score += 15;
-  if (line.opType === "PMD" && c.channel === "bank") score += 15;
+  if ((line.opType === "PMD" || line.opType === "TPA") && c.channel === "bank") score += 15;
 
-  // სახელის დამთხვევა მხოლოდ ქულას ამატებს; არასწორი სახელი დამთხვევას არ ბლოკავს
-  const sender = line.senderName.toLowerCase();
-  const buyer = c.buyerName.toLowerCase();
-  if (sender && buyer) {
-    const senderParts = sender.split(/\s+/).filter((p) => p.length > 1);
-    const buyerParts = buyer.split(/\s+/).filter((p) => p.length > 1);
-    const overlap = senderParts.some((p) => buyer.includes(p)) || buyerParts.some((p) => sender.includes(p));
+  const party = line.senderName.toLowerCase();
+  const name = c.buyerName.toLowerCase();
+  if (party && name) {
+    const partyParts = party.split(/\s+/).filter((p) => p.length > 1);
+    const nameParts = name.split(/\s+/).filter((p) => p.length > 1);
+    const overlap = partyParts.some((p) => name.includes(p)) || nameParts.some((p) => party.includes(p));
     if (overlap) score += 25;
   }
 
   return score;
 }
 
-function shouldSkipCredit(line: BankStatementLine): { skip: boolean; note: string } {
-  if (line.direction !== "in") return { skip: true, note: "გასავალი — შედარება შემოსავლებზე" };
+function shouldSkipLine(line: BankStatementLine): { skip: boolean; note: string } {
   if (line.opType === "CCO") return { skip: true, note: "ვალუტის გაცვლა — გამოტოვებული" };
   const desc = line.description.toLowerCase();
   if (desc.includes("ვალუტის გაცვლ")) return { skip: true, note: "ვალუტის გაცვლა — გამოტოვებული" };
@@ -375,11 +412,10 @@ function shouldSkipCredit(line: BankStatementLine): { skip: boolean; note: strin
 
 function calcCommission(line: BankStatementLine, candidate: MatchCandidate | null): number | null {
   if (!candidate) return null;
-  const bankNet = line.credit || line.amount;
-  const appGross = candidate.amount;
-  const diff = Math.round((appGross - bankNet) * 100) / 100;
+  const bankAmt =
+    line.direction === "in" ? line.credit || line.amount : line.debit || line.amount;
+  const diff = Math.round((candidate.amount - bankAmt) * 100) / 100;
   if (Math.abs(diff) < 0.01) return null;
-  // საკომისიო ძირითადად ბარათზე; ანგარიშზეც ვაჩვენებთ თუ სხვაობაა
   return diff;
 }
 
@@ -392,13 +428,10 @@ export function matchBankStatement(
   const used = new Set<string>();
   const matches: StatementMatchRow[] = [];
 
-  const credits = lines.filter((l) => l.direction === "in");
-
-  // უკეთესი ქულის მატჩები ჯერ
   type Pair = { line: BankStatementLine; candidate: MatchCandidate; score: number };
   const pairs: Pair[] = [];
-  for (const line of credits) {
-    const skip = shouldSkipCredit(line);
+  for (const line of lines) {
+    const skip = shouldSkipLine(line);
     if (skip.skip) continue;
     for (const c of candidates) {
       const score = scoreMatch(line, c);
@@ -415,7 +448,7 @@ export function matchBankStatement(
   }
 
   for (const line of lines) {
-    const skip = shouldSkipCredit(line);
+    const skip = shouldSkipLine(line);
     if (skip.skip) {
       matches.push({ line, status: "skipped", candidate: null, note: skip.note, commission: null });
       continue;
@@ -426,7 +459,7 @@ export function matchBankStatement(
         line,
         status: "matched",
         candidate: c,
-        note: `${c.channel === "card" ? "ბარათი" : "ანგარიში"} · ${c.branch} · ${c.label}`,
+        note: `${c.direction === "in" ? "შემოსავალი" : "გასავალი"} · ${c.channel === "card" ? "ბარათი" : "ანგარიში"} · ${c.branch} · ${c.label}`,
         commission: calcCommission(line, c),
       });
     } else {
