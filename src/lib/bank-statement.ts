@@ -71,6 +71,7 @@ export type BankStatementMatchResult = {
   lines: BankStatementLine[];
   matches: StatementMatchRow[];
   appUnmatched: AppUnmatchedRow[];
+  hints: Record<string, StatementLedgerHint>;
   summary: {
     credits: number;
     matched: number;
@@ -167,11 +168,27 @@ function extractCounterpartyName(
   }
 
   if (purpose.replace(/\s+/g, " ").trim()) return purpose.replace(/\s+/g, " ").trim();
+  // აღწერიდან პირველი აზრიანი ნაწილი (ხშირად იქ არის სახელი)
+  const cleaned = description
+    .replace(/\s+/g, " ")
+    .replace(/თანხა\s*:\s*GEL\s*[\d\s.,]+/gi, "")
+    .replace(/თარიღი\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, "")
+    .trim();
+  if (cleaned.length >= 3 && cleaned.length <= 120) return cleaned;
   return fromCol;
 }
 
-function amountsClose(a: number, b: number, tol = 0.02): boolean {
+function amountsClose(a: number, b: number, tol = 0.05): boolean {
   return Math.abs(a - b) <= tol;
+}
+
+/** საკომისიოს გათვალისწინებით: ამონაწერის თანხა შეიძლება აპის თანხაზე ნაკლები იყოს */
+function amountsCompatible(statementAmt: number, appAmt: number): boolean {
+  if (amountsClose(statementAmt, appAmt)) return true;
+  if (appAmt <= 0 || statementAmt <= 0) return false;
+  const diff = Math.abs(appAmt - statementAmt);
+  const maxFee = Math.max(8, appAmt * 0.04);
+  return diff <= maxFee;
 }
 
 function daysApart(a: string, b: string): number {
@@ -190,6 +207,65 @@ function findHeaderRow(rows: unknown[][]): number {
     }
   }
   return -1;
+}
+
+type ColMap = {
+  date: number;
+  documentNo: number;
+  debit: number;
+  credit: number;
+  description: number;
+  opType: number;
+  opId: number;
+  party: number;
+  purpose: number;
+  amount: number;
+};
+
+function resolveColumns(headerRow: unknown[]): ColMap {
+  const labels = headerRow.map((c) => cellStr(c).toLowerCase());
+  const find = (...needles: string[]) => {
+    for (let i = 0; i < labels.length; i++) {
+      const h = labels[i];
+      if (!h) continue;
+      if (needles.some((n) => h.includes(n))) return i;
+    }
+    return -1;
+  };
+
+  const date = find("თარიღი");
+  const documentNo = find("დოკუმენტ", "document");
+  const debit = find("დებეტ");
+  const credit = find("კრედიტ");
+  const description = find("აღწერ", "დანიშნულ", "description", "comment");
+  const opType = find("ოპერაციის ტიპ", "op. type", "operation type");
+  const opId = find("ოპერაციის id", "operation id", "entry id");
+  const party = find(
+    "გადმომრიცხ",
+    "გადამრიცხ",
+    "მიმღებ",
+    "კონტრაგენტ",
+    "payer",
+    "beneficiary",
+    "correspondent",
+    "დასახელება",
+    "სახელი"
+  );
+  const purpose = find("დანიშნულების", "purpose", "additional");
+  const amount = find("თანხა", "amount");
+
+  return {
+    date: date >= 0 ? date : 0,
+    documentNo: documentNo >= 0 ? documentNo : 1,
+    debit: debit >= 0 ? debit : 3,
+    credit: credit >= 0 ? credit : 4,
+    description: description >= 0 ? description : 5,
+    opType: opType >= 0 ? opType : 6,
+    opId: opId >= 0 ? opId : 7,
+    party: party >= 0 ? party : 9,
+    purpose: purpose >= 0 ? purpose : 19,
+    amount: amount >= 0 ? amount : 21,
+  };
 }
 
 export function parseBankStatementExcel(buffer: Buffer): {
@@ -222,11 +298,12 @@ export function parseBankStatementExcel(buffer: Buffer): {
 
   const headerIdx = findHeaderRow(rows);
   if (headerIdx < 0) throw new Error("ამონაწერში ცხრილის სათაური ვერ მოიძებნა");
+  const cols = resolveColumns(rows[headerIdx] ?? []);
 
   const lines: BankStatementLine[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i] ?? [];
-    const dateRaw = row[0];
+    const dateRaw = row[cols.date];
     if (dateRaw === "" || dateRaw == null) continue;
 
     let statementDate = "";
@@ -234,15 +311,22 @@ export function parseBankStatementExcel(buffer: Buffer): {
     else statementDate = parseDdMmYyyy(cellStr(dateRaw)) ?? "";
     if (!statementDate) continue;
 
-    const documentNo = cellStr(row[1]);
-    const debit = cellNum(row[3]);
-    const credit = cellNum(row[4]);
-    const description = cellStr(row[5]);
-    const opType = cellStr(row[6]);
-    const opId = cellStr(row[7]);
-    const partyCol = cellStr(row[9]) || cellStr(row[26]) || cellStr(row[10]);
-    const purpose = cellStr(row[19]) || cellStr(row[20]);
-    const amountCell = cellNum(row[21]);
+    const documentNo = cellStr(row[cols.documentNo]);
+    const debit = cellNum(row[cols.debit]);
+    const credit = cellNum(row[cols.credit]);
+    const description = cellStr(row[cols.description]);
+    const opType = cellStr(row[cols.opType]);
+    const opId = cellStr(row[cols.opId]);
+    // კონტრაგენტი — რამდენიმე სვეტიდან, თუ სათაური ვერ მოიძებნა
+    const partyCol =
+      cellStr(row[cols.party]) ||
+      cellStr(row[9]) ||
+      cellStr(row[10]) ||
+      cellStr(row[11]) ||
+      cellStr(row[26]) ||
+      cellStr(row[8]);
+    const purpose = cellStr(row[cols.purpose]) || cellStr(row[19]) || cellStr(row[20]);
+    const amountCell = cellNum(row[cols.amount]);
 
     const direction: StatementDirection = credit > 0 ? "in" : "out";
     const signed =
@@ -298,7 +382,7 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
   const padTo = addDays(to, 2);
   const salesByGroup = new Map<string, Extract<Transaction, { type: "sale" }>[]>();
   const deposits: MatchCandidate[] = [];
-  const expenses: MatchCandidate[] = [];
+  const expensesByGroup = new Map<string, Extract<Transaction, { type: "expense" }>[]>();
 
   for (const t of transactions) {
     const d = t.date.slice(0, 10);
@@ -332,22 +416,16 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
     }
 
     if (t.type === "expense") {
-      expenses.push({
-        key: `exp:${t.id}`,
-        ids: [t.id],
-        date: d,
-        amount: t.amount,
-        channel: method === CARD_METHOD ? "card" : "bank",
-        branch: String(t.branch),
-        direction: "out",
-        kind: "expense",
-        label: t.comment?.trim() || t.category,
-        buyerName: t.comment?.trim() || t.category || "",
-      });
+      const gKey = t.obligationId
+        ? `ob:${t.obligationId}:${d}:${method}`
+        : `exp:${d}:${method}:${t.category}:${t.comment?.trim() || ""}:${t.amount}`;
+      const list = expensesByGroup.get(gKey) ?? [];
+      list.push(t);
+      expensesByGroup.set(gKey, list);
     }
   }
 
-  const out: MatchCandidate[] = [...deposits, ...expenses];
+  const out: MatchCandidate[] = [...deposits];
 
   for (const [gKey, sales] of salesByGroup) {
     const amount = sales.reduce((s, x) => s + x.amount, 0);
@@ -367,6 +445,24 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
     });
   }
 
+  for (const [gKey, exps] of expensesByGroup) {
+    const amount = exps.reduce((s, x) => s + x.amount, 0);
+    const primary = [...exps].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const method = txPaymentMethod(primary);
+    out.push({
+      key: gKey,
+      ids: exps.map((e) => e.id),
+      date: primary.date.slice(0, 10),
+      amount,
+      channel: method === CARD_METHOD ? "card" : "bank",
+      branch: String(primary.branch),
+      direction: "out",
+      kind: "expense",
+      label: primary.comment?.trim() || primary.category,
+      buyerName: primary.comment?.trim() || primary.category || "",
+    });
+  }
+
   return out;
 }
 
@@ -378,15 +474,19 @@ function addDays(iso: string, n: number): string {
 
 function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   if (line.direction !== c.direction) return -1;
-  if (!amountsClose(line.matchAmount, c.amount) && !amountsClose(line.amount, c.amount)) {
-    return -1;
-  }
-  const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
-  if (dayGap > 2) return -1;
 
-  let score = 100 - dayGap * 10;
-  if (amountsClose(line.matchAmount, c.amount)) score += 20;
-  else if (amountsClose(line.amount, c.amount)) score += 5;
+  const statementAmts = [line.matchAmount, line.amount, line.credit, line.debit].filter((n) => n > 0);
+  const amountOk = statementAmts.some((a) => amountsCompatible(a, c.amount));
+  if (!amountOk) return -1;
+
+  const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
+  if (dayGap > 5) return -1;
+
+  let score = 100 - dayGap * 8;
+  if (amountsClose(line.matchAmount, c.amount) || amountsClose(line.amount, c.amount)) score += 25;
+  else if (amountsCompatible(line.matchAmount, c.amount) || amountsCompatible(line.amount, c.amount)) {
+    score += 10;
+  }
 
   if (line.opType === "TRN" && c.channel === "card") score += 15;
   if ((line.opType === "PMD" || line.opType === "TPA") && c.channel === "bank") score += 15;
@@ -517,6 +617,7 @@ export function runBankStatementMatch(buffer: Buffer, transactions: Transaction[
       matches.filter((m) => m.status === "matched" && m.candidate).flatMap((m) => m.candidate!.ids)
     ),
   ];
+  const hints = buildStatementLedgerHints(matches);
 
   return {
     periodLabel: parsed.periodLabel,
@@ -525,6 +626,7 @@ export function runBankStatementMatch(buffer: Buffer, transactions: Transaction[
     lines: parsed.lines,
     matches,
     appUnmatched,
+    hints,
     summary: {
       credits: matches.filter((m) => m.line.direction === "in" && m.status !== "skipped").length,
       matched: matches.filter((m) => m.status === "matched").length,

@@ -258,7 +258,15 @@ export default function BankAccountPanel({
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       </div>
 
-      <BankStatementMatchPanel onMarked={onRefresh} onHints={setStatementHints} />
+      <BankStatementMatchPanel
+        onMarked={onRefresh}
+        onHints={(hints, periodFrom) => {
+          setStatementHints(hints);
+          if (periodFrom && /^\d{4}-\d{2}/.test(periodFrom)) {
+            setViewMonth(periodFrom.slice(0, 7));
+          }
+        }}
+      />
 
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
