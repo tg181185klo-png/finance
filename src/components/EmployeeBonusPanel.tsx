@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { BonusSaleLine } from "@/lib/employee-bonus-report";
-import type { Branch, BranchDailyReport, Customer, Employee } from "@/lib/types";
+import type { Branch, BranchDailyReport, Customer, Employee, Transaction } from "@/lib/types";
 import {
   BONUS_RATE_LEGACY,
   BONUS_RATE_NEW,
@@ -29,7 +29,10 @@ type Props = {
   employees: Employee[];
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
-  onRefresh: () => Promise<unknown>;
+  onRefresh: (patch?: {
+    branchReports?: BranchDailyReport[];
+    transactions?: Transaction[];
+  }) => Promise<unknown>;
 };
 
 export default function EmployeeBonusPanel({
@@ -90,7 +93,10 @@ export default function EmployeeBonusPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        branchReports: data.branchReports,
+        transactions: data.transactions,
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
     } finally {

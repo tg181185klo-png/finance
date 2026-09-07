@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Branch, BranchDailyReport, Customer, Employee, Transaction } from "@/lib/types";
+import type { Branch, BranchDailyReport, Customer, Employee, Store, Transaction } from "@/lib/types";
 import EmployeeSalesPanel from "@/components/EmployeeSalesPanel";
 import { buildClientReport, buildClientSaleLines } from "@/lib/client-report";
 import { customerDisplayName } from "@/lib/customers";
@@ -25,7 +25,7 @@ type Props = {
   branchReports: BranchDailyReport[];
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
-  onRefresh: () => Promise<unknown>;
+  onRefresh: (patch?: Partial<Store>) => Promise<unknown>;
 };
 
 export default function ClientsPanel({
@@ -61,7 +61,7 @@ export default function ClientsPanel({
         });
         const data = await res.json();
         if (!cancelled && res.ok && (data.added ?? 0) > 0) {
-          await onRefresh();
+          await onRefresh({ customers: data.customers });
           setMsg(`რეპორტებიდან ${data.added} კლიენტი დაემატა რეგისტრში`);
         }
       } catch {
@@ -144,7 +144,7 @@ export default function ClientsPanel({
       const res = await fetch("/api/clients", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "იმპორტი ვერ მოხერხდა");
-      await onRefresh();
+      await onRefresh({ customers: data.customers });
       setMsg(`იმპორტი ✓ ფაილიდან ${data.imported} · ახალი ${data.added} · სულ რეგისტრში ${data.total}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -169,7 +169,7 @@ export default function ClientsPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({ customers: data.customers });
       setMsg("მომზიდავი განახლდა ✓");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -214,7 +214,7 @@ export default function ClientsPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({ customers: data.customers });
       setMsg("კლიენტი განახლდა ✓");
       closeEditCustomer();
     } catch (e) {
@@ -236,7 +236,7 @@ export default function ClientsPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({ customers: data.customers });
       setMsg("კლიენტი წაიშალა");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -257,7 +257,7 @@ export default function ClientsPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({ customers: data.customers });
       setMsg(`დუბლიკატები წაიშალა ✓ ამოღებული ${data.removed} · დარჩა ${data.total}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");

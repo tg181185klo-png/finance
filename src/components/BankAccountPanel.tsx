@@ -37,7 +37,9 @@ type Props = {
   bankLedgerReviewed: Record<string, string>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onToggleReview: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
-  onRefresh: () => void | Promise<void>;
+  onRefresh: (patch?: {
+    branchCash?: Record<Branch, BranchCash>;
+  }) => void | Promise<void>;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -142,7 +144,7 @@ export default function BankAccountPanel({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "შეცდომა");
         setMsg(`${branch} — საწყისი ნაშთი შენახულია ✓`);
-        await onRefresh();
+        await onRefresh(data.branchCash ? { branchCash: data.branchCash } : undefined);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "შეცდომა");
       } finally {
@@ -166,7 +168,6 @@ export default function BankAccountPanel({
     setReviewBusy(id);
     try {
       await onToggleReview(id, !currentlyReviewed);
-      await onRefresh();
     } finally {
       setReviewBusy(null);
     }
@@ -394,7 +395,6 @@ export default function BankAccountPanel({
                         value={row.paymentMethod}
                         onChange={async (e) => {
                           await onUpdatePayment(row.id, e.target.value as PaymentMethod);
-                          await onRefresh();
                         }}
                       >
                         {PAYMENT_METHODS.map((m) => (

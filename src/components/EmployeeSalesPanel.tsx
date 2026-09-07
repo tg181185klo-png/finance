@@ -10,6 +10,7 @@ import type {
   Employee,
   PaymentMethod,
   Product,
+  Transaction,
 } from "@/lib/types";
 import { branchSaleBuyerName } from "@/lib/customers";
 import { BRANCHES } from "@/lib/dashboard-data";
@@ -37,7 +38,10 @@ type Props = {
   employees: Employee[];
   period: ResolvedPeriod;
   branchFilter: Branch | "ყველა";
-  onRefresh: () => Promise<unknown>;
+  onRefresh: (patch?: {
+    branchReports?: BranchDailyReport[];
+    transactions?: Transaction[];
+  }) => Promise<unknown>;
 };
 
 function saleBuyerLabel(sale: BranchClientSale) {
@@ -188,7 +192,10 @@ export default function EmployeeSalesPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        branchReports: data.branchReports,
+        transactions: data.transactions,
+      });
       setMsg("გაყიდვა განახლდა ✓ რეპორტები სინქრონშია");
       closeEdit();
     } catch (e) {
@@ -214,7 +221,10 @@ export default function EmployeeSalesPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        branchReports: data.branchReports,
+        transactions: data.transactions,
+      });
       setMsg("გაყიდვა წაიშალა ✓ რეპორტები სინქრონშია");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");

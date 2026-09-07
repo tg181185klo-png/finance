@@ -192,6 +192,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [saveMsg, setSaveMsg] = useState("");
   const skipCashAutoSave = useRef(true);
   const skipStockAutoSave = useRef(true);
+  /** Bumped on local patches so in-flight /api/store polls cannot overwrite fresher UI state. */
+  const storeLoadGen = useRef(0);
 
   // Sale form
   const [sBranch, setSBranch] = useState<Branch>("ქუთაისი");
@@ -292,6 +294,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, []);
 
   const loadStore = useCallback(async () => {
+    const gen = ++storeLoadGen.current;
     try {
       const res = await fetch("/api/store", { cache: "no-store" });
       const raw = await res.json();
@@ -301,15 +304,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         throw new Error(raw.error || "მონაცემების ჩატვირთვა ვერ მოხერხდა");
       }
       const data = mergeStore(isStorePayload(payload) ? payload : {});
+      if (gen !== storeLoadGen.current) return data;
       setStore(data);
       setStoreWarning(warning);
       return data;
     } catch (e) {
+      if (gen !== storeLoadGen.current) return mergeStore({});
       const fallback = mergeStore({});
       setStore(fallback);
       setStoreWarning(e instanceof Error ? e.message : "მონაცემების ჩატვირთვა ვერ მოხერხდა");
       return fallback;
     }
+  }, []);
+
+  const applyLocalStore = useCallback((updater: (prev: Store) => Store) => {
+    storeLoadGen.current += 1;
+    setStore((prev) => (prev ? updater(prev) : prev));
   }, []);
 
   useEffect(() => {
@@ -468,8 +478,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, [activeStore.creditPayments, activeStore.creditDeliveries, saleById, filter]);
 
   const obSummary = useMemo(
-    () => obligationSummary(activeStore.obligations, obMonth, filter),
-    [activeStore.obligations, obMonth, filter]
+    () => obligationSummary(activeStore.obligations, obMonth, "ყველა"),
+    [activeStore.obligations, obMonth]
   );
 
   const obByCategory = useMemo(() => {
@@ -560,7 +570,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           card: cashForm.card,
           bank: cashForm.bank,
         });
-        setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+        if (data.branchCash) {
+          const branchCash = data.branchCash;
+          applyLocalStore((prev) => ({ ...prev, branchCash }));
+        }
         setError("");
         setSaveMsg("შენახულია ✓");
         setTimeout(() => setSaveMsg(""), 2000);
@@ -570,7 +583,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [cashForm, invBranch, saveInventory]);
+  }, [cashForm, invBranch, saveInventory, applyLocalStore]);
 
   useEffect(() => {
     if (!invSelected) return;
@@ -589,7 +602,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           productCode: invSelected.code,
           quantity,
         });
-        setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+        if (data.inventory) {
+          const inventory = data.inventory;
+          applyLocalStore((prev) => ({ ...prev, inventory }));
+        }
         setError("");
         setSaveMsg("მარაგი შენახულია ✓");
         setTimeout(() => setSaveMsg(""), 2000);
@@ -599,7 +615,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [invQty, invBranch, invSelected, saveInventory]);
+  }, [invQty, invBranch, invSelected, saveInventory, applyLocalStore]);
 
   function setStock(e: React.FormEvent) {
     e.preventDefault();
@@ -614,7 +630,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           productCode: invSelected.code,
           quantity,
         });
-        setStore((prev) => (prev && data.inventory ? { ...prev, inventory: data.inventory } : prev));
+        if (data.inventory) {
+          const inventory = data.inventory;
+          applyLocalStore((prev) => ({ ...prev, inventory }));
+        }
         setError("");
         setSaveMsg("მარაგი შენახულია ✓");
         setInvSearch("");
@@ -638,7 +657,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           card: cashForm.card,
           bank: cashForm.bank,
         });
-        setStore((prev) => (prev && data.branchCash ? { ...prev, branchCash: data.branchCash } : prev));
+        if (data.branchCash) {
+          const branchCash = data.branchCash;
+          applyLocalStore((prev) => ({ ...prev, branchCash }));
+        }
         setError("");
         setSaveMsg("შენახულია ✓");
       } catch (e) {
@@ -676,9 +698,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const selectedStock = selected && !saleIsOther ? getStock(inventory, sBranch, selected.code) : 0;
   const saleFormValid = Boolean(selected && qty > 0 && price > 0);
 
-  async function refresh() {
-    const data = await loadStore();
-    return data;
+  async function refresh(patch?: Partial<Store>) {
+    if (patch) {
+      applyLocalStore((prev) => ({ ...prev, ...patch }));
+      return;
+    }
+    await loadStore();
   }
 
   async function addSale(e: React.FormEvent) {
@@ -719,6 +744,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     };
     try {
       const data = await apiTx("POST", { transaction: sale });
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -765,6 +791,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     };
     try {
       const data = await apiTx("POST", { transaction: expense });
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -797,6 +824,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -838,6 +866,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev ? { ...prev, transactions: d.transactions ?? prev.transactions } : prev
       );
@@ -862,6 +891,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
+        storeLoadGen.current += 1;
         setStore((prev) =>
           prev
             ? {
@@ -897,6 +927,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -928,7 +959,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      setStore((prev) => (prev ? { ...prev, transactions: d.transactions ?? prev.transactions } : prev));
+      applyLocalStore((prev) => ({ ...prev, transactions: d.transactions ?? prev.transactions }));
       setSaveMsg("გადახდის ტიპი განახლდა ✓");
       return true;
     } catch (e) {
@@ -952,6 +983,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -981,6 +1013,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev ? { ...prev, bankLedgerReviewed: d.bankLedgerReviewed ?? prev.bankLedgerReviewed } : prev
       );
@@ -1002,6 +1035,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
@@ -1057,14 +1091,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await refresh();
+      await refresh({
+        obligations: d.obligations,
+        recurringObligations: d.recurringObligations,
+      });
       setSaveMsg(obRecurring ? "ყოველთვიური ვალდებულება დაემატა ✓" : "ვალდებულება დაემატა ✓");
+      setShowAddOb(false);
       setObName("");
       setObAmount("");
       setObComment("");
       setObEmployeeId("");
       setObPlannedPayDate("");
       setObPlannedPayMethod("ქეში (ნაღდი)");
+      if (d.item?.category) {
+        setCollapsedObCat((m) => ({ ...m, [d.item.category]: false }));
+        setExpandedObId(d.item.id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
     }
@@ -1088,7 +1130,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const res = await fetch(`/api/obligations?recurringId=${recurringId}`, { method: "DELETE" });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
-        await refresh();
+        await refresh({
+          obligations: d.obligations,
+          recurringObligations: d.recurringObligations,
+        });
         setSaveMsg("ყოველთვიური ვალდებულება წაიშალა");
       } catch (e) {
         setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
@@ -1102,7 +1147,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const res = await fetch(`/api/obligations?id=${id}&month=${obMonth}`, { method: "DELETE" });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
-        await refresh();
+        await refresh({
+          obligations: d.obligations,
+          recurringObligations: d.recurringObligations,
+        });
+        setExpandedObId(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
       }
@@ -1128,16 +1177,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) =>
-          prev
-            ? {
-                ...prev,
-                obligations: d.obligations ?? prev.obligations,
-                obligationPayments: d.obligationPayments ?? prev.obligationPayments,
-                transactions: d.transactions ?? prev.transactions,
-              }
-            : prev
-        );
+        await refresh({
+          obligations: d.obligations,
+          obligationPayments: d.obligationPayments,
+          transactions: d.transactions,
+        });
         setObPayInputs((m) => ({ ...m, [obId]: "" }));
         setSaveMsg("ვალდებულება გასტუმრდა ✓");
         setError("");

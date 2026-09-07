@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { AttendanceRecord, Branch, Employee } from "@/lib/types";
+import type { AttendanceRecord, Branch, Employee, Store } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { formatMoney } from "@/lib/utils";
 
@@ -21,7 +21,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 type Props = {
   employees: Employee[];
   attendance: AttendanceRecord[];
-  onRefresh: () => Promise<unknown>;
+  onRefresh: (patch?: {
+    employees?: Employee[];
+    attendance?: AttendanceRecord[];
+    obligations?: Store["obligations"];
+  }) => Promise<unknown>;
 };
 
 export default function EmployeesPanel({ employees, attendance, onRefresh }: Props) {
@@ -59,7 +63,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setEmpName("");
       setEmpWage("");
       setMsg("თანამშრომელი დამატებულია ✓");
@@ -86,7 +94,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setMsg("შენახულია ✓");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -103,7 +115,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setMsg("თანამშრომელი წაიშალა");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -120,7 +136,7 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       const res = await fetch("/api/employees", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "იმპორტი ვერ მოხერხდა");
-      await onRefresh();
+      await onRefresh({ employees: data.employees });
       setMsg(`იმპორტი ✓ ფაილიდან ${data.imported} · ახალი ${data.added} · სულ ${data.total}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -146,7 +162,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setMsg("სამუშაო დღე დაემატა ✓");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -162,7 +182,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setMsg("სამუშაო დღე წაიშალა");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -180,7 +204,11 @@ export default function EmployeesPanel({ employees, attendance, onRefresh }: Pro
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
-      await onRefresh();
+      await onRefresh({
+        employees: d.employees,
+        attendance: d.attendance,
+        obligations: d.obligations,
+      });
       setMsg(`რეპორტებიდან სინქრონიზებულია — ${d.added ?? 0} ახალი სამუშაო დღე`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");

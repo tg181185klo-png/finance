@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       imported: incoming.length,
       added,
       total: result.customers?.length ?? 0,
+      customers: result.customers,
     });
   }
 
@@ -68,8 +69,8 @@ export async function POST(req: NextRequest) {
     if (!body.customerId) {
       return NextResponse.json({ error: "customerId საჭიროა" }, { status: 400 });
     }
-    await updateStore((store) => {
-      const list = store.customers ?? [];
+    const store = await updateStore((s) => {
+      const list = s.customers ?? [];
       const idx = list.findIndex((c) => c.id === body.customerId);
       if (idx < 0) throw new Error("კლიენტი ვერ მოიძებნა");
       list[idx] = {
@@ -77,10 +78,9 @@ export async function POST(req: NextRequest) {
         driverEmployeeId: body.driverEmployeeId,
         driverEmployeeName: body.driverEmployeeName,
       };
-      store.customers = list;
-      return store;
+      s.customers = list;
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, customers: store.customers });
   }
 
   if (body.action === "update") {

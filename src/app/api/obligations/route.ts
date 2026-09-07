@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { BRANCHES } from "@/lib/constants";
 import { requireAdminSession } from "@/lib/require-admin";
 import { addRecurringObligation, currentMonth, syncMonthObligationCycles, uid } from "@/lib/utils";
-import { readStore, updateStore } from "@/lib/server-store";
+import { updateStore } from "@/lib/server-store";
 import type { Expense, Obligation, PaymentMethod, ExpenseBranch, SettlementPaymentMethod } from "@/lib/types";
 import { isSettlementPaymentMethod } from "@/lib/utils";
 
@@ -120,10 +120,10 @@ export async function POST(req: NextRequest) {
     const month = body.obligation.month || currentMonth();
     let saved: Obligation | undefined;
 
-    await updateStore((store) => {
+    const store = await updateStore((s) => {
       if (body.recurring) {
         addRecurringObligation(
-          store,
+          s,
           {
             name: body.obligation!.name,
             amount: body.obligation!.amount,
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
           },
           month
         );
-        saved = store.obligations[month].at(-1);
+        saved = s.obligations[month].at(-1);
       } else {
         saved = {
           ...body.obligation!,
@@ -144,13 +144,18 @@ export async function POST(req: NextRequest) {
           month,
           comment: body.obligation!.comment?.trim() || undefined,
         };
-        if (!store.obligations[month]) store.obligations[month] = [];
-        store.obligations[month].push(saved);
+        if (!s.obligations[month]) s.obligations[month] = [];
+        s.obligations[month].push(saved);
       }
     });
 
     if (!saved) return NextResponse.json({ error: "შეცდომა" }, { status: 500 });
-    return NextResponse.json({ ok: true, item: saved });
+    return NextResponse.json({
+      ok: true,
+      item: saved,
+      obligations: store.obligations,
+      recurringObligations: store.recurringObligations,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -167,7 +172,7 @@ export async function DELETE(req: NextRequest) {
   const recurringId = searchParams.get("recurringId");
 
   try {
-    await updateStore((store) => {
+    const store = await updateStore((store) => {
       if (recurringId) {
         store.recurringObligations = (store.recurringObligations ?? []).filter((r) => r.id !== recurringId);
         for (const m of Object.keys(store.obligations)) {
@@ -186,7 +191,11 @@ export async function DELETE(req: NextRequest) {
         );
       }
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      obligations: store.obligations,
+      recurringObligations: store.recurringObligations,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
     const status = msg === "არ მოიძებნა" ? 404 : 500;

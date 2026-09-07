@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         imported: incoming.length,
         added,
         total: store.employees?.length ?? 0,
+        employees: store.employees,
       });
     }
 

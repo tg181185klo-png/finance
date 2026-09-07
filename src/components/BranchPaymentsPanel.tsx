@@ -81,7 +81,7 @@ type Props = {
   transactions: Transaction[];
   branchReports?: BranchDailyReport[];
   branchCash?: Record<Branch, BranchCash>;
-  onRefresh: () => void | Promise<unknown>;
+  onRefresh: (patch?: { transactions?: Transaction[] }) => void | Promise<unknown>;
   header?: React.ReactNode;
   subtitle?: string;
   month?: string;
@@ -118,7 +118,7 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "შეცდომა");
-    return;
+    return data as { transactions?: Transaction[] };
   }
 
   const body: Record<string, string> = { action: "updatePaymentMethod", paymentMethod };
@@ -132,6 +132,7 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "შეცდომა");
+  return data as { transactions?: Transaction[] };
 }
 
 export default function BranchPaymentsPanel({
@@ -296,8 +297,9 @@ export default function BranchPaymentsPanel({
       setBusyGroupId(group.groupId);
       setErr("");
       try {
-        await updateGroupPayment(group, paymentMethod);
-        await onRefresh();
+        const data = await updateGroupPayment(group, paymentMethod);
+        if (data.transactions) await onRefresh({ transactions: data.transactions });
+        else await onRefresh();
       } catch (e) {
         setErr(e instanceof Error ? e.message : "შეცდომა");
       } finally {
