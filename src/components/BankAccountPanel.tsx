@@ -136,6 +136,21 @@ export default function BankAccountPanel({
 
   const totals = useMemo(() => ledgerTotals(rows), [rows]);
 
+  const annotatedMonths = useMemo(() => {
+    const ids = Object.keys(statementHints);
+    if (!ids.length) return [] as string[];
+    const idSet = new Set(ids);
+    const counts = new Map<string, number>();
+    for (const t of transactions) {
+      if (!idSet.has(t.id)) continue;
+      const m = t.date.slice(0, 7);
+      counts.set(m, (counts.get(m) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0]))
+      .map(([m]) => m);
+  }, [statementHints, transactions]);
+
   const saveOpening = useCallback(
     async (branch: Branch) => {
       setSavingBranch(branch);
@@ -260,11 +275,29 @@ export default function BankAccountPanel({
 
       <BankStatementMatchPanel
         onMarked={onRefresh}
-        onHints={(hints, periodFrom) => {
+        onHints={(hints) => {
           setStatementHints(hints);
-          if (periodFrom && /^\d{4}-\d{2}/.test(periodFrom)) {
-            setViewMonth(periodFrom.slice(0, 7));
+          setBranchFilter("ყველა");
+          setChannelFilter("all");
+          setOnlyUnreviewed(false);
+          const ids = Object.keys(hints);
+          if (!ids.length) return;
+          const idSet = new Set(ids);
+          const counts = new Map<string, number>();
+          for (const t of transactions) {
+            if (!idSet.has(t.id)) continue;
+            const m = t.date.slice(0, 7);
+            counts.set(m, (counts.get(m) ?? 0) + 1);
           }
+          let best = "";
+          let bestN = 0;
+          for (const [m, n] of counts) {
+            if (n > bestN) {
+              best = m;
+              bestN = n;
+            }
+          }
+          if (best) setViewMonth(best);
         }}
       />
 
@@ -371,7 +404,28 @@ export default function BankAccountPanel({
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-sm text-zinc-500">ამ თვეში ბარათი/ანგარიშის მოძრაობა არ არის.</p>
+          <div className="space-y-3">
+            <p className="text-sm text-zinc-500">ამ თვეში ბარათი/ანგარიშის მოძრაობა არ არის.</p>
+            {annotatedMonths.length > 0 && (
+              <div className="rounded-lg border border-sky-900/40 bg-sky-950/20 p-3">
+                <p className="text-xs text-sky-200">
+                  ამონაწერიდან სახელები/მონიშვნები მიეწერა სხვა თვეების მსგავს ჩარიცხვებს — გახსენი:
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {annotatedMonths.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className="rounded-lg border border-sky-700 bg-sky-950/40 px-3 py-1.5 text-xs text-sky-100 hover:border-sky-500"
+                      onClick={() => setViewMonth(m)}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
             <table className="w-full min-w-[1200px] border-collapse text-left text-sm">

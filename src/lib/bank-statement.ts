@@ -378,8 +378,8 @@ export function parseBankStatementExcel(buffer: Buffer): {
 
 /** აპში ბარათი/ანგარიშის შემოსავლები და გასავლები */
 export function buildMatchCandidates(transactions: Transaction[], from: string, to: string): MatchCandidate[] {
-  const padFrom = addDays(from, -2);
-  const padTo = addDays(to, 2);
+  const padFrom = addDays(from, -60);
+  const padTo = addDays(to, 60);
   const salesByGroup = new Map<string, Extract<Transaction, { type: "sale" }>[]>();
   const deposits: MatchCandidate[] = [];
   const expensesByGroup = new Map<string, Extract<Transaction, { type: "expense" }>[]>();
@@ -480,9 +480,9 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   if (!amountOk) return -1;
 
   const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
-  if (dayGap > 5) return -1;
+  if (dayGap > 21) return -1;
 
-  let score = 100 - dayGap * 8;
+  let score = 100 - dayGap * 3;
   if (amountsClose(line.matchAmount, c.amount) || amountsClose(line.amount, c.amount)) score += 25;
   else if (amountsCompatible(line.matchAmount, c.amount) || amountsCompatible(line.amount, c.amount)) {
     score += 10;
