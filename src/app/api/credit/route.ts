@@ -12,14 +12,30 @@ export async function POST(req: NextRequest) {
     if (authError) return authError;
 
     const body = (await req.json()) as {
-      action: "pay" | "deliver" | "updatePaymentMethod";
+      action: "pay" | "deliver" | "updatePaymentMethod" | "updateDueDate";
       saleId?: string;
       paymentId?: string;
       amount?: number;
       quantity?: number;
       note?: string;
       paymentMethod?: PaymentMethod;
+      creditDueDate?: string;
     };
+
+    if (body.action === "updateDueDate") {
+      if (!body.saleId || !body.creditDueDate) {
+        return NextResponse.json({ error: "saleId და creditDueDate საჭიროა" }, { status: 400 });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.creditDueDate)) {
+        return NextResponse.json({ error: "თარიღი YYYY-MM-DD" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        const sale = s.transactions.find((t) => t.id === body.saleId && t.type === "sale");
+        if (!sale || sale.type !== "sale") throw new Error("შეკვეთა ვერ მოიძებნა");
+        sale.creditDueDate = body.creditDueDate;
+      });
+      return NextResponse.json({ ok: true, transactions: store.transactions });
+    }
 
     if (body.action === "updatePaymentMethod") {
       if (!body.paymentId || !body.paymentMethod) {

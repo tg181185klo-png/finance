@@ -33,6 +33,7 @@ import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import AccountingSystemPanel from "@/components/AccountingSystemPanel";
 import OwnerMetricsPanel from "@/components/OwnerMetricsPanel";
+import ReceivablesPanel from "@/components/ReceivablesPanel";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import ThemeToggle from "@/components/ThemeToggle";
 import TransactionTable from "@/components/TransactionTable";
@@ -204,6 +205,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [saleProductListOpen, setSaleProductListOpen] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
+  const [creditDueDate, setCreditDueDate] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
   const [creditDeliverInputs, setCreditDeliverInputs] = useState<Record<string, string>>({});
   const [creditPayMethods, setCreditPayMethods] = useState<Record<string, PaymentMethod>>({});
@@ -670,6 +672,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       source: "admin",
       buyerName: payStatus === "ბე (ავანსი)" ? buyerName.trim() || undefined : undefined,
       creditPaid: payStatus === "ბე (ავანსი)" ? advance : undefined,
+      creditDueDate:
+        payStatus === "ბე (ავანსი)"
+          ? creditDueDate ||
+            (() => {
+              const d = new Date(`${sDate}T12:00:00`);
+              d.setDate(d.getDate() + 30);
+              return d.toISOString().slice(0, 10);
+            })()
+          : undefined,
     };
     try {
       const data = await apiTx("POST", { transaction: sale });
@@ -695,6 +706,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setOtherSaleName("");
       setBuyerName("");
       setCreditAdvance("");
+      setCreditDueDate("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "გაყიდვა ვერ შეინახა");
     }
@@ -735,41 +747,66 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
+  async function payCreditReceivable(
+    saleId: string,
+    amount: number,
+    paymentMethod: PaymentMethod
+  ): Promise<boolean> {
+    if (!amount || amount <= 0) return false;
+    try {
+      const res = await fetch("/api/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pay", saleId, amount, paymentMethod }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: d.transactions ?? prev.transactions,
+              creditPayments: d.creditPayments ?? prev.creditPayments,
+              creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+              inventory: d.inventory ?? prev.inventory,
+            }
+          : prev
+      );
+      setCreditPayInputs((m) => ({ ...m, [saleId]: "" }));
+      setSaveMsg(d.sale?.orderCompletedAt ? "შეკვეთა სრულად დასრულდა ✓" : "მისაღები გადახდა დაფიქსირდა ✓");
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   function addCreditPayment(saleId: string) {
     const amount = parseFloat(creditPayInputs[saleId] ?? "");
     if (!amount || amount <= 0) return;
-    runWithPin(async () => {
-      try {
-        const res = await fetch("/api/credit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "pay",
-            saleId,
-            amount,
-            paymentMethod: creditPayMethods[saleId] ?? "ქეში (ნაღდი)",
-          }),
-        });
-        const d = await res.json();
-        if (!res.ok) throw new Error(d.error || "შეცდომა");
-        setStore((prev) =>
-          prev
-            ? {
-                ...prev,
-                transactions: d.transactions ?? prev.transactions,
-                creditPayments: d.creditPayments ?? prev.creditPayments,
-                creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
-                inventory: d.inventory ?? prev.inventory,
-              }
-            : prev
-        );
-        setCreditPayInputs((m) => ({ ...m, [saleId]: "" }));
-        setSaveMsg(d.sale?.orderCompletedAt ? "შეკვეთა სრულად დასრულდა ✓" : "გადახდა დაფიქსირდა ✓");
-        setError("");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "შეცდომა");
-      }
-    });
+    void payCreditReceivable(saleId, amount, creditPayMethods[saleId] ?? "ქეში (ნაღდი)");
+  }
+
+  async function setCreditSaleDueDate(saleId: string, dueDate: string): Promise<boolean> {
+    try {
+      const res = await fetch("/api/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateDueDate", saleId, creditDueDate: dueDate }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      setStore((prev) =>
+        prev ? { ...prev, transactions: d.transactions ?? prev.transactions } : prev
+      );
+      setSaveMsg("გადახდის ვადა შენახულია ✓");
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
   }
 
   function addCreditDelivery(saleId: string) {
@@ -1426,8 +1463,18 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                         {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </Field>
+                    <Field label="გადახდის ვადა (კონსიგნაცია)">
+                      <input
+                        type="date"
+                        className={inputCls}
+                        value={creditDueDate}
+                        onChange={(e) => setCreditDueDate(e.target.value)}
+                        placeholder="ცარიელი = +30 დღე"
+                      />
+                    </Field>
                     <div className="mb-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
                       შეკვეთა: {qty} ც · ჯამი {formatMoney(qty * price)} · ავანსი {formatMoney(parseFloat(creditAdvance) || 0)} · გადასახდელი {formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))} · მიწოდება დაიწყება 0/{qty} ც-დან
+                      {" · "}მისაღები ვალდებულებებში გამოჩნდება (ქეში / ბარათი / გადმორიცხვა)
                     </div>
                   </>
                 )}
@@ -1799,6 +1846,21 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "obligations" && (
         <section className="space-y-6">
+          <ReceivablesPanel
+            sales={creditTx}
+            store={activeStore}
+            onPay={payCreditReceivable}
+            onSetDueDate={setCreditSaleDueDate}
+            onRefresh={refresh}
+          />
+
+          <div className="border-t border-zinc-800 pt-6">
+            <h2 className="mb-1 text-lg font-semibold text-violet-300">გადასახდელი ვალდებულებები</h2>
+            <p className="mb-4 text-xs text-zinc-500">
+              ხელფასი, იჯარა და სხვა ხარჯები — რა უნდა გადაიხადოთ თქვენ
+            </p>
+          </div>
+
           <div className="flex flex-wrap items-end gap-3">
             <Field label="თვე">
               <input type="month" className={inputCls} value={obMonth} onChange={(e) => setObMonth(e.target.value)} />
