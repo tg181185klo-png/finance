@@ -24,6 +24,8 @@ const btnCls =
   "rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium hover:bg-violet-600 disabled:opacity-40";
 const btnSec =
   "rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-40";
+const thCls = "whitespace-nowrap px-2.5 py-2 font-medium";
+const tdCls = "px-2.5 py-2 align-top text-xs";
 
 function statusLabel(status: StatementMatchRow["status"]) {
   if (status === "matched") return { text: "ჩაირიცხა ✓", cls: "text-emerald-400" };
@@ -37,23 +39,6 @@ function channelKa(ch: "card" | "bank") {
 
 function kindKa(kind: "sale" | "deposit") {
   return kind === "sale" ? "გაყიდვა" : "შენატანი";
-}
-
-function Cell({
-  label,
-  children,
-  className = "",
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`min-w-0 ${className}`}>
-      <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
-      <div className="mt-0.5 break-words text-sm text-zinc-200">{children}</div>
-    </div>
-  );
 }
 
 export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
@@ -146,28 +131,20 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
           </div>
 
           <div>
-            <h3 className="mb-3 text-sm font-medium text-zinc-200">ამონაწერის ჩარიცხვები</h3>
+            <h3 className="mb-2 text-sm font-medium text-zinc-200">ამონაწერის ჩარიცხვები</h3>
             {creditMatches.length === 0 ? (
               <p className="text-sm text-zinc-500">ჩარიცხვები არ არის</p>
             ) : (
-              <div className="space-y-3">
-                {creditMatches.map((m) => (
-                  <MatchCard key={m.line.key} row={m} />
-                ))}
-              </div>
+              <MatchTable rows={creditMatches} />
             )}
           </div>
 
           {appMissing.length > 0 && (
             <div>
-              <h3 className="mb-3 text-sm font-medium text-amber-200">
+              <h3 className="mb-2 text-sm font-medium text-amber-200">
                 აპში ბარათი/ანგარიში — ამონაწერში ვერ მოიძებნა
               </h3>
-              <div className="space-y-3">
-                {appMissing.map((r) => (
-                  <AppMissingCard key={r.candidate.key} row={r} />
-                ))}
-              </div>
+              <AppMissingTable rows={appMissing} />
             </div>
           )}
         </div>
@@ -176,91 +153,124 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
   );
 }
 
-function MatchCard({ row }: { row: StatementMatchRow }) {
-  const st = statusLabel(row.status);
-  const c = row.candidate;
-  const bankNet = row.line.credit || row.line.amount;
+function MatchTable({ rows }: { rows: StatementMatchRow[] }) {
   return (
-    <article
-      className={`rounded-xl border p-4 ${
-        row.status === "matched"
-          ? "border-emerald-900/40 bg-emerald-950/15"
-          : "border-amber-900/40 bg-amber-950/15"
-      }`}
-    >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className={`text-xs font-semibold ${st.cls}`}>{st.text}</p>
-        {row.commission != null && (
-          <p className="rounded-md border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 text-xs text-amber-200">
-            საკომისიო / სხვაობა: {formatMoney(row.commission)}
-          </p>
-        )}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Cell label="გაყიდვის თარიღი (აპი)">{c ? formatDate(c.date) : "—"}</Cell>
-        <Cell label="თარიღი ამონაწერის მიხედვით">
-          {formatDate(row.line.statementDate || row.line.date)}
-        </Cell>
-        <Cell label="ფილიალი">{c?.branch || "—"}</Cell>
-        <Cell label="ტიპი">{c ? kindKa(c.kind) : "შემოსავალი"}</Cell>
-        <Cell label="ჩამრიცხავი (აპი)">{c?.buyerName || c?.label || "—"}</Cell>
-        <Cell label="ჩარიცხული ამონაწერში (ვის მიერ)">
-          <span className="font-medium text-sky-200">{row.line.senderName || "—"}</span>
-          {row.line.purpose ? (
-            <span className="mt-0.5 block text-xs text-zinc-500">{row.line.purpose}</span>
-          ) : null}
-        </Cell>
-        <Cell label="არხი">{c ? channelKa(c.channel) : row.line.opType || "—"}</Cell>
-        <Cell label="გადახდა">
-          {c ? (c.channel === "card" ? "ბარათი" : "ანგარიშზე ჩარიცხვა") : "—"}
-        </Cell>
-        <Cell label="თანხა (აპი)">
-          {c ? <span className="font-medium text-emerald-300">{formatMoney(c.amount)}</span> : "—"}
-        </Cell>
-        <Cell label="თანხა (ამონაწერი)">
-          <span className="font-medium text-emerald-200">{formatMoney(bankNet)}</span>
-          {row.line.grossAmount != null && row.line.grossAmount !== bankNet && (
-            <span className="mt-0.5 block text-xs text-zinc-500">
-              სრული (აღწერა): {formatMoney(row.line.grossAmount)}
-            </span>
-          )}
-        </Cell>
-        <Cell label="სხვაობა (საკომისიო)" className="sm:col-span-2">
-          {row.commission != null ? (
-            <span className="font-medium text-amber-200">{formatMoney(row.commission)}</span>
-          ) : (
-            <span className="text-zinc-500">—</span>
-          )}
-        </Cell>
-        <Cell label="შენიშვნა" className="sm:col-span-2 lg:col-span-4">
-          {row.note}
-        </Cell>
-      </div>
-    </article>
+    <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
+      <table className="w-full min-w-[1280px] border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-500">
+            <th className={thCls}>გაყიდვის თარიღი</th>
+            <th className={thCls}>ამონაწერის თარიღი</th>
+            <th className={thCls}>ფილიალი</th>
+            <th className={thCls}>ტიპი</th>
+            <th className={thCls}>ჩამრიცხავი</th>
+            <th className={thCls}>ჩარიცხული ამონაწერში</th>
+            <th className={thCls}>არხი</th>
+            <th className={thCls}>გადახდა</th>
+            <th className={`${thCls} text-right`}>თანხა (აპი)</th>
+            <th className={`${thCls} text-right`}>თანხა (ამონაწერი)</th>
+            <th className={`${thCls} text-right`}>სხვაობა</th>
+            <th className={thCls}>სტატუსი</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => {
+            const st = statusLabel(m.status);
+            const c = m.candidate;
+            const bankNet = m.line.credit || m.line.amount;
+            return (
+              <tr
+                key={m.line.key}
+                className={`border-b border-zinc-800/60 ${
+                  m.status === "matched"
+                    ? "bg-emerald-950/10"
+                    : m.status === "unmatched"
+                      ? "bg-amber-950/15"
+                      : ""
+                }`}
+              >
+                <td className={`${tdCls} whitespace-nowrap text-zinc-400`}>
+                  {c ? formatDate(c.date) : "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-violet-200`}>
+                  {formatDate(m.line.statementDate || m.line.date)}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap`}>{c?.branch || "—"}</td>
+                <td className={`${tdCls} whitespace-nowrap text-zinc-300`}>
+                  {c ? kindKa(c.kind) : "შემოსავალი"}
+                </td>
+                <td className={`${tdCls} max-w-[160px] whitespace-normal break-words font-medium text-sky-200`}>
+                  {c?.buyerName || c?.label || "—"}
+                </td>
+                <td className={`${tdCls} max-w-[200px] whitespace-normal break-words font-medium text-sky-100`}>
+                  {m.line.senderName || "—"}
+                  {m.line.purpose ? (
+                    <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">{m.line.purpose}</span>
+                  ) : null}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-sky-300`}>
+                  {c ? channelKa(c.channel) : m.line.opType || "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-zinc-300`}>
+                  {c ? (c.channel === "card" ? "ბარათი" : "ანგარიშზე ჩარიცხვა") : "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-right font-medium text-emerald-300`}>
+                  {c ? formatMoney(c.amount) : "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-right font-medium text-emerald-200`}>
+                  {formatMoney(bankNet)}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-right font-medium text-amber-200`}>
+                  {m.commission != null ? formatMoney(m.commission) : "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap font-medium ${st.cls}`}>{st.text}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function AppMissingCard({ row }: { row: AppUnmatchedRow }) {
-  const c = row.candidate;
+function AppMissingTable({ rows }: { rows: AppUnmatchedRow[] }) {
   return (
-    <article className="rounded-xl border border-amber-900/40 bg-zinc-950/40 p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Cell label="გაყიდვის თარიღი">{formatDate(c.date)}</Cell>
-        <Cell label="ფილიალი">{c.branch}</Cell>
-        <Cell label="ტიპი">{kindKa(c.kind)}</Cell>
-        <Cell label="არხი">{channelKa(c.channel)}</Cell>
-        <Cell label="ჩამრიცხავი">{c.buyerName || "—"}</Cell>
-        <Cell label="თანხა">
-          <span className="font-medium text-amber-200">{formatMoney(c.amount)}</span>
-        </Cell>
-        <Cell label="აღწერა" className="sm:col-span-2">
-          {c.label}
-        </Cell>
-        <Cell label="შენიშვნა" className="sm:col-span-2 lg:col-span-4">
-          {row.note}
-        </Cell>
-      </div>
-    </article>
+    <div className="overflow-x-auto rounded-lg border border-amber-900/40 bg-zinc-950/40">
+      <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-500">
+            <th className={thCls}>გაყიდვის თარიღი</th>
+            <th className={thCls}>ფილიალი</th>
+            <th className={thCls}>ტიპი</th>
+            <th className={thCls}>არხი</th>
+            <th className={thCls}>ჩამრიცხავი</th>
+            <th className={`${thCls} text-right`}>თანხა</th>
+            <th className={thCls}>აღწერა</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const c = r.candidate;
+            return (
+              <tr key={c.key} className="border-b border-zinc-800/60">
+                <td className={`${tdCls} whitespace-nowrap text-zinc-400`}>{formatDate(c.date)}</td>
+                <td className={`${tdCls} whitespace-nowrap`}>{c.branch}</td>
+                <td className={`${tdCls} whitespace-nowrap`}>{kindKa(c.kind)}</td>
+                <td className={`${tdCls} whitespace-nowrap text-sky-300`}>{channelKa(c.channel)}</td>
+                <td className={`${tdCls} max-w-[180px] whitespace-normal break-words text-sky-200`}>
+                  {c.buyerName || "—"}
+                </td>
+                <td className={`${tdCls} whitespace-nowrap text-right font-medium text-amber-200`}>
+                  {formatMoney(c.amount)}
+                </td>
+                <td className={`${tdCls} max-w-[280px] whitespace-normal break-words text-zinc-400`}>
+                  {c.label}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
