@@ -108,3 +108,14 @@ export function groupBranchSales(sales: Sale[]): SalePaymentGroup[] {
 
   return [...map.values()].sort((a, b) => b.date.localeCompare(a.date) || b.total - a.total);
 }
+
+/** ნულოვანი რეპორტი — გაყიდვა არ ყოფილა */
+export function isZeroTradeReport(report: {
+  salesTotal: number;
+  clientSales?: { products: { amount?: number }[] }[];
+  sales?: { amount?: number }[];
+}): boolean {
+  if ((report.clientSales ?? []).length > 0) return false;
+  if ((report.sales ?? []).some((s) => (s.amount ?? 0) > 0)) return false;
+  return (report.salesTotal ?? 0) <= 0;
+}

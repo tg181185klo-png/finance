@@ -1,13 +1,14 @@
 "use client";
 
 import { Fragment, useCallback, useMemo, useState } from "react";
-import type { Branch, BranchCash, PaymentMethod, Sale, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, BranchDailyReport, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import {
   branchPaymentOptions,
   branchSalesForPayments,
   branchesSalesForPayments,
   groupBranchSales,
   isDistribuciaBranch,
+  isZeroTradeReport,
   paymentBucket,
   paymentShort,
   type SalePaymentGroup,
@@ -27,6 +28,14 @@ type DaySummary = {
   bank: number;
   card: number;
   total: number;
+  zeroReports: number;
+};
+
+type ZeroReportRow = {
+  reportId: string;
+  date: string;
+  branch: Branch;
+  submittedBy: string;
 };
 
 type Theme = {
@@ -64,22 +73,17 @@ const THEMES: Record<Branch, Theme> = {
 };
 
 type Props = {
-  /** ერთი ფილიალი; თუ branches გადმოცემულია — იგნორდება ფილტრში */
   branch?: Branch;
-  /** რამდენიმე ფილიალი ერთ ცხრილში (თარიღით გაერთიანებული) */
   branches?: Branch[];
-  /** სათაური (მაგ. ქუთაისი+დისტრიბუცია) */
   title?: string;
   transactions: Transaction[];
+  branchReports?: BranchDailyReport[];
   branchCash?: Record<Branch, BranchCash>;
   onRefresh: () => void | Promise<unknown>;
   header?: React.ReactNode;
   subtitle?: string;
-  /** თუ გადმოცემულია — ამ თვეს იყენებს (YYYY-MM) */
   month?: string;
-  /** გადახდის ცვლილების გარეშე */
   readOnly?: boolean;
-  /** საწყისი ნაშთის ზოლი და ძებნა დამალული */
   compact?: boolean;
 };
 
@@ -126,6 +130,7 @@ export default function BranchPaymentsPanel({
   branches: branchesProp,
   title,
   transactions,
+  branchReports = [],
   branchCash,
   onRefresh,
   header,
@@ -163,6 +168,33 @@ export default function BranchPaymentsPanel({
     return branchSalesForPayments(all, primaryBranch, from, to);
   }, [transactions, combined, scopeBranches, primaryBranch, from, to]);
 
+  const zeroRows = useMemo((): ZeroReportRow[] => {
+    const set = new Set(scopeBranches);
+    const out: ZeroReportRow[] = [];
+    for (const r of branchReports) {
+      if (!set.has(r.branch)) continue;
+      if (r.date < from || r.date > to) continue;
+      if (!isZeroTradeReport(r)) continue;
+      out.push({
+        reportId: r.id,
+        date: r.date,
+        branch: r.branch,
+        submittedBy: r.submittedBy?.trim() || "—",
+      });
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date));
+  }, [branchReports, scopeBranches, from, to]);
+
+  const zerosByDay = useMemo(() => {
+    const map = new Map<string, ZeroReportRow[]>();
+    for (const z of zeroRows) {
+      const list = map.get(z.date) ?? [];
+      list.push(z);
+      map.set(z.date, list);
+    }
+    return map;
+  }, [zeroRows]);
+
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     return groupBranchSales(sales).filter((g) => {
@@ -184,6 +216,7 @@ export default function BranchPaymentsPanel({
         bank: 0,
         card: 0,
         total: 0,
+        zeroReports: 0,
       };
       cur.groups += 1;
       cur.total += group.total;
@@ -191,19 +224,41 @@ export default function BranchPaymentsPanel({
       cur[bucket] += group.total;
       byDay.set(group.date, cur);
     }
+    for (const z of zeroRows) {
+      const cur = byDay.get(z.date) ?? {
+        date: z.date,
+        groups: 0,
+        cash: 0,
+        bank: 0,
+        card: 0,
+        total: 0,
+        zeroReports: 0,
+      };
+      cur.zeroReports += 1;
+      byDay.set(z.date, cur);
+    }
     return [...byDay.values()].sort((a, b) => b.date.localeCompare(a.date));
-  }, [groups]);
+  }, [groups, zeroRows]);
 
   const monthTotals = useMemo(() => {
     let cash = 0;
     let bank = 0;
     let card = 0;
+    let zeros = 0;
     for (const d of daySummaries) {
       cash += d.cash;
       bank += d.bank;
       card += d.card;
+      zeros += d.zeroReports;
     }
-    return { cash, bank, card, total: cash + bank + card, groups: groups.length };
+    return {
+      cash,
+      bank,
+      card,
+      total: cash + bank + card,
+      groups: groups.length,
+      zeros,
+    };
   }, [daySummaries, groups.length]);
 
   const groupsByDay = useMemo(() => {
@@ -254,6 +309,11 @@ export default function BranchPaymentsPanel({
               {combined || title ? heading : `${primaryBranch} — გადახდები`}
             </h2>
             <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
+            {monthTotals.zeros > 0 && (
+              <p className="mt-1 text-xs text-zinc-400">
+                ნულოვანი რეპორტი: {monthTotals.zeros} დღე/ობიექტი
+              </p>
+            )}
           </div>
           {!monthProp && (
             <Field label="თვე">
@@ -318,7 +378,7 @@ export default function BranchPaymentsPanel({
         {err && <p className="mb-2 text-sm text-red-400">{err}</p>}
 
         {daySummaries.length === 0 ? (
-          <p className="text-sm text-zinc-500">ამ თვეში გაყიდვები არ არის.</p>
+          <p className="text-sm text-zinc-500">ამ თვეში გაყიდვები ან ნულოვანი რეპორტი არ არის.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
             <table className="w-full text-sm">
@@ -334,89 +394,120 @@ export default function BranchPaymentsPanel({
                 </tr>
               </thead>
               <tbody>
-                {daySummaries.map((day) => (
-                  <Fragment key={day.date}>
-                    <tr className="border-b border-zinc-800/50 hover:bg-zinc-900/40">
-                      <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
-                      <td className="py-2 pr-3 text-right">{day.groups}</td>
-                      <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(day.cash)}</td>
-                      <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(day.bank)}</td>
-                      {showCard && (
-                        <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(day.card)}</td>
-                      )}
-                      <td className="py-2 pr-3 text-right font-medium">{formatMoney(day.total)}</td>
-                      <td className="py-2 pr-3">
-                        <button
-                          type="button"
-                          className={`text-xs ${theme.accent} hover:opacity-80`}
-                          onClick={() => setExpandedDay(expandedDay === day.date ? null : day.date)}
-                        >
-                          {expandedDay === day.date ? "▲ დამალვა" : "▼ დეტალები"}
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedDay === day.date && (
-                      <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
-                        <td colSpan={colSpan} className="px-3 py-3">
-                          <div className="space-y-2">
-                            {(groupsByDay.get(day.date) ?? []).map((group) => {
-                              const opts = branchPaymentOptions(group.branch);
-                              return (
-                                <div
-                                  key={group.groupId}
-                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-zinc-200">
-                                      {combined && (
-                                        <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                                          {group.branch}
-                                        </span>
-                                      )}
-                                      {group.label}
-                                    </p>
-                                    <p className="text-zinc-500">
-                                      {group.lines.length} ხაზი ·{" "}
-                                      {group.lines.map((l) => l.productName).join(", ")}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-emerald-400">
-                                      {formatMoney(group.total)}
-                                    </span>
-                                    {readOnly ? (
-                                      <span className="text-zinc-400">
-                                        {paymentShort(group.paymentMethod)}
-                                      </span>
-                                    ) : (
-                                      <select
-                                        className={selectCls}
-                                        value={group.paymentMethod}
-                                        disabled={busyGroupId === group.groupId}
-                                        onChange={(e) =>
-                                          handlePaymentChange(
-                                            group,
-                                            e.target.value as PaymentMethod
-                                          )
-                                        }
-                                      >
-                                        {opts.map((m) => (
-                                          <option key={m} value={m}>
-                                            {paymentShort(m)}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                {daySummaries.map((day) => {
+                  const isZeroOnly = day.groups === 0 && day.zeroReports > 0;
+                  return (
+                    <Fragment key={day.date}>
+                      <tr
+                        className={`border-b border-zinc-800/50 hover:bg-zinc-900/40 ${
+                          isZeroOnly ? "bg-zinc-900/50" : ""
+                        }`}
+                      >
+                        <td className="py-2 pl-3 pr-3 font-medium">
+                          {day.date}
+                          {isZeroOnly && (
+                            <span className="ml-2 text-[10px] font-normal text-zinc-500">ნულოვანი</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right">{day.groups}</td>
+                        <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(day.cash)}</td>
+                        <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(day.bank)}</td>
+                        {showCard && (
+                          <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(day.card)}</td>
+                        )}
+                        <td className="py-2 pr-3 text-right font-medium">{formatMoney(day.total)}</td>
+                        <td className="py-2 pr-3">
+                          <button
+                            type="button"
+                            className={`text-xs ${theme.accent} hover:opacity-80`}
+                            onClick={() => setExpandedDay(expandedDay === day.date ? null : day.date)}
+                          >
+                            {expandedDay === day.date ? "▲ დამალვა" : "▼ დეტალები"}
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                ))}
+                      {expandedDay === day.date && (
+                        <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
+                          <td colSpan={colSpan} className="px-3 py-3">
+                            <div className="space-y-2">
+                              {(zerosByDay.get(day.date) ?? []).map((z) => (
+                                <div
+                                  key={z.reportId}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-700/80 bg-zinc-950/60 px-3 py-2 text-xs"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-zinc-300">
+                                      {(combined || day.zeroReports > 1) && (
+                                        <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                          {z.branch}
+                                        </span>
+                                      )}
+                                      ნულოვანი რეპორტი — გაყიდვა არ ყოფილა
+                                    </p>
+                                    <p className="text-zinc-500">გამომგზავნი: {z.submittedBy}</p>
+                                  </div>
+                                  <span className="font-medium text-zinc-500">0.00 ₾</span>
+                                </div>
+                              ))}
+                              {(groupsByDay.get(day.date) ?? []).map((group) => {
+                                const opts = branchPaymentOptions(group.branch);
+                                return (
+                                  <div
+                                    key={group.groupId}
+                                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-zinc-200">
+                                        {combined && (
+                                          <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                            {group.branch}
+                                          </span>
+                                        )}
+                                        {group.label}
+                                      </p>
+                                      <p className="text-zinc-500">
+                                        {group.lines.length} ხაზი ·{" "}
+                                        {group.lines.map((l) => l.productName).join(", ")}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-medium text-emerald-400">
+                                        {formatMoney(group.total)}
+                                      </span>
+                                      {readOnly ? (
+                                        <span className="text-zinc-400">
+                                          {paymentShort(group.paymentMethod)}
+                                        </span>
+                                      ) : (
+                                        <select
+                                          className={selectCls}
+                                          value={group.paymentMethod}
+                                          disabled={busyGroupId === group.groupId}
+                                          onChange={(e) =>
+                                            handlePaymentChange(
+                                              group,
+                                              e.target.value as PaymentMethod
+                                            )
+                                          }
+                                        >
+                                          {opts.map((m) => (
+                                            <option key={m} value={m}>
+                                              {paymentShort(m)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

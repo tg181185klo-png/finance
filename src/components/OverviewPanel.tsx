@@ -607,6 +607,7 @@ export default function OverviewPanel({
             branches={[...KUTAISI_DISTRIB_BRANCHES]}
             title={KUTAISI_DISTRIB_LABEL}
             transactions={transactions}
+            branchReports={branchReports}
             month={paymentsMonth}
             compact
             readOnly={readOnly || !onRefresh}
@@ -619,6 +620,7 @@ export default function OverviewPanel({
               key={b}
               branch={b}
               transactions={transactions}
+              branchReports={branchReports}
               month={paymentsMonth}
               compact
               readOnly={readOnly || !onRefresh}
