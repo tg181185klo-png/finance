@@ -266,7 +266,9 @@ export default function BankAccountPanel({
             <h2 className="font-semibold text-violet-200">ბარათი და საბანკო ანგარიში — მოძრაობა</h2>
             <p className="mt-1 text-xs text-zinc-500">
               დღიური რეპორტიდან შემოსული (ბარათი/ანგარიში), ვალდებულებების გასტუმრება და ხარჯები
-              {Object.keys(statementHints).length > 0 ? " · ამონაწერთან შედარების ველები აქტიურია" : ""}
+              {Object.keys(statementHints).length > 0
+                ? ` · ამონაწერიდან მიეწერა ${Object.keys(statementHints).length} ჩანაწერს`
+                : ""}
             </p>
             {unreviewedIncoming > 0 && (
               <p className="mt-1 text-xs font-medium text-amber-300">
@@ -493,7 +495,8 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ამონაწერის შედარების შემდეგ აქ ჩანს ბანკის თარიღი, ჩარიცხავი და საკომისიო. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
+          ამონაწერის ატვირთვისას დამთხვეულ ჩარიცხვებს ბოლოში მიეწერება ამონაწერის თარიღი, ჩარიცხავი და
+          საკომისიო. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
         </p>
       </div>
     </section>
