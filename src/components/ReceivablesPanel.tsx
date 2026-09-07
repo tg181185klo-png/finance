@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CreditPayment, PaymentMethod, Sale, Store } from "@/lib/types";
-import { PAYMENT_METHODS } from "@/lib/dashboard-data";
+import type { Branch, CreditPayment, Sale, SettlementPaymentMethod, Store } from "@/lib/types";
+import { BRANCHES, SETTLEMENT_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import {
   formatMoney,
   isCreditOrderActive,
@@ -38,7 +38,12 @@ type ReceivableGroup = {
 type Props = {
   sales: Sale[];
   store: Store;
-  onPay: (saleId: string, amount: number, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onPay: (
+    saleId: string,
+    amount: number,
+    paymentMethod: SettlementPaymentMethod,
+    branch: Branch
+  ) => Promise<boolean>;
   onSetDueDate?: (saleId: string, creditDueDate: string) => Promise<boolean>;
   onRefresh?: () => void | Promise<unknown>;
 };
@@ -67,7 +72,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: Props) {
   const [payInputs, setPayInputs] = useState<Record<string, string>>({});
-  const [payMethods, setPayMethods] = useState<Record<string, PaymentMethod>>({});
+  const [payMethods, setPayMethods] = useState<Record<string, SettlementPaymentMethod>>({});
+  const [payBranches, setPayBranches] = useState<Record<string, Branch>>({});
   const [dueEdits, setDueEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -77,7 +83,13 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
     const map = new Map<string, ReceivableGroup>();
     for (const sale of sales) {
       if (filter === "open" && !isCreditOrderActive(sale)) continue;
-      if (filter === "all" && !sale.paymentStatus?.includes("ბე") && !isCreditOrderActive(sale) && !sale.orderCompletedAt) {
+      if (
+        filter === "all" &&
+        !sale.paymentStatus?.includes("ბე") &&
+        sale.paymentMethod !== "კონსიგნაცია" &&
+        !isCreditOrderActive(sale) &&
+        !sale.orderCompletedAt
+      ) {
         if ((sale.creditPaid ?? 0) <= 0 && (sale.quantityDelivered ?? 0) <= 0) continue;
       }
       const key = groupKey(sale);
@@ -134,10 +146,12 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
   async function handlePay(sale: Sale) {
     const amount = parseFloat(payInputs[sale.id] ?? "");
     if (!amount || amount <= 0) return;
+    const method = payMethods[sale.id] ?? "ქეში (ნაღდი)";
+    const branch = payBranches[sale.id] ?? sale.branch;
     setBusy(sale.id);
     setErr("");
     try {
-      const ok = await onPay(sale.id, amount, payMethods[sale.id] ?? "ქეში (ნაღდი)");
+      const ok = await onPay(sale.id, amount, method, branch);
       if (ok) setPayInputs((m) => ({ ...m, [sale.id]: "" }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -166,8 +180,8 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
         <div>
           <h2 className="text-lg font-semibold text-teal-200">მისაღები ვალდებულებები</h2>
           <p className="mt-1 text-xs text-zinc-500">
-            კონსიგნაცია / ბე — პროდუქცია გატანილია, ფული მოგვიანებით. ჩარიცხვა ქეშით, ბარათით ან
-            გადმორიცხვით.
+            კონსიგნაცია / ბე — პროდუქცია გატანილია, ფული მოგვიანებით. დაფარვა: ქეში, ბარათი ან
+            გადმორიცხვა (+ რომელ ფილიალში მიიტანეს ქეში).
           </p>
         </div>
         <div className="flex gap-2">
@@ -263,6 +277,7 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                     const moneyLeft = saleCreditRemaining(sale);
                     const payments = paymentsForSale(store, sale.id);
                     const done = isCreditOrderFullyComplete(sale);
+                    const method = payMethods[sale.id] ?? "ქეში (ნაღდი)";
                     return (
                       <div
                         key={sale.id}
@@ -271,6 +286,9 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                         <div className="mb-2 flex flex-wrap justify-between gap-2">
                           <p className="text-zinc-200">
                             {sale.productName} × {sale.quantity} · {formatMoney(sale.amount)}
+                            {sale.paymentMethod === "კონსიგნაცია" && (
+                              <span className="ml-2 text-teal-400">კონსიგნაცია</span>
+                            )}
                             {done && <span className="ml-2 text-emerald-400">✓</span>}
                           </p>
                           <p className="text-zinc-500">
@@ -333,20 +351,46 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                               </Field>
                             </div>
                             <div className="min-w-[120px] flex-1">
-                              <Field label="საშუალება">
+                              <Field label="დაფარვის საშუალება">
                                 <select
                                   className={inputCls}
-                                  value={payMethods[sale.id] ?? "ქეში (ნაღდი)"}
+                                  value={method}
                                   onChange={(e) =>
                                     setPayMethods((m) => ({
                                       ...m,
-                                      [sale.id]: e.target.value as PaymentMethod,
+                                      [sale.id]: e.target.value as SettlementPaymentMethod,
                                     }))
                                   }
                                 >
-                                  {PAYMENT_METHODS.map((m) => (
+                                  {SETTLEMENT_PAYMENT_METHODS.map((m) => (
                                     <option key={m} value={m}>
                                       {paymentMethodLabel(m)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                            </div>
+                            <div className="min-w-[120px] flex-1">
+                              <Field
+                                label={
+                                  method === "ქეში (ნაღდი)"
+                                    ? "ფილიალი (ქეშის მიღება)"
+                                    : "ფილიალი (აღრიცხვა)"
+                                }
+                              >
+                                <select
+                                  className={inputCls}
+                                  value={payBranches[sale.id] ?? sale.branch}
+                                  onChange={(e) =>
+                                    setPayBranches((m) => ({
+                                      ...m,
+                                      [sale.id]: e.target.value as Branch,
+                                    }))
+                                  }
+                                >
+                                  {BRANCHES.map((b) => (
+                                    <option key={b} value={b}>
+                                      {b}
                                     </option>
                                   ))}
                                 </select>
@@ -358,7 +402,7 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                               disabled={busy === sale.id}
                               onClick={() => void handlePay(sale)}
                             >
-                              ჩარიცხვის აღრიცხვა
+                              დაფარვის აღრიცხვა
                             </button>
                           </div>
                         )}
@@ -370,6 +414,7 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                               <p key={p.id} className="text-zinc-400">
                                 {p.paidAt.slice(0, 10)} · {formatMoney(p.amount)} ·{" "}
                                 {paymentMethodLabel(p.paymentMethod ?? "ქეში (ნაღდი)")}
+                                {p.branch ? ` · ${p.branch}` : ""}
                               </p>
                             ))}
                           </div>

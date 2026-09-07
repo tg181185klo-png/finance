@@ -1,9 +1,11 @@
 export type Branch = "ქუთაისი" | "ლილო" | "დიღომი" | "დისტრიბუცია";
 export type ExpenseBranch = Branch | "საერთო";
 export type PaymentStatus = "სრულად გადახდილი" | "ბე (ავანსი)";
-export type PaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
+export type PaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა" | "კონსიგნაცია";
 export type ExpenseCategory = string;
+/** ხარჯი / დაფარვა — კონსიგნაცია აქ არ შედის */
 export type ExpensePaymentMethod = "ქეში (ნაღდი)" | "ბარათი" | "ანგარიშზე ჩარიცხვა";
+export type SettlementPaymentMethod = ExpensePaymentMethod;
 export type TxRecurrence = "ყოველთვიური" | "ერთჯერადი";
 export type TxSource = "admin" | "branch" | "import" | "distribucia";
 export type WorkShift = "დღის" | "საღამოს" | "ღამის";
@@ -87,7 +89,10 @@ export interface CreditPayment {
   amount: number;
   paidAt: string;
   note?: string;
-  paymentMethod?: PaymentMethod;
+  /** დაფარვის საშუალება — ქეში / ბარათი / გადმორიცხვა (არა კონსიგნაცია) */
+  paymentMethod?: SettlementPaymentMethod;
+  /** რომელ ფილიალში მიიტანეს ქეში / ჩაირიცხა */
+  branch?: Branch;
 }
 
 /** ბე შეკვეთის მიწოდების ისტორია */
@@ -129,6 +134,8 @@ export interface Deposit {
   source?: TxSource;
   reportId?: string;
   depositPaymentMethod?: ExpensePaymentMethod;
+  /** კონსიგნაციის/ბე დაფარვასთან კავშირი — ბალანსსა და ანგარიშზე ასახვისთვის */
+  linkedCreditPaymentId?: string;
 }
 
 export type Transaction = Sale | Expense | Deposit;

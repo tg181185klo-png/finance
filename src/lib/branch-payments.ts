@@ -3,9 +3,10 @@ import { isDistribuciaSale } from "./distribucia-sync";
 
 export const CASH_OR_BANK: PaymentMethod[] = ["ქეში (ნაღდი)", "ანგარიშზე ჩარიცხვა"];
 
-export function paymentBucket(m: PaymentMethod): "cash" | "bank" | "card" {
+export function paymentBucket(m: PaymentMethod): "cash" | "bank" | "card" | "credit" {
   if (m === "ქეში (ნაღდი)") return "cash";
   if (m === "ბარათი") return "card";
+  if (m === "კონსიგნაცია") return "credit";
   return "bank";
 }
 
@@ -13,6 +14,7 @@ export function paymentShort(m: PaymentMethod) {
   if (m === "ქეში (ნაღდი)") return "ქეში";
   if (m === "ანგარიშზე ჩარიცხვა") return "გადმორიცხვა";
   if (m === "ბარათი") return "ბარათი";
+  if (m === "კონსიგნაცია") return "კონსიგნაცია";
   return m;
 }
 
@@ -63,7 +65,9 @@ export function isDistribuciaBranch(branch: Branch) {
 }
 
 export function branchPaymentOptions(branch: Branch): PaymentMethod[] {
-  return isDistribuciaBranch(branch) ? CASH_OR_BANK : ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
+  return isDistribuciaBranch(branch)
+    ? ["ქეში (ნაღდი)", "ანგარიშზე ჩარიცხვა", "კონსიგნაცია"]
+    : ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა", "კონსიგნაცია"];
 }
 
 export type SalePaymentGroup = {

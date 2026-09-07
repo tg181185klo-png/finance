@@ -50,6 +50,7 @@ export type ScopePeriodStats = {
 const CASH_METHOD = PAYMENT_METHODS[0];
 const CARD_METHOD = PAYMENT_METHODS[1];
 const BANK_METHOD = PAYMENT_METHODS[2];
+const CONSIGNMENT_METHOD = "კონსიგნაცია" as PaymentMethod;
 
 export function flowScopeLabel(scope: FlowBranchScope): string {
   if (scope === "ყველა") return "კომპანია";
@@ -98,9 +99,11 @@ export function computeScopePeriodStats(
     const method = txPaymentMethod(t);
     if (t.type === "sale") {
       revenueTotal += t.amount;
-      if (method === CASH_METHOD) revenueCash += t.amount;
+      if (method === CONSIGNMENT_METHOD) {
+        /* მისაღები — ქეში/ბარათი/ბანკის ბალანსში არ ჯდება სანამ არ დაიფარება */
+      } else if (method === CASH_METHOD) revenueCash += t.amount;
       else if (method === CARD_METHOD) revenueCard += t.amount;
-      else revenueBank += t.amount;
+      else if (method === BANK_METHOD) revenueBank += t.amount;
     } else if (t.type === "expense") {
       if (method === CASH_METHOD) expenseCash += t.amount;
       else if (method === CARD_METHOD) expenseCard += t.amount;

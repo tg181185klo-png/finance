@@ -3,7 +3,8 @@ import { BRANCHES } from "@/lib/constants";
 import { requireAdminSession } from "@/lib/require-admin";
 import { addRecurringObligation, currentMonth, ensureMonthObligations, uid } from "@/lib/utils";
 import { readStore, updateStore } from "@/lib/server-store";
-import type { Expense, Obligation, PaymentMethod, ExpenseBranch } from "@/lib/types";
+import type { Expense, Obligation, PaymentMethod, ExpenseBranch, SettlementPaymentMethod } from "@/lib/types";
+import { isSettlementPaymentMethod } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const authError = await requireAdminSession();
@@ -53,7 +54,11 @@ export async function POST(req: NextRequest) {
         const pay = Math.min(amount, left);
         if (pay <= 0) throw new Error("უკვე სრულად გადახდილია");
 
-        const paymentMethod = body.paymentMethod ?? "ქეში (ნაღდი)";
+        const paymentMethodRaw = body.paymentMethod ?? "ქეში (ნაღდი)";
+        if (!isSettlementPaymentMethod(paymentMethodRaw)) {
+          throw new Error("გადახდის მეთოდი: ქეში, ბარათი ან გადმორიცხვა");
+        }
+        const paymentMethod: SettlementPaymentMethod = paymentMethodRaw;
         const source = body.branch ?? "საერთო";
         const paymentBranches = source === "საერთო" ? BRANCHES : [source];
         const totalCents = Math.round(pay * 100);

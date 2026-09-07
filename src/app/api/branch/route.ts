@@ -5,6 +5,7 @@ import {
   addEmployeeAttendance,
   applyExpenseToStore,
   applySaleToStock,
+  applyConsignmentToSale,
   branchExpenseOperatingAmount,
   removeEmployeeAttendance,
   reverseExpenseObligation,
@@ -408,6 +409,9 @@ async function submitBranchReport(body: SubmitBody) {
     for (const t of txs) {
       if (t.type === "sale") {
         store.inventory = applySaleToStock(store.inventory, t, -1);
+        if (t.paymentMethod === "კონსიგნაცია") {
+          applyConsignmentToSale(t, { alreadyStockedOut: true });
+        }
       } else {
         applyExpenseToStore(store, t);
       }

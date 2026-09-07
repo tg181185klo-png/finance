@@ -12,8 +12,15 @@ export const BRANCH_EXPENSE_CATEGORIES = BRANCH_EXPENSE_CATEGORY_OPTIONS;
 export const CATEGORIES = ALL_EXPENSE_CATEGORIES;
 
 export const PAYMENT_STATUSES: PaymentStatus[] = ["სრულად გადახდილი", "ბე (ავანსი)"];
-export const PAYMENT_METHODS: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
-export const EXPENSE_PAYMENT_METHODS = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"] as const;
+export const PAYMENT_METHODS: PaymentMethod[] = [
+  "ქეში (ნაღდი)",
+  "ბარათი",
+  "ანგარიშზე ჩარიცხვა",
+  "კონსიგნაცია",
+];
+/** მისაღების დაფარვა / ხარჯი / ვალდებულება — კონსიგნაციის გარეშე */
+export const SETTLEMENT_PAYMENT_METHODS = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"] as const;
+export const EXPENSE_PAYMENT_METHODS = SETTLEMENT_PAYMENT_METHODS;
 export const TX_RECURRENCE = ["ყოველთვიური", "ერთჯერადი"] as const;
 
 /** ადგილზე გაყიდვა / სხვა შემოსავალი — მარაგს არ ეხება */

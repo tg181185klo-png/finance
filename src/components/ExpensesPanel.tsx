@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Branch, Expense, ExpenseBranch, ExpenseCategory, PaymentMethod, TxSource } from "@/lib/types";
-import { CATEGORIES, EXPENSE_BRANCHES, PAYMENT_METHODS } from "@/lib/dashboard-data";
+import { CATEGORIES, EXPENSE_BRANCHES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { monthStartEnd, formatDate, formatMoney, paymentMethodLabel, txPaymentMethod } from "@/lib/utils";
@@ -255,7 +255,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                           await onUpdatePayment(e.id, next);
                         }}
                       >
-                        {PAYMENT_METHODS.map((m) => (
+                        {EXPENSE_PAYMENT_METHODS.map((m) => (
                           <option key={m} value={m}>
                             {paymentMethodLabel(m)}
                           </option>

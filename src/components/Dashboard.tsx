@@ -45,6 +45,7 @@ import {
   EXPENSE_BRANCHES,
   EXPENSE_PAYMENT_METHODS,
   PAYMENT_METHODS,
+  SETTLEMENT_PAYMENT_METHODS,
   PAYMENT_STATUSES,
   TX_RECURRENCE,
   OTHER_SALE_PRODUCT,
@@ -209,6 +210,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
   const [creditDeliverInputs, setCreditDeliverInputs] = useState<Record<string, string>>({});
   const [creditPayMethods, setCreditPayMethods] = useState<Record<string, PaymentMethod>>({});
+  const [creditPayBranches, setCreditPayBranches] = useState<Record<string, Branch>>({});
 
   // Expense form
   const [eBranch, setEBranch] = useState<ExpenseBranch>("საერთო");
@@ -651,10 +653,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     e.preventDefault();
     if (!saleFormValid || !selected) return;
     const total = qty * price;
-    const advance = payStatus === "ბე (ავანსი)" ? parseFloat(creditAdvance) || 0 : 0;
+    const isConsignment = payMethod === "კონსიგნაცია";
+    const isCreditSale = payStatus === "ბე (ავანსი)" || isConsignment;
+    const advance = isCreditSale && !isConsignment ? parseFloat(creditAdvance) || 0 : 0;
     const productName = saleIsOther
       ? otherSaleName.trim() || sComment.trim() || "სხვა"
       : selected.name;
+    const due =
+      creditDueDate ||
+      (() => {
+        const d = new Date(`${sDate}T12:00:00`);
+        d.setDate(d.getDate() + 30);
+        return d.toISOString().slice(0, 10);
+      })();
     const sale: Sale = {
       id: uid(),
       type: "sale",
@@ -665,22 +676,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       quantity: qty,
       unitPrice: price,
       amount: total,
-      paymentStatus: payStatus,
+      paymentStatus: isCreditSale ? "ბე (ავანსი)" : payStatus,
       paymentMethod: payMethod,
       comment: sComment.trim() || (saleIsOther ? productName : `${selected.name} × ${qty}`),
       recurrence: sRecurrence,
       source: "admin",
-      buyerName: payStatus === "ბე (ავანსი)" ? buyerName.trim() || undefined : undefined,
-      creditPaid: payStatus === "ბე (ავანსი)" ? advance : undefined,
-      creditDueDate:
-        payStatus === "ბე (ავანსი)"
-          ? creditDueDate ||
-            (() => {
-              const d = new Date(`${sDate}T12:00:00`);
-              d.setDate(d.getDate() + 30);
-              return d.toISOString().slice(0, 10);
-            })()
-          : undefined,
+      buyerName: isCreditSale ? buyerName.trim() || undefined : undefined,
+      creditPaid: isCreditSale ? advance : undefined,
+      creditDueDate: isCreditSale ? due : undefined,
     };
     try {
       const data = await apiTx("POST", { transaction: sale });
@@ -750,14 +753,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   async function payCreditReceivable(
     saleId: string,
     amount: number,
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentMethod,
+    branch?: Branch
   ): Promise<boolean> {
     if (!amount || amount <= 0) return false;
     try {
       const res = await fetch("/api/credit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "pay", saleId, amount, paymentMethod }),
+        body: JSON.stringify({ action: "pay", saleId, amount, paymentMethod, branch }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -785,7 +789,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   function addCreditPayment(saleId: string) {
     const amount = parseFloat(creditPayInputs[saleId] ?? "");
     if (!amount || amount <= 0) return;
-    void payCreditReceivable(saleId, amount, creditPayMethods[saleId] ?? "ქეში (ნაღდი)");
+    void payCreditReceivable(
+      saleId,
+      amount,
+      creditPayMethods[saleId] ?? "ქეში (ნაღდი)",
+      creditPayBranches[saleId]
+    );
   }
 
   async function setCreditSaleDueDate(saleId: string, dueDate: string): Promise<boolean> {
@@ -1437,44 +1446,62 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                     placeholder={saleIsOther ? "შეიყვანეთ ფასი" : undefined}
                   />
                 </Field>
-                {payStatus !== "ბე (ავანსი)" && (
-                  <Field label="გადახდის მეთოდი">
-                    <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
-                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </Field>
-                )}
+                <Field label="გადახდის მეთოდი">
+                  <select
+                    className={inputCls}
+                    value={payMethod}
+                    onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
+                  >
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
                 <Field label="ტიპი (მოგება-ზარალი)">
                   <select className={inputCls} value={sRecurrence} onChange={(e) => setSRecurrence(e.target.value as TxRecurrence)}>
                     {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </Field>
-                {payStatus === "ბე (ავანსი)" && (
+                {(payStatus === "ბე (ავანსი)" || payMethod === "კონსიგნაცია") && (
                   <>
                     <Field label="მყიდველი / კომპანია">
-                      <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="მაგ: კომპანიის სახელი" />
+                      <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="მაგ: შპს ვოლფ ინვესტი" />
                     </Field>
-                    <Field label="ავანსი / ბე (₾)">
-                      <input className={inputCls} type="number" min={0} step={0.01} value={creditAdvance} onChange={(e) => setCreditAdvance(e.target.value)} placeholder="მაგ: 15975" />
-                    </Field>
-                    <Field label="გადახდის მეთოდი (ავანსი)">
-                      <select className={inputCls} value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
-                        {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="გადახდის ვადა (კონსიგნაცია)">
+                    {payStatus === "ბე (ავანსი)" && payMethod !== "კონსიგნაცია" && (
+                      <>
+                        <Field label="ავანსი / ბე (₾)">
+                          <input className={inputCls} type="number" min={0} step={0.01} value={creditAdvance} onChange={(e) => setCreditAdvance(e.target.value)} placeholder="მაგ: 15975" />
+                        </Field>
+                        <Field label="ავანსის საშუალება">
+                          <select
+                            className={inputCls}
+                            value={SETTLEMENT_PAYMENT_METHODS.includes(payMethod as (typeof SETTLEMENT_PAYMENT_METHODS)[number]) ? payMethod : "ქეში (ნაღდი)"}
+                            onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
+                          >
+                            {SETTLEMENT_PAYMENT_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </>
+                    )}
+                    <Field label="გადახდის ვადა">
                       <input
                         type="date"
                         className={inputCls}
                         value={creditDueDate}
                         onChange={(e) => setCreditDueDate(e.target.value)}
-                        placeholder="ცარიელი = +30 დღე"
                       />
                     </Field>
-                    <div className="mb-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-                      შეკვეთა: {qty} ც · ჯამი {formatMoney(qty * price)} · ავანსი {formatMoney(parseFloat(creditAdvance) || 0)} · გადასახდელი {formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))} · მიწოდება დაიწყება 0/{qty} ც-დან
-                      {" · "}მისაღები ვალდებულებებში გამოჩნდება (ქეში / ბარათი / გადმორიცხვა)
+                    <div className="mb-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:col-span-2">
+                      {payMethod === "კონსიგნაცია"
+                        ? `კონსიგნაცია: ${qty} ც · ${formatMoney(qty * price)} → მისაღები ვალდებულებები (დაფარვა ქეში/ბარათი/გადმორიცხვა)`
+                        : `შეკვეთა: ${qty} ც · ჯამი ${formatMoney(qty * price)} · ავანსი ${formatMoney(parseFloat(creditAdvance) || 0)} · გადასახდელი ${formatMoney(Math.max(0, qty * price - (parseFloat(creditAdvance) || 0)))}`}
                     </div>
                   </>
                 )}
@@ -1681,13 +1708,23 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 />
                               </div>
                               <div className="min-w-[120px] flex-1">
-                                <label className={labelCls}>გადახდის მეთოდი</label>
+                                <label className={labelCls}>დაფარვის საშუალება</label>
                                 <select
                                   className={inputCls}
                                   value={creditPayMethods[sale.id] ?? "ქეში (ნაღდი)"}
                                   onChange={(e) => setCreditPayMethods((m) => ({ ...m, [sale.id]: e.target.value as PaymentMethod }))}
                                 >
-                                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                  {SETTLEMENT_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              </div>
+                              <div className="min-w-[120px] flex-1">
+                                <label className={labelCls}>ფილიალი</label>
+                                <select
+                                  className={inputCls}
+                                  value={creditPayBranches[sale.id] ?? sale.branch}
+                                  onChange={(e) => setCreditPayBranches((m) => ({ ...m, [sale.id]: e.target.value as Branch }))}
+                                >
+                                  {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
                                 </select>
                               </div>
                               <button type="button" className={btnCls} onClick={() => addCreditPayment(sale.id)}>ჩარიცხვა</button>
@@ -1758,7 +1795,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                               value={row.paymentMethod ?? "ქეში (ნაღდი)"}
                               onChange={(e) => updateCreditPayment(row.id, e.target.value as PaymentMethod)}
                             >
-                              {PAYMENT_METHODS.map((m) => (
+                              {SETTLEMENT_PAYMENT_METHODS.map((m) => (
                                 <option key={m} value={m}>
                                   {paymentMethodLabel(m)}
                                 </option>
@@ -1979,7 +2016,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   value={obPlannedPayMethod}
                   onChange={(e) => setObPlannedPayMethod(e.target.value as PaymentMethod)}
                 >
-                  {PAYMENT_METHODS.map((m) => (
+                  {SETTLEMENT_PAYMENT_METHODS.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -2079,7 +2116,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
                                 onChange={(e) => setObPayMethods((m) => ({ ...m, [o.id]: e.target.value as PaymentMethod }))}
                               >
-                                {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                {SETTLEMENT_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                               </select>
                             </div>
                             <div className="min-w-[100px] flex-1">

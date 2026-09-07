@@ -12,7 +12,9 @@ import type {
   ExpenseBranch,
   Obligation,
   ObligationPayment,
+  Deposit,
   PaymentMethod,
+  SettlementPaymentMethod,
   PeriodReport,
   RecurrenceStats,
   RecurringObligation,
@@ -179,9 +181,11 @@ export function calcBalances(
       if (isCreditOrder(t)) {
         const left = saleCreditRemaining(t);
         if (left > 0 && !t.orderCompletedAt) b.credit += left;
+      } else if (t.paymentMethod === "კონსიგნაცია") {
+        b.credit += t.amount;
       } else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
       else if (t.paymentMethod === "ბარათი") b.card += t.amount;
-      else b.bank += t.amount;
+      else if (t.paymentMethod === "ანგარიშზე ჩარიცხვა") b.bank += t.amount;
     } else if (t.type === "expense") {
       const amt = operatingExpenseAmount(t);
       b.expenses += amt;
@@ -354,8 +358,39 @@ export function deliveriesForSale(store: Store, saleId: string) {
     .sort((a, b) => b.deliveredAt.localeCompare(a.deliveredAt));
 }
 
+export function isConsignmentMethod(method: PaymentMethod | undefined) {
+  return method === "კონსიგნაცია";
+}
+
+export function isSettlementPaymentMethod(method: PaymentMethod | undefined): method is SettlementPaymentMethod {
+  return method === "ქეში (ნაღდი)" || method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა";
+}
+
+export function addDaysIsoDate(isoDate: string, days: number) {
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** გაყიდვა → კონსიგნაცია / მისაღები ვალდებულება */
+export function applyConsignmentToSale(sale: Sale, opts?: { alreadyStockedOut?: boolean }) {
+  sale.paymentMethod = "კონსიგნაცია";
+  sale.paymentStatus = "ბე (ავანსი)";
+  sale.creditPaid = sale.creditPaid ?? 0;
+  if (!sale.creditDueDate) {
+    sale.creditDueDate = addDaysIsoDate(sale.date, 30);
+  }
+  sale.creditCompletedAt = undefined;
+  sale.orderCompletedAt = undefined;
+  if (opts?.alreadyStockedOut) {
+    sale.quantityDelivered = sale.quantity;
+    sale.deliveryCompletedAt = sale.deliveryCompletedAt ?? sale.date;
+  }
+}
+
 export function isCreditOrder(sale: Sale) {
   return (
+    sale.paymentMethod === "კონსიგნაცია" ||
     sale.paymentStatus === "ბე (ავანსი)" ||
     (sale.creditPaid ?? 0) > 0 ||
     (sale.quantityDelivered ?? 0) > 0 ||
@@ -409,6 +444,7 @@ export function branchExpenseOperatingAmount(e: { amount: number; paymentMethod?
 export function paymentMethodLabel(method: PaymentMethod) {
   if (method === "ქეში (ნაღდი)") return "ქეში";
   if (method === "ანგარიშზე ჩარიცხვა") return "გადმორიცხვა";
+  if (method === "კონსიგნაცია") return "კონსიგნაცია";
   return method;
 }
 
@@ -440,7 +476,8 @@ export function applyCreditPayment(
   saleId: string,
   amount: number,
   note?: string,
-  paymentMethod?: PaymentMethod
+  paymentMethod?: PaymentMethod,
+  branch?: Branch
 ) {
   if (!store.creditPayments) store.creditPayments = [];
   const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
@@ -453,6 +490,13 @@ export function applyCreditPayment(
   const pay = Math.min(amount, remaining);
   if (pay <= 0) throw new Error("ფული უკვე სრულადაა ჩარიცხული");
 
+  if (paymentMethod && isConsignmentMethod(paymentMethod)) {
+    throw new Error("დაფარვა კონსიგნაციით შეუძლებელია — აირჩიეთ ქეში, ბარათი ან გადმორიცხვა");
+  }
+  const settleMethod: SettlementPaymentMethod =
+    paymentMethod && isSettlementPaymentMethod(paymentMethod) ? paymentMethod : "ქეში (ნაღდი)";
+  const settleBranch = branch ?? sale.branch;
+
   sale.creditPaid = saleCreditPaid(sale) + pay;
   const payment: CreditPayment = {
     id: uid(),
@@ -460,9 +504,26 @@ export function applyCreditPayment(
     amount: pay,
     paidAt: new Date().toISOString(),
     note,
-    paymentMethod,
+    paymentMethod: settleMethod,
+    branch: settleBranch,
   };
   store.creditPayments.push(payment);
+
+  const buyer = sale.buyerName?.trim() || sale.comment || sale.productName;
+  const deposit: Deposit = {
+    id: uid(),
+    type: "deposit",
+    date: payment.paidAt,
+    branch: settleBranch,
+    amount: pay,
+    kind: "other",
+    comment: `კონსიგნაციის დაფარვა — ${buyer}`,
+    source: "admin",
+    depositPaymentMethod: settleMethod,
+    linkedCreditPaymentId: payment.id,
+  };
+  store.transactions = [deposit, ...store.transactions];
+
   markCreditOrderProgress(sale, payment.paidAt);
   return payment;
 }
@@ -506,11 +567,19 @@ export function reverseCreditOrderData(store: Store, saleId: string, saleHint?: 
       saleQuantityDelivered(sale)
     );
   }
+  const removedPaymentIds = new Set(
+    (store.creditPayments ?? []).filter((p) => p.saleId === saleId).map((p) => p.id)
+  );
   if (store.creditPayments) {
     store.creditPayments = store.creditPayments.filter((p) => p.saleId !== saleId);
   }
   if (store.creditDeliveries) {
     store.creditDeliveries = store.creditDeliveries.filter((d) => d.saleId !== saleId);
+  }
+  if (removedPaymentIds.size > 0) {
+    store.transactions = store.transactions.filter(
+      (t) => !(t.type === "deposit" && t.linkedCreditPaymentId && removedPaymentIds.has(t.linkedCreditPaymentId))
+    );
   }
 }
 

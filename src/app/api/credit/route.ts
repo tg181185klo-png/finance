@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
-import { applyCreditDelivery, applyCreditPayment } from "@/lib/utils";
+import { applyCreditDelivery, applyCreditPayment, isSettlementPaymentMethod } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
-import type { PaymentMethod } from "@/lib/types";
+import type { Branch, PaymentMethod, SettlementPaymentMethod } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       note?: string;
       paymentMethod?: PaymentMethod;
       creditDueDate?: string;
+      branch?: Branch;
     };
 
     if (body.action === "updateDueDate") {
@@ -41,15 +42,21 @@ export async function POST(req: NextRequest) {
       if (!body.paymentId || !body.paymentMethod) {
         return NextResponse.json({ error: "paymentId და paymentMethod საჭიროა" }, { status: 400 });
       }
-      const valid: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
-      if (!valid.includes(body.paymentMethod)) {
-        return NextResponse.json({ error: "არასწორი გადახდის მეთოდი" }, { status: 400 });
+      const valid: SettlementPaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
+      if (!valid.includes(body.paymentMethod as SettlementPaymentMethod)) {
+        return NextResponse.json({ error: "დაფარვის მეთოდი: ქეში, ბარათი ან გადმორიცხვა" }, { status: 400 });
       }
 
       const store = await updateStore((s) => {
         const payment = (s.creditPayments ?? []).find((p) => p.id === body.paymentId);
         if (!payment) throw new Error("გადახდა ვერ მოიძებნა");
-        payment.paymentMethod = body.paymentMethod!;
+        payment.paymentMethod = body.paymentMethod as SettlementPaymentMethod;
+        const linked = s.transactions.find(
+          (t) => t.type === "deposit" && t.linkedCreditPaymentId === body.paymentId
+        );
+        if (linked && linked.type === "deposit") {
+          linked.depositPaymentMethod = body.paymentMethod as SettlementPaymentMethod;
+        }
       });
 
       return NextResponse.json({
@@ -68,7 +75,10 @@ export async function POST(req: NextRequest) {
       if (body.action === "pay") {
         const amount = Number(body.amount);
         if (!amount || amount <= 0) throw new Error("თანხა საჭიროა");
-        applyCreditPayment(s, saleId, amount, body.note, body.paymentMethod);
+        if (body.paymentMethod && !isSettlementPaymentMethod(body.paymentMethod)) {
+          throw new Error("დაფარვა: ქეში, ბარათი ან გადმორიცხვა");
+        }
+        applyCreditPayment(s, saleId, amount, body.note, body.paymentMethod, body.branch);
       } else if (body.action === "deliver") {
         const quantity = Number(body.quantity);
         if (!quantity || quantity <= 0) throw new Error("რაოდენობა საჭიროა");

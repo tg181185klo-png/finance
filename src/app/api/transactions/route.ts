@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
-import { applyExpenseToStore, applySaleToStock, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid } from "@/lib/utils";
+import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
 
@@ -88,7 +88,12 @@ export async function POST(req: NextRequest) {
       if (!body.id && !body.clientSaleId) {
         return NextResponse.json({ error: "id ან clientSaleId საჭიროა" }, { status: 400 });
       }
-      const valid: PaymentMethod[] = ["ქეში (ნაღდი)", "ბარათი", "ანგარიშზე ჩარიცხვა"];
+      const valid: PaymentMethod[] = [
+        "ქეში (ნაღდი)",
+        "ბარათი",
+        "ანგარიშზე ჩარიცხვა",
+        "კონსიგნაცია",
+      ];
       if (!valid.includes(paymentMethod)) {
         return NextResponse.json({ error: "არასწორი გადახდის მეთოდი" }, { status: 400 });
       }
@@ -101,12 +106,22 @@ export async function POST(req: NextRequest) {
             (body.clientSaleId && t.type === "sale" && t.clientSaleId === body.clientSaleId);
           if (!match) continue;
           if (t.type === "sale") {
-            t.paymentMethod = paymentMethod;
+            if (paymentMethod === "კონსიგნაცია") {
+              applyConsignmentToSale(t, { alreadyStockedOut: true });
+            } else {
+              t.paymentMethod = paymentMethod;
+            }
             updated += 1;
           } else if (t.type === "expense") {
+            if (paymentMethod === "კონსიგნაცია") {
+              throw new Error("ხარჯზე კონსიგნაცია შეუძლებელია");
+            }
             t.expensePaymentMethod = paymentMethod;
             updated += 1;
           } else {
+            if (paymentMethod === "კონსიგნაცია") {
+              throw new Error("შენატანზე კონსიგნაცია შეუძლებელია");
+            }
             t.depositPaymentMethod = paymentMethod;
             updated += 1;
           }
@@ -204,7 +219,12 @@ export async function POST(req: NextRequest) {
         // შენატანი — ცალკე სალაროში, ვალდებულებას არ ეხება
       } else {
         const sale = t as Sale;
-        if (sale.paymentStatus === "ბე (ავანსი)") {
+        if (sale.paymentMethod === "კონსიგნაცია") {
+          applyConsignmentToSale(sale);
+          s.transactions = [t, ...s.transactions];
+          applyCreditDelivery(s, sale.id, sale.quantity, "კონსიგნაცია — სრული გატანა");
+          return;
+        } else if (sale.paymentStatus === "ბე (ავანსი)") {
           if (!s.creditPayments) s.creditPayments = [];
           if ((sale.creditPaid ?? 0) > 0) {
             const initial: CreditPayment = {
@@ -213,9 +233,29 @@ export async function POST(req: NextRequest) {
               amount: sale.creditPaid!,
               paidAt: sale.date,
               note: sale.buyerName ? `ავანსი — ${sale.buyerName}` : "საწყისი ავანსი",
-              paymentMethod: sale.paymentMethod,
+              paymentMethod: isSettlementPaymentMethod(sale.paymentMethod)
+                ? sale.paymentMethod
+                : "ქეში (ნაღდი)",
+              branch: sale.branch,
             };
             s.creditPayments.push(initial);
+            if (isSettlementPaymentMethod(initial.paymentMethod)) {
+              s.transactions = [
+                {
+                  id: uid(),
+                  type: "deposit",
+                  date: sale.date,
+                  branch: sale.branch,
+                  amount: initial.amount,
+                  kind: "other",
+                  comment: initial.note || "ბე ავანსი",
+                  source: "admin",
+                  depositPaymentMethod: initial.paymentMethod,
+                  linkedCreditPaymentId: initial.id,
+                },
+                ...s.transactions,
+              ];
+            }
           }
           markCreditOrderProgress(sale, sale.date);
         } else {

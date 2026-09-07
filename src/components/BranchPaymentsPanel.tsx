@@ -221,7 +221,7 @@ export default function BranchPaymentsPanel({
       cur.groups += 1;
       cur.total += group.total;
       const bucket = paymentBucket(group.paymentMethod);
-      cur[bucket] += group.total;
+      if (bucket !== "credit") cur[bucket] += group.total;
       byDay.set(group.date, cur);
     }
     for (const z of zeroRows) {

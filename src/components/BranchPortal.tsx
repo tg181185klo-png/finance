@@ -58,6 +58,7 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; hint: string; icon
   { value: "ქეში (ნაღდი)", label: "ნაღდი", hint: "მაღაზიის ბალანსი", icon: "💵" },
   { value: "ბარათი", label: "ბარათი", hint: "კომპანიის ანგარიში", icon: "💳" },
   { value: "ანგარიშზე ჩარიცხვა", label: "გადარიცხვა", hint: "კომპანიის ანგარიში", icon: "🏦" },
+  { value: "კონსიგნაცია", label: "კონსიგნაცია", hint: "მოგვიანებით გადახდა", icon: "📦" },
 ];
 
 function emptyExpense(): ExpenseRow {
@@ -556,7 +557,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           </div>
 
           <p className="mb-2 mt-4 text-xs text-zinc-500">გადახდის ტიპი</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {PAYMENT_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
