@@ -130,52 +130,83 @@ function extractPaymentDate(desc: string): string | null {
   return parseDdMmYyyy(m[1].replace(/\//g, "."));
 }
 
-/** ამონაწერიდან კონტრაგენტი: შემოსავალზე გადმომრიცხავი, გასავალზე მიმღები */
+/** საკუთარი ანგარიში / ხმაური — არ არის ჩარიცხვის ავტორი */
+function isOwnOrNoiseParty(name: string): boolean {
+  const n = name.replace(/\s+/g, " ").trim();
+  if (!n || n.length < 2) return true;
+  if (/^\d+$/.test(n)) return true;
+  if (/^GE\d/i.test(n)) return true;
+  const compact = n.replace(/\s+/g, "").toLowerCase();
+  if (/პლასტიკგოლდ|plasticgold/i.test(compact)) return true;
+  if (/პლასტიკ\s*გოლდ/i.test(n)) return true;
+  if (/^(trn|pmd|tpa|cco|fee|საკომისიო|ვალუტ)/i.test(n)) return true;
+  return false;
+}
+
+function cleanPartyName(raw: string): string {
+  return raw
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;|:—–-]+/, "")
+    .replace(/[\s,;|]+$/, "")
+    .trim();
+}
+
+/** ამონაწერიდან კონტრაგენტი: შემოსავალზე ვინ ჩარიცხა, გასავალზე ვინ მიიღო */
 function extractCounterpartyName(
   direction: StatementDirection,
   partyCol: string,
   description: string,
   purpose: string
 ): string {
-  const fromCol = partyCol.replace(/\s+/g, " ").trim();
-  if (fromCol && !/^\d+$/.test(fromCol)) return fromCol;
-
   const sources = [description, purpose].filter(Boolean);
   const patterns =
     direction === "in"
       ? [
           /გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i,
           /გადამრიცხავი\s*[:：]\s*([^\n|;]+)/i,
+          /გამგზავნი\s*[:：]\s*([^\n|;]+)/i,
+          /კლიენტი\s*[:：]\s*([^\n|;]+)/i,
           /payer\s*(?:name)?\s*[:：]\s*([^\n|;]+)/i,
           /from\s*[:：]\s*([^\n|;]+)/i,
+          /sender\s*[:：]\s*([^\n|;]+)/i,
         ]
       : [
           /მიმღები\s*[:：]\s*([^\n|;]+)/i,
           /ბენეფიციარი\s*[:：]\s*([^\n|;]+)/i,
-          /beneficiary\s*[:：]\s*([^\n|;]+)/i,
+          /beneficiary\s*(?:name)?\s*[:：]\s*([^\n|;]+)/i,
           /to\s*[:：]\s*([^\n|;]+)/i,
           /გადმ?ომრიცხავი\s*[:：]\s*([^\n|;]+)/i,
         ];
 
+  // ჯერ აღწერა/დანიშნულება — იქ წერია ვინ ჩარიცხა
   for (const src of sources) {
     for (const re of patterns) {
       const m = src.match(re);
       if (m?.[1]) {
-        const name = m[1].replace(/\s+/g, " ").trim();
-        if (name) return name;
+        const name = cleanPartyName(m[1]);
+        if (name && !isOwnOrNoiseParty(name)) return name;
       }
     }
   }
 
-  if (purpose.replace(/\s+/g, " ").trim()) return purpose.replace(/\s+/g, " ").trim();
-  // აღწერიდან პირველი აზრიანი ნაწილი (ხშირად იქ არის სახელი)
-  const cleaned = description
-    .replace(/\s+/g, " ")
-    .replace(/თანხა\s*:\s*GEL\s*[\d\s.,]+/gi, "")
-    .replace(/თარიღი\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, "")
-    .trim();
-  if (cleaned.length >= 3 && cleaned.length <= 120) return cleaned;
-  return fromCol;
+  const fromCol = cleanPartyName(partyCol);
+  if (fromCol && !isOwnOrNoiseParty(fromCol)) return fromCol;
+
+  const purposeClean = cleanPartyName(purpose);
+  if (purposeClean && !isOwnOrNoiseParty(purposeClean) && purposeClean.length <= 80) {
+    return purposeClean;
+  }
+
+  const cleaned = cleanPartyName(
+    description
+      .replace(/თანხა\s*:\s*GEL\s*[\d\s.,]+/gi, "")
+      .replace(/თარიღი\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}/gi, "")
+      .replace(/საკომისიო[^|;]*/gi, "")
+  );
+  if (cleaned.length >= 3 && cleaned.length <= 80 && !isOwnOrNoiseParty(cleaned)) {
+    return cleaned;
+  }
+  return "";
 }
 
 function amountsClose(a: number, b: number, tol = 0.05): boolean {
@@ -240,6 +271,7 @@ function resolveColumns(headerRow: unknown[]): ColMap {
   const description = find("აღწერ", "დანიშნულ", "description", "comment");
   const opType = find("ოპერაციის ტიპ", "op. type", "operation type");
   const opId = find("ოპერაციის id", "operation id", "entry id");
+  // არ ვიღებთ „დასახელება“/„სახელი“ — ხშირად საკუთარი ანგარიშის სახელია (პლასტიკგოლდი)
   const party = find(
     "გადმომრიცხ",
     "გადამრიცხ",
@@ -247,9 +279,7 @@ function resolveColumns(headerRow: unknown[]): ColMap {
     "კონტრაგენტ",
     "payer",
     "beneficiary",
-    "correspondent",
-    "დასახელება",
-    "სახელი"
+    "correspondent"
   );
   const purpose = find("დანიშნულების", "purpose", "additional");
   const amount = find("თანხა", "amount");
@@ -262,7 +292,7 @@ function resolveColumns(headerRow: unknown[]): ColMap {
     description: description >= 0 ? description : 5,
     opType: opType >= 0 ? opType : 6,
     opId: opId >= 0 ? opId : 7,
-    party: party >= 0 ? party : 9,
+    party,
     purpose: purpose >= 0 ? purpose : 19,
     amount: amount >= 0 ? amount : 21,
   };
@@ -317,14 +347,23 @@ export function parseBankStatementExcel(buffer: Buffer): {
     const description = cellStr(row[cols.description]);
     const opType = cellStr(row[cols.opType]);
     const opId = cellStr(row[cols.opId]);
-    // კონტრაგენტი — რამდენიმე სვეტიდან, თუ სათაური ვერ მოიძებნა
-    const partyCol =
-      cellStr(row[cols.party]) ||
-      cellStr(row[9]) ||
-      cellStr(row[10]) ||
-      cellStr(row[11]) ||
-      cellStr(row[26]) ||
-      cellStr(row[8]);
+    // კონტრაგენტი — საკუთარი ანგარიშის სახელს (პლასტიკგოლდი) ვტოვებთ
+    const partyCandidates = [
+      cols.party >= 0 ? cellStr(row[cols.party]) : "",
+      cellStr(row[9]),
+      cellStr(row[10]),
+      cellStr(row[11]),
+      cellStr(row[26]),
+      cellStr(row[8]),
+    ];
+    let partyCol = "";
+    for (const c of partyCandidates) {
+      const cleaned = cleanPartyName(c);
+      if (cleaned && !isOwnOrNoiseParty(cleaned)) {
+        partyCol = cleaned;
+        break;
+      }
+    }
     const purpose = cellStr(row[cols.purpose]) || cellStr(row[19]) || cellStr(row[20]);
     const amountCell = cellNum(row[cols.amount]);
 

@@ -440,7 +440,9 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">თანხა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-center">ნანახია</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ამონაწერის თარიღი</th>
-                  <th className="whitespace-nowrap px-2.5 py-2">გადმომრიცხავი / მიმღები</th>
+                  <th className="whitespace-nowrap px-2.5 py-2 font-semibold text-zinc-300">
+                    გადმომრიცხავი / მიმღები
+                  </th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">სხვაობა</th>
                 </tr>
               </thead>
@@ -518,7 +520,13 @@ export default function BankAccountPanel({
                       <td className="whitespace-nowrap px-2.5 py-2 text-xs text-violet-200">
                         {hint ? formatDate(hint.statementDate) : "—"}
                       </td>
-                      <td className="max-w-[220px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-100">
+                      <td
+                        className={`max-w-[260px] whitespace-normal break-words px-2.5 py-2 ${
+                          hint?.statementSender
+                            ? "text-sm font-bold tracking-wide text-white"
+                            : "text-xs text-zinc-600"
+                        }`}
+                      >
                         {hint?.statementSender || "—"}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-2 text-right text-xs font-medium text-amber-200">
