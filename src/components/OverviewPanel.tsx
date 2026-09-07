@@ -219,7 +219,7 @@ type Props = {
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
   onToggleReview?: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
-  onRefresh?: () => void | Promise<void>;
+  onRefresh?: () => void | Promise<unknown>;
 };
 
 export default function OverviewPanel({

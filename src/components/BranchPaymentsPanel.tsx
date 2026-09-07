@@ -66,7 +66,7 @@ type Props = {
   branch: Branch;
   transactions: Transaction[];
   branchCash?: Record<Branch, BranchCash>;
-  onRefresh: () => void | Promise<void>;
+  onRefresh: () => void | Promise<unknown>;
   header?: React.ReactNode;
   subtitle?: string;
   /** თუ გადმოცემულია — ამ თვეს იყენებს (YYYY-MM) */
