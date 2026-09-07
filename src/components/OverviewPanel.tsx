@@ -26,7 +26,7 @@ import {
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
-import { branchSalesForPayments, groupBranchSales } from "@/lib/branch-payments";
+import { branchSalesForPayments, branchesSalesForPayments, groupBranchSales } from "@/lib/branch-payments";
 
 /** დროებით დამალული სექციები მიმოხილვაზე */
 const SHOW_OBJECTS_SECTION = false;
@@ -334,12 +334,17 @@ export default function OverviewPanel({
         to: `${paymentsMonth}-${String(last).padStart(2, "0")}`,
       };
     })();
+    if (scope === KUTAISI_DISTRIB_LABEL) {
+      return groupBranchSales(
+        branchesSalesForPayments(sales, [...KUTAISI_DISTRIB_BRANCHES], monthFrom, monthTo)
+      ).length;
+    }
     let groups = 0;
     for (const b of paymentBranches) {
       groups += groupBranchSales(branchSalesForPayments(sales, b, monthFrom, monthTo)).length;
     }
     return groups;
-  }, [transactions, paymentBranches, paymentsMonth]);
+  }, [transactions, paymentBranches, paymentsMonth, scope]);
 
   const activityScopeBranches = useMemo(() => scopeToBranches(scope), [scope]);
 
@@ -597,17 +602,30 @@ export default function OverviewPanel({
             დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
           </p>
         </div>
-        {paymentBranches.map((b) => (
+        {scope === KUTAISI_DISTRIB_LABEL ? (
           <BranchPaymentsPanel
-            key={b}
-            branch={b}
+            branches={[...KUTAISI_DISTRIB_BRANCHES]}
+            title={KUTAISI_DISTRIB_LABEL}
             transactions={transactions}
             month={paymentsMonth}
             compact
             readOnly={readOnly || !onRefresh}
             onRefresh={onRefresh ?? (async () => undefined)}
+            subtitle="ქუთაისი და დისტრიბუცია ერთად · თარიღის მიხედვით"
           />
-        ))}
+        ) : (
+          paymentBranches.map((b) => (
+            <BranchPaymentsPanel
+              key={b}
+              branch={b}
+              transactions={transactions}
+              month={paymentsMonth}
+              compact
+              readOnly={readOnly || !onRefresh}
+              onRefresh={onRefresh ?? (async () => undefined)}
+            />
+          ))
+        )}
       </div>
 
       <BranchActivityPanel

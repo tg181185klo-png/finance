@@ -5,6 +5,7 @@ import type { Branch, BranchCash, PaymentMethod, Sale, Transaction } from "@/lib
 import {
   branchPaymentOptions,
   branchSalesForPayments,
+  branchesSalesForPayments,
   groupBranchSales,
   isDistribuciaBranch,
   paymentBucket,
@@ -63,7 +64,12 @@ const THEMES: Record<Branch, Theme> = {
 };
 
 type Props = {
-  branch: Branch;
+  /** ერთი ფილიალი; თუ branches გადმოცემულია — იგნორდება ფილტრში */
+  branch?: Branch;
+  /** რამდენიმე ფილიალი ერთ ცხრილში (თარიღით გაერთიანებული) */
+  branches?: Branch[];
+  /** სათაური (მაგ. ქუთაისი+დისტრიბუცია) */
+  title?: string;
   transactions: Transaction[];
   branchCash?: Record<Branch, BranchCash>;
   onRefresh: () => void | Promise<unknown>;
@@ -117,6 +123,8 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
 
 export default function BranchPaymentsPanel({
   branch,
+  branches: branchesProp,
+  title,
   transactions,
   branchCash,
   onRefresh,
@@ -126,8 +134,18 @@ export default function BranchPaymentsPanel({
   readOnly = false,
   compact = false,
 }: Props) {
-  const theme = THEMES[branch];
-  const paymentOptions = branchPaymentOptions(branch);
+  const scopeBranches = useMemo((): Branch[] => {
+    if (branchesProp?.length) return branchesProp;
+    if (branch) return [branch];
+    return [];
+  }, [branchesProp, branch]);
+
+  const combined = scopeBranches.length > 1;
+  const primaryBranch = scopeBranches[0] ?? "ქუთაისი";
+  const theme = combined ? THEMES.დისტრიბუცია : THEMES[primaryBranch] ?? THEMES.ქუთაისი;
+  const showCard = scopeBranches.some((b) => !isDistribuciaBranch(b));
+  const heading = title ?? (combined ? scopeBranches.join(" + ") : `${primaryBranch} — გადახდები`);
+
   const [viewMonth, setViewMonth] = useState(monthProp ?? currentMonth());
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -139,18 +157,19 @@ export default function BranchPaymentsPanel({
 
   const sales = useMemo(() => {
     const all = transactions.filter(
-      (t): t is Sale =>
-        t.type === "sale" &&
-        !(isCreditOrder(t) && isCreditOrderActive(t))
+      (t): t is Sale => t.type === "sale" && !(isCreditOrder(t) && isCreditOrderActive(t))
     );
-    return branchSalesForPayments(all, branch, from, to);
-  }, [transactions, branch, from, to]);
+    if (combined) return branchesSalesForPayments(all, scopeBranches, from, to);
+    return branchSalesForPayments(all, primaryBranch, from, to);
+  }, [transactions, combined, scopeBranches, primaryBranch, from, to]);
 
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     return groupBranchSales(sales).filter((g) => {
       if (!q) return true;
-      const hay = [g.label, g.groupId, ...g.lines.map((l) => l.productName)].join(" ").toLowerCase();
+      const hay = [g.label, g.branch, g.groupId, ...g.lines.map((l) => l.productName)]
+        .join(" ")
+        .toLowerCase();
       return hay.includes(q);
     });
   }, [sales, search]);
@@ -194,6 +213,9 @@ export default function BranchPaymentsPanel({
       list.push(group);
       map.set(group.date, list);
     }
+    for (const [, list] of map) {
+      list.sort((a, b) => a.branch.localeCompare(b.branch, "ka") || b.total - a.total);
+    }
     return map;
   }, [groups]);
 
@@ -213,9 +235,13 @@ export default function BranchPaymentsPanel({
     [onRefresh]
   );
 
-  const defaultSubtitle = isDistribuciaBranch(branch)
-    ? "ნაგულისხმევად ქეში · შეგიძლიათ შეცვალოთ ქეშად ან გადმორიცხვად"
-    : "გაყიდვები დღეების მიხედვით · გადახდის ტიპის ცვლილება ერთ გაყიდვაზე";
+  const defaultSubtitle = combined
+    ? "ქუთაისი და დისტრიბუცია ერთად · თარიღის მიხედვით გაერთიანებული"
+    : isDistribuciaBranch(primaryBranch)
+      ? "ნაგულისხმევად ქეში · შეგიძლიათ შეცვალოთ ქეშად ან გადმორიცხვად"
+      : "გაყიდვები დღეების მიხედვით · გადახდის ტიპის ცვლილება ერთ გაყიდვაზე";
+
+  const colSpan = showCard ? 7 : 6;
 
   return (
     <section className="space-y-6">
@@ -224,7 +250,9 @@ export default function BranchPaymentsPanel({
       <div className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className={`font-semibold ${theme.title}`}>{branch} — გადახდები</h2>
+            <h2 className={`font-semibold ${theme.title}`}>
+              {combined || title ? heading : `${primaryBranch} — გადახდები`}
+            </h2>
             <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
           </div>
           {!monthProp && (
@@ -239,13 +267,17 @@ export default function BranchPaymentsPanel({
           )}
         </div>
 
-        {!compact && branchCash && (
+        {!compact && branchCash && !combined && (
           <div className="mb-4">
-            <CurrentBalanceStrip branchCash={branchCash} transactions={transactions} branch={branch} />
+            <CurrentBalanceStrip
+              branchCash={branchCash}
+              transactions={transactions}
+              branch={primaryBranch}
+            />
           </div>
         )}
 
-        <div className={`mb-4 grid gap-3 ${isDistribuciaBranch(branch) ? "sm:grid-cols-4" : "sm:grid-cols-5"}`}>
+        <div className={`mb-4 grid gap-3 ${showCard ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
             <p className="text-xs text-zinc-500">გაყიდვები</p>
             <p className="mt-1 text-lg font-semibold">{monthTotals.groups}</p>
@@ -258,7 +290,7 @@ export default function BranchPaymentsPanel({
             <p className="text-xs text-zinc-500">გადმორიცხვა</p>
             <p className="mt-1 text-lg font-semibold text-sky-400">{formatMoney(monthTotals.bank)}</p>
           </div>
-          {!isDistribuciaBranch(branch) && (
+          {showCard && (
             <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 p-3">
               <p className="text-xs text-zinc-500">ბარათი</p>
               <p className="mt-1 text-lg font-semibold text-violet-400">{formatMoney(monthTotals.card)}</p>
@@ -277,7 +309,7 @@ export default function BranchPaymentsPanel({
                 className={inputCls}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="მომხმარებელი, პროდუქტი..."
+                placeholder={combined ? "ფილიალი, მომხმარებელი, პროდუქტი..." : "მომხმარებელი, პროდუქტი..."}
               />
             </Field>
           </div>
@@ -296,7 +328,7 @@ export default function BranchPaymentsPanel({
                   <th className="pb-2 pr-3 text-right">გაყიდვები</th>
                   <th className="pb-2 pr-3 text-right">ქეში</th>
                   <th className="pb-2 pr-3 text-right">გადმორიცხვა</th>
-                  {!isDistribuciaBranch(branch) && <th className="pb-2 pr-3 text-right">ბარათი</th>}
+                  {showCard && <th className="pb-2 pr-3 text-right">ბარათი</th>}
                   <th className="pb-2 pr-3 text-right">ჯამი</th>
                   <th className="pb-2 pr-3" />
                 </tr>
@@ -309,7 +341,7 @@ export default function BranchPaymentsPanel({
                       <td className="py-2 pr-3 text-right">{day.groups}</td>
                       <td className="py-2 pr-3 text-right text-emerald-400">{formatMoney(day.cash)}</td>
                       <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(day.bank)}</td>
-                      {!isDistribuciaBranch(branch) && (
+                      {showCard && (
                         <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(day.card)}</td>
                       )}
                       <td className="py-2 pr-3 text-right font-medium">{formatMoney(day.total)}</td>
@@ -325,43 +357,60 @@ export default function BranchPaymentsPanel({
                     </tr>
                     {expandedDay === day.date && (
                       <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
-                        <td colSpan={isDistribuciaBranch(branch) ? 6 : 7} className="px-3 py-3">
+                        <td colSpan={colSpan} className="px-3 py-3">
                           <div className="space-y-2">
-                            {(groupsByDay.get(day.date) ?? []).map((group) => (
-                              <div
-                                key={group.groupId}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-zinc-200">{group.label}</p>
-                                  <p className="text-zinc-500">
-                                    {group.lines.length} ხაზი ·{" "}
-                                    {group.lines.map((l) => l.productName).join(", ")}
-                                  </p>
+                            {(groupsByDay.get(day.date) ?? []).map((group) => {
+                              const opts = branchPaymentOptions(group.branch);
+                              return (
+                                <div
+                                  key={group.groupId}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-zinc-200">
+                                      {combined && (
+                                        <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                          {group.branch}
+                                        </span>
+                                      )}
+                                      {group.label}
+                                    </p>
+                                    <p className="text-zinc-500">
+                                      {group.lines.length} ხაზი ·{" "}
+                                      {group.lines.map((l) => l.productName).join(", ")}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-emerald-400">
+                                      {formatMoney(group.total)}
+                                    </span>
+                                    {readOnly ? (
+                                      <span className="text-zinc-400">
+                                        {paymentShort(group.paymentMethod)}
+                                      </span>
+                                    ) : (
+                                      <select
+                                        className={selectCls}
+                                        value={group.paymentMethod}
+                                        disabled={busyGroupId === group.groupId}
+                                        onChange={(e) =>
+                                          handlePaymentChange(
+                                            group,
+                                            e.target.value as PaymentMethod
+                                          )
+                                        }
+                                      >
+                                        {opts.map((m) => (
+                                          <option key={m} value={m}>
+                                            {paymentShort(m)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium text-emerald-400">{formatMoney(group.total)}</span>
-                                  {readOnly ? (
-                                    <span className="text-zinc-400">{paymentShort(group.paymentMethod)}</span>
-                                  ) : (
-                                    <select
-                                      className={selectCls}
-                                      value={group.paymentMethod}
-                                      disabled={busyGroupId === group.groupId}
-                                      onChange={(e) =>
-                                        handlePaymentChange(group, e.target.value as PaymentMethod)
-                                      }
-                                    >
-                                      {paymentOptions.map((m) => (
-                                        <option key={m} value={m}>
-                                          {paymentShort(m)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </td>
                       </tr>

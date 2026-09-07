@@ -43,6 +43,21 @@ export function branchSalesForPayments(
   });
 }
 
+export function branchesSalesForPayments(
+  sales: Sale[],
+  branches: Branch[],
+  from: string,
+  to: string
+): Sale[] {
+  const set = new Set(branches);
+  return sales.filter((sale) => {
+    if (!set.has(sale.branch)) return false;
+    const date = sale.date.slice(0, 10);
+    if (date < from || date > to) return false;
+    return true;
+  });
+}
+
 export function isDistribuciaBranch(branch: Branch) {
   return branch === "დისტრიბუცია";
 }
@@ -54,6 +69,7 @@ export function branchPaymentOptions(branch: Branch): PaymentMethod[] {
 export type SalePaymentGroup = {
   groupId: string;
   date: string;
+  branch: Branch;
   label: string;
   lines: Sale[];
   total: number;
@@ -73,6 +89,7 @@ export function groupBranchSales(sales: Sale[]): SalePaymentGroup[] {
     const cur = map.get(groupId) ?? {
       groupId,
       date,
+      branch: sale.branch,
       label: saleGroupLabel(sale),
       lines: [],
       total: 0,
