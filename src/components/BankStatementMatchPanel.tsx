@@ -76,8 +76,8 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
     <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-5">
       <h2 className="font-semibold text-sky-200">ბანკის ამონაწერი — შედარება</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        ატვირთეთ Excel ამონაწერი. თანხითა და თარიღით დამთხვეულ შემოსავალსა და ხარჯს ქვემოთ მიეწერება ამონაწერის
-        თარიღი, გადმომრიცხავი/მიმღები და სხვაობა.
+        ატვირთეთ Excel ამონაწერი. თანხითა და თარიღით (მიახლოებითაც) დამთხვეული ბარათის და ანგარიშის
+        ჩანაწერებს ქვემოთ მიეწერება ამონაწერის თარიღი, გადმომრიცხავი/მიმღები და სხვაობა.
       </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">

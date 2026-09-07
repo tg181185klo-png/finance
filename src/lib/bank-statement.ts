@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Transaction } from "./types";
-import { saleGroupKey, saleGroupLabel } from "./branch-payments";
+import { saleGroupLabel } from "./branch-payments";
 import { isCreditOrder, isCreditOrderActive, txPaymentMethod } from "./utils";
 import { BANK_METHOD, CARD_METHOD } from "./bank-ledger";
 
@@ -117,17 +117,55 @@ function parsePeriod(raw: string): { from: string; to: string } | null {
   return { from, to };
 }
 
-function extractGrossFromDescription(desc: string): number | null {
-  const m = desc.match(/თანხა\s*:\s*GEL\s*([\d\s.,]+)/i) || desc.match(/თანხა:\s*GEL\s*([\d\s.,]+)/i);
-  if (!m) return null;
-  const n = parseFloat(m[1].replace(/\s/g, "").replace(",", "."));
+function parseMoneyToken(raw: string): number | null {
+  const n = parseFloat(raw.replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function extractGrossFromDescription(desc: string): number | null {
+  const patterns = [
+    /თანხა\s*:\s*GEL\s*([\d\s.,]+)/i,
+    /თანხა\s*:\s*([\d\s.,]+)\s*GEL/i,
+    /amount\s*:\s*GEL\s*([\d\s.,]+)/i,
+    /GEL\s*([\d\s.,]+)/i,
+  ];
+  for (const re of patterns) {
+    const m = desc.match(re);
+    if (m?.[1]) {
+      const n = parseMoneyToken(m[1]);
+      if (n != null) return n;
+    }
+  }
+  return null;
+}
+
 function extractPaymentDate(desc: string): string | null {
-  const m = desc.match(/თარიღი\s*:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+  const m =
+    desc.match(/თარიღი\s*:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i) ||
+    desc.match(/თარიღი\s*:\s*(\d{1,2}\.\d{1,2}\.\d{4})/i) ||
+    desc.match(/date\s*:\s*(\d{1,2}[./]\d{1,2}[./]\d{4})/i);
   if (!m) return null;
   return parseDdMmYyyy(m[1].replace(/\//g, "."));
+}
+
+/** ბარათის/POS ოპერაცია ამონაწერში */
+function looksLikeCardLine(line: BankStatementLine): boolean {
+  if (line.opType === "TRN") return true;
+  const d = `${line.description} ${line.purpose} ${line.opType}`.toLowerCase();
+  return /\bpos\b|ბარათ|card\b|terminal|ტერმინალ|visa|master\s*card|mastercard|e-?commerce/.test(d);
+}
+
+function looksLikeBankTransferLine(line: BankStatementLine): boolean {
+  if (line.opType === "PMD" || line.opType === "TPA") return true;
+  const d = `${line.description} ${line.purpose} ${line.opType}`.toLowerCase();
+  return /გადმორიცხვ|გადარიცხვ|transfer|პირდაპირი/.test(d) && !looksLikeCardLine(line);
+}
+
+/** შედარებისთვის: ერთი გადახდა = clientSale/distribucia; სხვა გაყიდვები ცალ-ცალკე (ბარათი) */
+function matchSaleKey(sale: Extract<Transaction, { type: "sale" }>): string {
+  if (sale.distribuciaOrderId) return `dist-order:${sale.distribuciaOrderId}`;
+  if (sale.clientSaleId) return `client:${sale.clientSaleId}`;
+  return `tx:${sale.id}`;
 }
 
 /** საკუთარი ანგარიში / ხმაური — არ არის ჩარიცხვის ავტორი */
@@ -214,11 +252,14 @@ function amountsClose(a: number, b: number, tol = 0.05): boolean {
 }
 
 /** საკომისიოს გათვალისწინებით: ამონაწერის თანხა შეიძლება აპის თანხაზე ნაკლები იყოს */
-function amountsCompatible(statementAmt: number, appAmt: number): boolean {
+function amountsCompatible(statementAmt: number, appAmt: number, loose = false): boolean {
   if (amountsClose(statementAmt, appAmt)) return true;
   if (appAmt <= 0 || statementAmt <= 0) return false;
   const diff = Math.abs(appAmt - statementAmt);
-  const maxFee = Math.max(8, appAmt * 0.04);
+  // ბარათზე საკომისიო + მიახლოებითი დამთხვევა უფრო ფართოა
+  const maxFee = loose
+    ? Math.max(25, appAmt * 0.08)
+    : Math.max(12, appAmt * 0.05);
   return diff <= maxFee;
 }
 
@@ -417,8 +458,8 @@ export function parseBankStatementExcel(buffer: Buffer): {
 
 /** აპში ბარათი/ანგარიშის შემოსავლები და გასავლები */
 export function buildMatchCandidates(transactions: Transaction[], from: string, to: string): MatchCandidate[] {
-  const padFrom = addDays(from, -60);
-  const padTo = addDays(to, 60);
+  const padFrom = addDays(from, -90);
+  const padTo = addDays(to, 90);
   const salesByGroup = new Map<string, Extract<Transaction, { type: "sale" }>[]>();
   const deposits: MatchCandidate[] = [];
   const expensesByGroup = new Map<string, Extract<Transaction, { type: "expense" }>[]>();
@@ -431,7 +472,7 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
 
     if (t.type === "sale") {
       if (isCreditOrder(t) && isCreditOrderActive(t)) continue;
-      const key = saleGroupKey(t);
+      const key = matchSaleKey(t);
       const list = salesByGroup.get(key) ?? [];
       list.push(t);
       salesByGroup.set(key, list);
@@ -514,21 +555,35 @@ function addDays(iso: string, n: number): string {
 function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   if (line.direction !== c.direction) return -1;
 
-  const statementAmts = [line.matchAmount, line.amount, line.credit, line.debit].filter((n) => n > 0);
-  const amountOk = statementAmts.some((a) => amountsCompatible(a, c.amount));
+  const cardLine = looksLikeCardLine(line);
+  const bankLine = looksLikeBankTransferLine(line);
+  // ბარათის სტრიქონი მხოლოდ ბარათის ჩანაწერებს; გადარიცხვა — ანგარიშს
+  if (cardLine && c.channel !== "card") return -1;
+  if (bankLine && c.channel !== "bank") return -1;
+
+  const loose = cardLine || c.channel === "card";
+  const statementAmts = [line.matchAmount, line.amount, line.credit, line.debit, line.grossAmount ?? 0].filter(
+    (n) => n > 0
+  );
+  const amountOk = statementAmts.some((a) => amountsCompatible(a, c.amount, loose));
   if (!amountOk) return -1;
 
   const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
-  if (dayGap > 21) return -1;
+  // მიახლოებითი თარიღი: ბარათზე დასახლება ხშირად 1–7 დღით გვიანია
+  const maxGap = loose ? 45 : 30;
+  if (dayGap > maxGap) return -1;
 
-  let score = 100 - dayGap * 3;
-  if (amountsClose(line.matchAmount, c.amount) || amountsClose(line.amount, c.amount)) score += 25;
-  else if (amountsCompatible(line.matchAmount, c.amount) || amountsCompatible(line.amount, c.amount)) {
-    score += 10;
+  let score = 100 - dayGap * 2;
+  if (amountsClose(line.matchAmount, c.amount) || amountsClose(line.amount, c.amount)) score += 30;
+  else if (line.grossAmount != null && amountsClose(line.grossAmount, c.amount)) score += 28;
+  else if (amountsCompatible(line.matchAmount, c.amount, loose) || amountsCompatible(line.amount, c.amount, loose)) {
+    score += 12;
   }
 
-  if (line.opType === "TRN" && c.channel === "card") score += 15;
-  if ((line.opType === "PMD" || line.opType === "TPA") && c.channel === "bank") score += 15;
+  if (cardLine && c.channel === "card") score += 25;
+  if (bankLine && c.channel === "bank") score += 20;
+  if (line.opType === "TRN" && c.channel === "card") score += 10;
+  if ((line.opType === "PMD" || line.opType === "TPA") && c.channel === "bank") score += 10;
 
   const party = line.senderName.toLowerCase();
   const name = c.buyerName.toLowerCase();
@@ -629,8 +684,11 @@ export function buildStatementLedgerHints(matches: StatementMatchRow[]): Record<
     if (m.status !== "matched" || !m.candidate) continue;
     const hint: StatementLedgerHint = {
       statementDate: m.line.statementDate || m.line.date,
-      statementSender: m.line.senderName || "",
-      statementAmount: m.line.credit || m.line.amount,
+      statementSender:
+        m.line.senderName ||
+        (m.candidate.channel === "card" ? m.candidate.buyerName : "") ||
+        "",
+      statementAmount: m.line.matchAmount || m.line.credit || m.line.amount,
       commission: m.commission,
       status: "matched",
     };
