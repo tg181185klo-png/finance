@@ -167,41 +167,6 @@ html[data-theme="light"] .border-amber-800 {
   border-color: rgb(180 83 9) !important;
 }
 
-/* Darker accent text on white */
-html[data-theme="light"] .text-emerald-200,
-html[data-theme="light"] .text-emerald-300,
-html[data-theme="light"] .text-emerald-400 {
-  color: rgb(4 120 87) !important;
-}
-
-html[data-theme="light"] .text-violet-200,
-html[data-theme="light"] .text-violet-300,
-html[data-theme="light"] .text-violet-400 {
-  color: rgb(91 33 182) !important;
-}
-
-html[data-theme="light"] .text-sky-300,
-html[data-theme="light"] .text-sky-400 {
-  color: rgb(3 105 161) !important;
-}
-
-html[data-theme="light"] .text-amber-200,
-html[data-theme="light"] .text-amber-300,
-html[data-theme="light"] .text-amber-400 {
-  color: rgb(146 64 14) !important;
-}
-
-html[data-theme="light"] .text-red-300,
-html[data-theme="light"] .text-red-400 {
-  color: rgb(153 27 27) !important;
-}
-
-html[data-theme="light"] .text-zinc-400,
-html[data-theme="light"] .text-zinc-500,
-html[data-theme="light"] .text-zinc-600 {
-  color: rgb(63 63 70) !important;
-}
-
 html[data-theme="light"] .ring-emerald-600\/40 {
   --tw-ring-color: rgb(5 150 105 / 0.55) !important;
 }
@@ -228,4 +193,191 @@ html[data-theme="light"] table td {
 
 html[data-theme="light"] .divide-zinc-800 > :not([hidden]) ~ :not([hidden]) {
   border-color: rgb(190 190 198) !important;
+}
+
+/* —— Accent / muted text: same hue, darker — readable on white & black —— */
+
+/* Dark theme: soften neon pastels → slightly deeper mid-tones */
+html[data-theme="dark"] .text-emerald-100,
+html[data-theme="dark"] .text-emerald-200 {
+  color: rgb(52 211 153) !important; /* emerald-400 */
+}
+html[data-theme="dark"] .text-emerald-300 {
+  color: rgb(16 185 129) !important; /* emerald-500 */
+}
+html[data-theme="dark"] .text-emerald-400 {
+  color: rgb(5 150 105) !important; /* emerald-600 */
+}
+
+html[data-theme="dark"] .text-teal-100,
+html[data-theme="dark"] .text-teal-200 {
+  color: rgb(45 212 191) !important; /* teal-400 */
+}
+html[data-theme="dark"] .text-teal-300,
+html[data-theme="dark"] .text-teal-300\/90 {
+  color: rgb(20 184 166) !important; /* teal-500 */
+}
+html[data-theme="dark"] .text-teal-400,
+html[data-theme="dark"] .text-teal-400\/90 {
+  color: rgb(13 148 136) !important; /* teal-600 */
+}
+
+html[data-theme="dark"] .text-sky-200,
+html[data-theme="dark"] .text-sky-300 {
+  color: rgb(56 189 248) !important; /* sky-400 */
+}
+html[data-theme="dark"] .text-sky-400 {
+  color: rgb(14 165 233) !important; /* sky-500 */
+}
+
+html[data-theme="dark"] .text-violet-100,
+html[data-theme="dark"] .text-violet-200 {
+  color: rgb(167 139 250) !important; /* violet-400 */
+}
+html[data-theme="dark"] .text-violet-300,
+html[data-theme="dark"] .text-violet-300\/90 {
+  color: rgb(139 92 246) !important; /* violet-500 */
+}
+html[data-theme="dark"] .text-violet-400 {
+  color: rgb(124 58 237) !important; /* violet-600 */
+}
+
+html[data-theme="dark"] .text-amber-200,
+html[data-theme="dark"] .text-amber-300 {
+  color: rgb(251 191 36) !important; /* amber-400 */
+}
+html[data-theme="dark"] .text-amber-400 {
+  color: rgb(245 158 11) !important; /* amber-500 */
+}
+
+html[data-theme="dark"] .text-red-300 {
+  color: rgb(248 113 113) !important; /* red-400 */
+}
+html[data-theme="dark"] .text-red-400,
+html[data-theme="dark"] .hover\:text-red-300:hover,
+html[data-theme="dark"] .hover\:text-red-400:hover {
+  color: rgb(239 68 68) !important; /* red-500 */
+}
+
+html[data-theme="dark"] .text-zinc-400 {
+  color: rgb(161 161 170) !important; /* keep mid gray */
+}
+html[data-theme="dark"] .text-zinc-500 {
+  color: rgb(140 140 148) !important; /* slightly darker muted */
+}
+html[data-theme="dark"] .text-zinc-600 {
+  color: rgb(120 120 128) !important;
+}
+
+/* Light theme: same hues, clearly dark for white backgrounds */
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-zinc-50,
+html[data-theme="light"] .text-zinc-100,
+html[data-theme="light"] .text-zinc-200,
+html[data-theme="light"] .text-zinc-300 {
+  color: rgb(24 24 27) !important;
+}
+
+html[data-theme="light"] .text-zinc-400,
+html[data-theme="light"] .text-zinc-500,
+html[data-theme="light"] .text-zinc-600 {
+  color: rgb(63 63 70) !important;
+}
+
+html[data-theme="light"] .text-emerald-100,
+html[data-theme="light"] .text-emerald-200,
+html[data-theme="light"] .text-emerald-300,
+html[data-theme="light"] .text-emerald-400,
+html[data-theme="light"] .hover\:text-emerald-300:hover,
+html[data-theme="light"] .hover\:text-emerald-400:hover {
+  color: rgb(6 95 70) !important; /* emerald-800 */
+}
+
+html[data-theme="light"] .text-teal-100,
+html[data-theme="light"] .text-teal-200,
+html[data-theme="light"] .text-teal-300,
+html[data-theme="light"] .text-teal-300\/90,
+html[data-theme="light"] .text-teal-400,
+html[data-theme="light"] .text-teal-400\/90 {
+  color: rgb(17 94 89) !important; /* teal-800 */
+}
+
+html[data-theme="light"] .text-sky-200,
+html[data-theme="light"] .text-sky-300,
+html[data-theme="light"] .text-sky-400 {
+  color: rgb(7 89 133) !important; /* sky-800 */
+}
+
+html[data-theme="light"] .text-violet-100,
+html[data-theme="light"] .text-violet-200,
+html[data-theme="light"] .text-violet-300,
+html[data-theme="light"] .text-violet-300\/90,
+html[data-theme="light"] .text-violet-400 {
+  color: rgb(91 33 182) !important; /* violet-800 */
+}
+
+html[data-theme="light"] .text-amber-200,
+html[data-theme="light"] .text-amber-300,
+html[data-theme="light"] .text-amber-400 {
+  color: rgb(146 64 14) !important; /* amber-800 */
+}
+
+html[data-theme="light"] .text-red-300,
+html[data-theme="light"] .text-red-400,
+html[data-theme="light"] .hover\:text-red-300:hover,
+html[data-theme="light"] .hover\:text-red-400:hover {
+  color: rgb(153 27 27) !important; /* red-800 */
+}
+
+/* Light: teal / amber / sky tinted panels (receivables etc.) */
+html[data-theme="light"] .bg-teal-950\/15,
+html[data-theme="light"] .bg-teal-950\/20 {
+  background-color: rgb(240 253 250) !important;
+}
+
+html[data-theme="light"] .border-teal-900\/40,
+html[data-theme="light"] .border-teal-900\/50 {
+  border-color: rgb(15 118 110) !important;
+}
+
+html[data-theme="light"] .border-sky-900\/40,
+html[data-theme="light"] .border-amber-900\/40,
+html[data-theme="light"] .border-red-900\/50 {
+  border-color: rgb(120 120 128) !important;
+}
+
+html[data-theme="light"] .border-sky-900\/40 {
+  border-color: rgb(3 105 161) !important;
+}
+
+html[data-theme="light"] .border-amber-900\/40 {
+  border-color: rgb(180 83 9) !important;
+}
+
+html[data-theme="light"] .border-red-900\/50 {
+  border-color: rgb(185 28 28) !important;
+}
+
+html[data-theme="light"] .bg-sky-950\/20 {
+  background-color: rgb(240 249 255) !important;
+}
+
+html[data-theme="light"] .bg-amber-950\/15,
+html[data-theme="light"] .bg-amber-950\/20 {
+  background-color: rgb(255 251 235) !important;
+}
+
+html[data-theme="light"] .bg-red-950\/15 {
+  background-color: rgb(254 242 242) !important;
+}
+
+html[data-theme="light"] button.bg-teal-700,
+html[data-theme="light"] .bg-teal-700 {
+  background-color: rgb(15 118 110) !important;
+  color: rgb(255 255 255) !important;
+}
+
+html[data-theme="light"] .bg-teal-800 {
+  background-color: rgb(17 94 89) !important;
+  color: rgb(255 255 255) !important;
 }
