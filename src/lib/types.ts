@@ -151,6 +151,8 @@ export interface Obligation {
   comment?: string;
   recurringId?: string;
   employeeId?: string;
+  /** წინა თვიდან გადმოტანილი გაუსტუმრებელი ნარჩენი */
+  carriedForward?: number;
   /** დაგეგმილი გასტუმრების თარიღი (YYYY-MM-DD) */
   plannedPayDate?: string;
   /** დაგეგმილი გადახდის საშუალება */

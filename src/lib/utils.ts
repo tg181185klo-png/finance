@@ -207,6 +207,43 @@ function obligationBranchMatch(ob: Obligation, branch: ExpenseBranch) {
   return ob.branch === "ყველა" || ob.branch === branch || branch === "საერთო";
 }
 
+/** წინა კალენდარული თვე YYYY-MM */
+export function previousMonth(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export function obligationRemaining(ob: Pick<Obligation, "amount" | "paid">) {
+  return Math.max(0, ob.amount - ob.paid);
+}
+
+/** ამ თვის დარიცხვა = სულ − გადმოტანილი ნარჩენი */
+export function obligationMonthAccrued(ob: Obligation) {
+  return Math.max(0, ob.amount - (ob.carriedForward ?? 0));
+}
+
+function prevObligationRemaining(
+  store: Store,
+  month: string,
+  match: (o: Obligation) => boolean
+): number {
+  const prev = previousMonth(month);
+  const prevOb = (store.obligations[prev] ?? []).find(match);
+  return prevOb ? obligationRemaining(prevOb) : 0;
+}
+
+export function carriedFromPreviousMonth(
+  store: Store,
+  month: string,
+  match: (o: Obligation) => boolean
+) {
+  return prevObligationRemaining(store, month, match);
+}
+
+/**
+ * ყოველთვიური შაბლონები — ახალ თვეში: წინა თვის ნარჩენი + ამ თვის ფიქსირებული თანხა.
+ */
 export function ensureMonthObligations(store: Store, month: string) {
   const recurring = store.recurringObligations ?? [];
   if (!recurring.length) return false;
@@ -215,16 +252,18 @@ export function ensureMonthObligations(store: Store, month: string) {
   for (const rec of recurring) {
     const exists = store.obligations[month].some((o) => o.recurringId === rec.id);
     if (!exists) {
+      const carried = prevObligationRemaining(store, month, (o) => o.recurringId === rec.id);
       store.obligations[month].push({
         id: uid(),
         name: rec.name,
-        amount: rec.amount,
+        amount: rec.amount + carried,
         paid: 0,
         branch: rec.branch,
         category: rec.category,
         month,
         recurringId: rec.id,
         comment: rec.comment,
+        carriedForward: carried > 0 ? carried : undefined,
         plannedPayDate: rec.plannedPayDate,
         plannedPaymentMethod: rec.plannedPaymentMethod,
       });
@@ -232,6 +271,58 @@ export function ensureMonthObligations(store: Store, month: string) {
     }
   }
   return changed;
+}
+
+/**
+ * ხელფასები — ახალ თვეში გამოჩნდეს წინა თვის გაუსტუმრებელი ნარჩენი;
+ * ამ თვის სამუშაო დღეების ხელფასი მერე დაემატება.
+ */
+export function ensureSalaryCarryForwards(store: Store, month: string) {
+  const prev = previousMonth(month);
+  const prevList = store.obligations[prev] ?? [];
+  if (!store.obligations[month]) store.obligations[month] = [];
+  let changed = false;
+
+  for (const prevOb of prevList) {
+    if (!prevOb.employeeId || prevOb.category !== "ხელფასი") continue;
+    const carried = obligationRemaining(prevOb);
+    if (carried <= 0) continue;
+
+    let cur = store.obligations[month].find((o) => o.employeeId === prevOb.employeeId);
+    if (!cur) {
+      const emp = (store.employees ?? []).find((e) => e.id === prevOb.employeeId);
+      store.obligations[month].push({
+        id: uid(),
+        name: prevOb.name || `${emp?.name ?? "თანამშრომელი"} — ხელფასი`,
+        amount: carried,
+        paid: 0,
+        branch: emp?.branch ?? prevOb.branch,
+        category: "ხელფასი",
+        month,
+        employeeId: prevOb.employeeId,
+        carriedForward: carried,
+        comment: `ნარჩენი ${prev}-დან`,
+      });
+      changed = true;
+      continue;
+    }
+
+    if (cur.carriedForward == null) {
+      cur.carriedForward = carried;
+      cur.amount += carried;
+      if (!cur.comment) cur.comment = `ნარჩენი ${prev}-დან`;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/** ყველა ყოველთვიური ციკლის სინქი მოცემულ თვეზე */
+export function syncMonthObligationCycles(store: Store, month: string) {
+  const a = ensureMonthObligations(store, month);
+  const b = ensureSalaryCarryForwards(store, month);
+  return a || b;
 }
 
 export function wageForShift(
@@ -268,17 +359,34 @@ export function addEmployeeAttendance(
       if (!store.obligations[month]) store.obligations[month] = [];
       let obligation = store.obligations[month].find((item) => item.employeeId === employee.id);
       if (!obligation) {
+        const carried = prevObligationRemaining(
+          store,
+          month,
+          (o) => o.employeeId === employee.id && o.category === "ხელფასი"
+        );
         obligation = {
           id: uid(),
           name: `${employee.name} — ხელფასი`,
-          amount: 0,
+          amount: carried,
           paid: 0,
           branch: employee.branch,
           category: "ხელფასი",
           month,
           employeeId: employee.id,
+          carriedForward: carried > 0 ? carried : undefined,
+          comment: carried > 0 ? `ნარჩენი ${previousMonth(month)}-დან` : undefined,
         };
         store.obligations[month].push(obligation);
+      } else if (obligation.carriedForward == null) {
+        const carried = prevObligationRemaining(
+          store,
+          month,
+          (o) => o.employeeId === employee.id && o.category === "ხელფასი"
+        );
+        if (carried > 0) {
+          obligation.carriedForward = carried;
+          obligation.amount += carried;
+        }
       }
       obligation.amount += diff;
     }
@@ -301,17 +409,34 @@ export function addEmployeeAttendance(
   if (!store.obligations[month]) store.obligations[month] = [];
   let obligation = store.obligations[month].find((item) => item.employeeId === employee.id);
   if (!obligation) {
+    const carried = prevObligationRemaining(
+      store,
+      month,
+      (o) => o.employeeId === employee.id && o.category === "ხელფასი"
+    );
     obligation = {
       id: uid(),
       name: `${employee.name} — ხელფასი`,
-      amount: 0,
+      amount: carried,
       paid: 0,
       branch: employee.branch,
       category: "ხელფასი",
       month,
       employeeId: employee.id,
+      carriedForward: carried > 0 ? carried : undefined,
+      comment: carried > 0 ? `ნარჩენი ${previousMonth(month)}-დან` : undefined,
     };
     store.obligations[month].push(obligation);
+  } else if (obligation.carriedForward == null) {
+    const carried = prevObligationRemaining(
+      store,
+      month,
+      (o) => o.employeeId === employee.id && o.category === "ხელფასი"
+    );
+    if (carried > 0) {
+      obligation.carriedForward = carried;
+      obligation.amount += carried;
+    }
   }
   obligation.amount += wageAmount;
   return record;
@@ -636,7 +761,7 @@ export function applyExpenseToObligations(
 
 export function applyExpenseToStore(store: Store, expense: Expense) {
   const month = expense.date.slice(0, 7);
-  ensureMonthObligations(store, month);
+  syncMonthObligationCycles(store, month);
   if (!store.obligationPayments) store.obligationPayments = [];
   store.obligations = applyExpenseToObligations(
     store.obligations,
@@ -679,16 +804,18 @@ export function addRecurringObligation(
   };
   store.recurringObligations.push(rec);
   if (!store.obligations[month]) store.obligations[month] = [];
+  const carried = prevObligationRemaining(store, month, (o) => o.recurringId === rec.id);
   store.obligations[month].push({
     id: uid(),
     name: rec.name,
-    amount: rec.amount,
+    amount: rec.amount + carried,
     paid: 0,
     branch: rec.branch,
     category: rec.category,
     month,
     recurringId: rec.id,
     comment: rec.comment,
+    carriedForward: carried > 0 ? carried : undefined,
     plannedPayDate: rec.plannedPayDate,
     plannedPaymentMethod: rec.plannedPaymentMethod,
   });

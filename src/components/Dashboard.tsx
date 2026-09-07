@@ -66,6 +66,7 @@ import {
   paymentsForSale,
   deliveriesForSale,
   obligationSummary,
+  obligationMonthAccrued,
   saleCreditPaid,
   saleCreditRemaining,
   saleQuantityDelivered,
@@ -2169,6 +2170,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                       {" · "}
                                       {o.branch}
                                     </span>
+                                    {(o.carriedForward ?? 0) > 0 && (
+                                      <span className="ml-1 text-[10px] text-amber-400/90">
+                                        ნარჩენი {formatMoney(o.carriedForward!)}
+                                        {obligationMonthAccrued(o) > 0
+                                          ? ` + თვე ${formatMoney(obligationMonthAccrued(o))}`
+                                          : ""}
+                                      </span>
+                                    )}
                                   </span>
                                   <span className="hidden shrink-0 text-[10px] text-zinc-500 sm:inline">
                                     {formatMoney(o.paid)}/{formatMoney(o.amount)}
@@ -2184,6 +2193,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 </button>
                                 {open && (
                                   <div className="space-y-2 border-t border-zinc-800/50 px-2.5 py-2">
+                                    {(o.carriedForward ?? 0) > 0 && (
+                                      <p className="text-[10px] text-amber-400/90">
+                                        წინა თვის ნარჩენი {formatMoney(o.carriedForward!)}
+                                        {" + "}ამ თვის დარიცხვა {formatMoney(obligationMonthAccrued(o))}
+                                        {" = "}სულ {formatMoney(o.amount)}
+                                      </p>
+                                    )}
                                     {o.comment && (
                                       <p className="text-[10px] text-zinc-500">{o.comment}</p>
                                     )}

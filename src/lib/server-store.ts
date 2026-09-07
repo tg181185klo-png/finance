@@ -4,7 +4,7 @@ import { head, put } from "@vercel/blob";
 import type { PutCommandOptions } from "@vercel/blob";
 import type { Branch, Store } from "./types";
 import { BRANCHES } from "./constants";
-import { ensureMonthObligations, currentMonth } from "./utils";
+import { syncMonthObligationCycles, currentMonth } from "./utils";
 import { env } from "./env";
 import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
 import {
@@ -157,8 +157,11 @@ export async function readStore(): Promise<Store> {
 
   let changed = false;
   for (const m of months) {
-    if (ensureMonthObligations(store, m)) changed = true;
+    if (syncMonthObligationCycles(store, m)) changed = true;
   }
+
+  // მიმდინარე თვე ყოველთვის სინქში იყოს (ნარჩენები + ყოველთვიური)
+  if (syncMonthObligationCycles(store, currentMonth())) changed = true;
 
   if (!loaded) {
     try {

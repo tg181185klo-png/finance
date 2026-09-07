@@ -1,5 +1,11 @@
 import type { Branch, BranchDailyReport, Employee, Store } from "./types";
-import { addEmployeeAttendance, uid, wageForShift } from "./utils";
+import {
+  addEmployeeAttendance,
+  carriedFromPreviousMonth,
+  previousMonth,
+  uid,
+  wageForShift,
+} from "./utils";
 
 const REPORT_WAGE_BRANCHES: Branch[] = ["ლილო", "დიღომი"];
 
@@ -41,12 +47,23 @@ export function recalculateEmployeeObligationFromAttendance(
   const employee = store.employees?.find((e) => e.id === employeeId);
   if (!employee) return;
 
-  const total = (store.attendance ?? [])
+  const monthAccrued = (store.attendance ?? [])
     .filter((a) => a.employeeId === employeeId && a.date.startsWith(month))
     .reduce((sum, a) => sum + (a.wageAmount ?? 0), 0);
 
   if (!store.obligations[month]) store.obligations[month] = [];
   let obligation = store.obligations[month].find((o) => o.employeeId === employeeId);
+
+  let carried = obligation?.carriedForward;
+  if (carried == null) {
+    carried = carriedFromPreviousMonth(
+      store,
+      month,
+      (o) => o.employeeId === employeeId && o.category === "ხელფასი"
+    );
+  }
+
+  const total = monthAccrued + (carried ?? 0);
 
   if (total <= 0 && !obligation) return;
 
@@ -68,9 +85,13 @@ export function recalculateEmployeeObligationFromAttendance(
     throw new Error(`${employee.name}: ხელფასის ჯამი (${total}) ნაკლებია უკვე გასტუმრებულზე (${obligation.paid})`);
   }
 
+  obligation.carriedForward = carried > 0 ? carried : undefined;
   obligation.amount = total;
   obligation.name = `${employee.name} — ხელფასი`;
   obligation.branch = employee.branch;
+  if (carried > 0) {
+    obligation.comment = obligation.comment || `ნარჩენი ${previousMonth(month)}-დან`;
+  }
 
   if (obligation.amount === 0 && obligation.paid === 0) {
     store.obligations[month] = store.obligations[month].filter((o) => o.id !== obligation!.id);

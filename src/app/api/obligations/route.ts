@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BRANCHES } from "@/lib/constants";
 import { requireAdminSession } from "@/lib/require-admin";
-import { addRecurringObligation, currentMonth, ensureMonthObligations, uid } from "@/lib/utils";
+import { addRecurringObligation, currentMonth, syncMonthObligationCycles, uid } from "@/lib/utils";
 import { readStore, updateStore } from "@/lib/server-store";
 import type { Expense, Obligation, PaymentMethod, ExpenseBranch, SettlementPaymentMethod } from "@/lib/types";
 import { isSettlementPaymentMethod } from "@/lib/utils";
@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
   if (authError) return authError;
 
   const month = new URL(req.url).searchParams.get("month") ?? currentMonth();
-  const store = await readStore();
-  ensureMonthObligations(store, month);
+  const store = await updateStore((s) => {
+    syncMonthObligationCycles(s, month);
+  });
   return NextResponse.json({
     month,
     items: store.obligations[month] ?? [],
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       }
 
       const store = await updateStore((s) => {
-        ensureMonthObligations(s, month);
+        syncMonthObligationCycles(s, month);
         const list = s.obligations[month];
         const ob = list?.find((o) => o.id === body.obligationId);
         if (!ob) throw new Error("ვალდებულება ვერ მოიძებნა");
