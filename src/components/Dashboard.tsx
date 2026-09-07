@@ -238,6 +238,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obPayInputs, setObPayInputs] = useState<Record<string, string>>({});
   const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
+  const [expandedObId, setExpandedObId] = useState<string | null>(null);
+  const [showAddOb, setShowAddOb] = useState(false);
+  const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
+  const [showRecurring, setShowRecurring] = useState(false);
 
   // Inventory
   const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
@@ -466,6 +470,33 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     () => obligationSummary(activeStore.obligations, obMonth, filter),
     [activeStore.obligations, obMonth, filter]
   );
+
+  const obByCategory = useMemo(() => {
+    const map = new Map<
+      string,
+      { items: Obligation[]; remaining: number; paid: number; total: number }
+    >();
+    for (const o of obSummary.items) {
+      const cat = o.category || "სხვა";
+      const cur = map.get(cat) ?? { items: [], remaining: 0, paid: 0, total: 0 };
+      cur.items.push(o);
+      cur.total += o.amount;
+      cur.paid += o.paid;
+      cur.remaining += Math.max(0, o.amount - o.paid);
+      map.set(cat, cur);
+    }
+    for (const cur of map.values()) {
+      cur.items.sort((a, b) => {
+        const ra = a.amount - a.paid;
+        const rb = b.amount - b.paid;
+        if (ra !== rb) return rb - ra;
+        return a.name.localeCompare(b.name, "ka");
+      });
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1].remaining - a[1].remaining || a[0].localeCompare(b[0], "ka"))
+      .map(([name, data]) => ({ name, ...data }));
+  }, [obSummary.items]);
 
   const salaryEmployees = useMemo(() => {
     const list = (activeStore.employees ?? []).filter((e) => e.active !== false);
@@ -1882,7 +1913,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "obligations" && (
-        <section className="space-y-6">
+        <section className="space-y-3">
           <ReceivablesPanel
             sales={creditTx}
             store={activeStore}
@@ -1891,263 +1922,375 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             onRefresh={refresh}
           />
 
-          <div className="border-t border-zinc-800 pt-6">
-            <h2 className="mb-1 text-lg font-semibold text-violet-300">გადასახდელი ვალდებულებები</h2>
-            <p className="mb-4 text-xs text-zinc-500">
-              ხელფასი, იჯარა და სხვა ხარჯები — რა უნდა გადაიხადოთ თქვენ
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="თვე">
-              <input type="month" className={inputCls} value={obMonth} onChange={(e) => setObMonth(e.target.value)} />
-            </Field>
-          </div>
-
-          <form onSubmit={addObligation} className="rounded-xl border border-violet-900/50 bg-violet-950/10 p-5">
-            <h2 className="mb-4 text-lg font-semibold text-violet-300">ახალი ვალდებულება</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="კატეგორია">
-                <select
-                  className={inputCls}
-                  value={obCategory}
-                  onChange={(e) => {
-                    const next = e.target.value as ExpenseCategory;
-                    setObCategory(next);
-                    if (next !== "ხელფასი") setObEmployeeId("");
-                  }}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {obCategory === "ხელფასი" ? (
-                <Field label="თანამშრომელი">
-                  <select
-                    className={inputCls}
-                    value={obEmployeeId}
-                    onChange={(e) => selectSalaryEmployee(e.target.value)}
-                    required
-                  >
-                    <option value="">— აირჩიეთ სახელი და გვარი —</option>
-                    {salaryEmployees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
-                        {obBranch === "ყველა" ? ` · ${emp.branch}` : ""}
-                        {emp.dailyWage > 0 ? ` · ${emp.dailyWage}₾/დღე` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ) : (
-                <Field label="დასახელება">
-                  <input
-                    className={inputCls}
-                    value={obName}
-                    onChange={(e) => setObName(e.target.value)}
-                    placeholder="მაგ: იჯარა, კომუნალური..."
-                    required
-                  />
-                </Field>
-              )}
-              {obCategory === "ხელფასი" && (
-                <Field label="დასახელება">
-                  <input
-                    className={inputCls}
-                    value={obName}
-                    onChange={(e) => setObName(e.target.value)}
-                    placeholder="ავტომატურად: სახელი — ხელფასი"
-                    required
-                  />
-                </Field>
-              )}
-              <Field label="თანხა">
-                <input
-                  className={inputCls}
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={obAmount}
-                  onChange={(e) => setObAmount(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field label="ფილიალი">
-                <select
-                  className={inputCls}
-                  value={obBranch}
-                  onChange={(e) => {
-                    setObBranch(e.target.value as ExpenseBranch | "ყველა");
-                    setObEmployeeId("");
-                  }}
-                >
-                  <option value="ყველა">ყველა</option>
-                  {EXPENSE_BRANCHES.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="sm:col-span-2 lg:col-span-4">
-                <Field label="კომენტარი (არასავალდებულო)">
-                  <input
-                    className={inputCls}
-                    value={obComment}
-                    onChange={(e) => setObComment(e.target.value)}
-                    placeholder="მაგ: ბანკის ანგარიში, შენიშვნა..."
-                  />
-                </Field>
+          <div className="border-t border-zinc-800 pt-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-violet-300">გადასახდელი</h2>
+                <p className="text-[11px] text-zinc-500">
+                  {obSummary.items.length} · დარჩენილი{" "}
+                  <span className="font-medium text-amber-400">{formatMoney(obSummary.remaining)}</span>
+                  {" · "}ფარული{" "}
+                  <span className="font-medium text-emerald-400">{formatMoney(obSummary.paid)}</span>
+                  {" / "}
+                  {formatMoney(obSummary.total)}
+                </p>
               </div>
-              <Field label="დაგეგმილი გასტუმრების თარიღი">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
-                  type="date"
-                  className={inputCls}
-                  value={obPlannedPayDate}
-                  onChange={(e) => setObPlannedPayDate(e.target.value)}
+                  type="month"
+                  className={`${inputCls} w-auto py-1.5 text-xs`}
+                  value={obMonth}
+                  onChange={(e) => setObMonth(e.target.value)}
                 />
-              </Field>
-              <Field label="დაგეგმილი გადახდის საშუალება">
-                <select
-                  className={inputCls}
-                  value={obPlannedPayMethod}
-                  onChange={(e) => setObPlannedPayMethod(e.target.value as PaymentMethod)}
+                <button
+                  type="button"
+                  className="rounded border border-violet-800/60 bg-violet-950/30 px-2.5 py-1.5 text-xs text-violet-200"
+                  onClick={() => setShowAddOb((v) => !v)}
                 >
-                  {SETTLEMENT_PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  {showAddOb ? "დახურვა" : "+ დამატება"}
+                </button>
+              </div>
             </div>
-            {obCategory === "ხელფასი" && salaryEmployees.length === 0 && (
-              <p className="mt-2 text-xs text-amber-400">
-                ამ ფილიალში აქტიური თანამშრომელი არ არის — დაამატეთ ტაბში „თანამშრომლები“.
-              </p>
+
+            {showAddOb && (
+              <form onSubmit={addObligation} className="mb-3 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="კატეგორია">
+                    <select
+                      className={inputCls}
+                      value={obCategory}
+                      onChange={(e) => {
+                        const next = e.target.value as ExpenseCategory;
+                        setObCategory(next);
+                        if (next !== "ხელფასი") setObEmployeeId("");
+                      }}
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {obCategory === "ხელფასი" ? (
+                    <Field label="თანამშრომელი">
+                      <select
+                        className={inputCls}
+                        value={obEmployeeId}
+                        onChange={(e) => selectSalaryEmployee(e.target.value)}
+                        required
+                      >
+                        <option value="">— აირჩიეთ —</option>
+                        {salaryEmployees.map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name}
+                            {obBranch === "ყველა" ? ` · ${emp.branch}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : (
+                    <Field label="დასახელება">
+                      <input
+                        className={inputCls}
+                        value={obName}
+                        onChange={(e) => setObName(e.target.value)}
+                        placeholder="მაგ: იჯარა..."
+                        required
+                      />
+                    </Field>
+                  )}
+                  {obCategory === "ხელფასი" && (
+                    <Field label="დასახელება">
+                      <input
+                        className={inputCls}
+                        value={obName}
+                        onChange={(e) => setObName(e.target.value)}
+                        required
+                      />
+                    </Field>
+                  )}
+                  <Field label="თანხა">
+                    <input
+                      className={inputCls}
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={obAmount}
+                      onChange={(e) => setObAmount(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="ფილიალი">
+                    <select
+                      className={inputCls}
+                      value={obBranch}
+                      onChange={(e) => {
+                        setObBranch(e.target.value as ExpenseBranch | "ყველა");
+                        setObEmployeeId("");
+                      }}
+                    >
+                      <option value="ყველა">ყველა</option>
+                      {EXPENSE_BRANCHES.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="კომენტარი">
+                    <input
+                      className={inputCls}
+                      value={obComment}
+                      onChange={(e) => setObComment(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="დაგეგმილი თარიღი">
+                    <input
+                      type="date"
+                      className={inputCls}
+                      value={obPlannedPayDate}
+                      onChange={(e) => setObPlannedPayDate(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="დაგეგმილი საშუალება">
+                    <select
+                      className={inputCls}
+                      value={obPlannedPayMethod}
+                      onChange={(e) => setObPlannedPayMethod(e.target.value as PaymentMethod)}
+                    >
+                      {SETTLEMENT_PAYMENT_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs text-violet-200">
+                  <input
+                    type="checkbox"
+                    checked={obRecurring}
+                    onChange={(e) => setObRecurring(e.target.checked)}
+                  />
+                  ყოველთვიური
+                </label>
+                <button type="submit" className={`${btnCls} mt-2 bg-violet-600 hover:bg-violet-500`}>
+                  შენახვა
+                </button>
+              </form>
             )}
-            <label className="mt-3 flex items-center gap-2 text-sm text-violet-200">
-              <input type="checkbox" checked={obRecurring} onChange={(e) => setObRecurring(e.target.checked)} />
-              ყოველთვიური ფიქსირებული ხარჯი (ყოველ თვეში ავტომატურად გამოჩნდება)
-            </label>
-            <button type="submit" className={`${btnCls} mt-4`}>
-              დამატება და შენახვა
-            </button>
-          </form>
 
-          {recurringList.length > 0 && (
-            <div className="rounded-xl border border-violet-900/40 bg-violet-950/10 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-violet-300">ყოველთვიური შაბლონები</h3>
-              <div className="space-y-2">
-                {recurringList.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between rounded-lg border border-violet-900/30 bg-zinc-900/40 px-3 py-2 text-sm">
-                    <span>
-                      {r.name} · {r.category} · {formatMoney(r.amount)}
-                      {r.comment && <span className="text-zinc-500"> · {r.comment}</span>}
-                    </span>
-                    <button type="button" className="text-xs text-red-400" onClick={() => deleteRecurring(r.id)}>წაშლა</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Stat label="თვის ვალდებულება" value={formatMoney(obSummary.total)} />
-            <Stat label="ფარული" value={formatMoney(obSummary.paid)} accent="text-emerald-400" />
-            <Stat label="დარჩენილი" value={formatMoney(obSummary.remaining)} accent="text-amber-400" />
-          </div>
-
-          <p className="text-xs text-zinc-500">
-            ფილიალის რეპორტიდან დღიური ხელფასი აქ ემატება ავტომატურად (თანამშრომლის სახელით). ხარჯებში ჩაიწერება მხოლოდ მაშინ, როცა ხელით გაასტუმრებთ.
-          </p>
-
-          <div className="rounded-xl border border-zinc-800 p-5">
-            <h3 className="mb-4 font-semibold">სია</h3>
-            {obSummary.items.length === 0 ? (
-              <p className="text-sm text-zinc-500">ვალდებულებები არ არის დამატებული</p>
-            ) : (
-              <div className="space-y-3">
-                {obSummary.items.map((o: Obligation) => {
-                  const pct = o.amount ? Math.round((o.paid / o.amount) * 100) : 0;
-                  const payments = paymentsForObligation(activeStore, o.id);
-                  return (
-                    <div key={o.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-                      <div className="mb-2 flex justify-between">
-                        <span className="font-medium">
-                          {o.name}
-                          {o.recurringId && <span className="ml-2 text-xs text-violet-400">ყოველთვიური</span>}
+            {recurringList.length > 0 && (
+              <div className="mb-2">
+                <button
+                  type="button"
+                  className="text-[11px] text-violet-400 hover:text-violet-300"
+                  onClick={() => setShowRecurring((v) => !v)}
+                >
+                  {showRecurring ? "▼" : "▶"} ყოველთვიური შაბლონები ({recurringList.length})
+                </button>
+                {showRecurring && (
+                  <div className="mt-1 divide-y divide-zinc-800/60 rounded border border-violet-900/30">
+                    {recurringList.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between gap-2 px-2 py-1 text-[11px]"
+                      >
+                        <span className="truncate text-zinc-300">
+                          {r.name} · {r.category} · {formatMoney(r.amount)}
                         </span>
-                        <button type="button" className="text-xs text-red-400" onClick={() => deleteObligation(o.id)}>წაშლა</button>
+                        <button
+                          type="button"
+                          className="shrink-0 text-red-400"
+                          onClick={() => deleteRecurring(r.id)}
+                        >
+                          წაშლა
+                        </button>
                       </div>
-                      <div className="mb-1 flex justify-between text-sm text-zinc-400">
-                        <span>{o.branch} · {o.category}</span>
-                        <span>{formatMoney(o.paid)} / {formatMoney(o.amount)}</span>
-                      </div>
-                      {o.comment && <p className="mb-1 text-xs text-zinc-500">{o.comment}</p>}
-                      {(o.plannedPayDate || o.plannedPaymentMethod) && (
-                        <p className="mb-1 text-xs text-violet-300/90">
-                          დაგეგმილი გასტუმრება:
-                          {o.plannedPayDate ? ` ${o.plannedPayDate}` : ""}
-                          {o.plannedPaymentMethod ? ` · ${o.plannedPaymentMethod}` : ""}
-                        </p>
-                      )}
-                      <div className="mb-2 h-2 overflow-hidden rounded-full bg-zinc-800">
-                        <div className={`h-full transition-all ${pct >= 100 ? "bg-emerald-500" : "bg-violet-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                      </div>
-                      {o.paid < o.amount ? (
-                        <div className="mt-2 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
-                          <p className="mb-2 text-xs text-amber-400">დარჩენილი: {formatMoney(o.amount - o.paid)}</p>
-                          <div className="flex flex-wrap items-end gap-2">
-                            <div className="min-w-[90px] flex-1">
-                              <label className={labelCls}>თანხა</label>
-                              <input className={inputCls} type="number" min={0} step={0.01} max={o.amount - o.paid}
-                                value={obPayInputs[o.id] ?? ""}
-                                onChange={(e) => setObPayInputs((m) => ({ ...m, [o.id]: e.target.value }))}
-                                placeholder={`მაქს ${(o.amount - o.paid).toFixed(0)}`}
-                              />
-                            </div>
-                            <div className="min-w-[100px] flex-1">
-                              <label className={labelCls}>რომელი ნაწილიდან</label>
-                              <select className={inputCls}
-                                value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
-                                onChange={(e) => setObPayMethods((m) => ({ ...m, [o.id]: e.target.value as PaymentMethod }))}
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {obByCategory.length === 0 ? (
+              <p className="py-2 text-xs text-zinc-500">ვალდებულებები არ არის</p>
+            ) : (
+              <div className="space-y-2">
+                {obByCategory.map((cat) => {
+                  const closed = collapsedObCat[cat.name];
+                  return (
+                    <div key={cat.name} className="overflow-hidden rounded-lg border border-zinc-800/80">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 bg-zinc-900/60 px-2.5 py-1.5 text-left"
+                        onClick={() =>
+                          setCollapsedObCat((m) => ({ ...m, [cat.name]: !m[cat.name] }))
+                        }
+                      >
+                        <span className="text-xs font-semibold text-violet-200">
+                          {closed ? "▶" : "▼"} {cat.name}
+                          <span className="ml-1.5 font-normal text-zinc-500">({cat.items.length})</span>
+                        </span>
+                        <span className="text-xs tabular-nums text-amber-400">
+                          {formatMoney(cat.remaining)}
+                        </span>
+                      </button>
+                      {!closed && (
+                        <div className="divide-y divide-zinc-800/60">
+                          {cat.items.map((o: Obligation) => {
+                            const left = o.amount - o.paid;
+                            const open = expandedObId === o.id;
+                            const payments = open ? paymentsForObligation(activeStore, o.id) : [];
+                            return (
+                              <div
+                                key={o.id}
+                                className={left <= 0 ? "bg-emerald-950/10" : "bg-zinc-950/30"}
                               >
-                                {SETTLEMENT_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                              </select>
-                            </div>
-                            <div className="min-w-[100px] flex-1">
-                              <label className={labelCls}>რომელი ფილიალიდან</label>
-                              <select className={inputCls}
-                                value={obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")}
-                                onChange={(e) => setObPayBranches((m) => ({ ...m, [o.id]: e.target.value as ExpenseBranch }))}
-                              >
-                                {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                              </select>
-                            </div>
-                            <button type="button" className={`${btnCls} bg-violet-600 hover:bg-violet-500`} onClick={() => payObligation(o.id)}>გასტუმრება</button>
-                          </div>
-                          {(obPayBranches[o.id] ?? (o.branch !== "ყველა" ? o.branch : "საერთო")) === "საერთო" && (
-                            <p className="mt-2 text-xs text-violet-300">
-                              „საერთო“ თანხას ყველა ფილიალს თანაბრად ჩამოაკლებს.
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-emerald-400">სრულად გასტუმრებული ✓</p>
-                      )}
-                      {payments.length > 0 && (
-                        <div className="mt-2 border-t border-zinc-800 pt-2">
-                          <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
-                          {payments.map((p) => (
-                            <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
-                              <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}{p.paymentMethod ? ` · ${p.paymentMethod}` : ""}{p.branch ? ` · ${p.branch}` : ""}</span>
-                              <span>+{formatMoney(p.amount)}</span>
-                            </div>
-                          ))}
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-zinc-900/40"
+                                  onClick={() => setExpandedObId(open ? null : o.id)}
+                                >
+                                  <span
+                                    className={`w-16 shrink-0 text-xs font-semibold tabular-nums sm:w-20 ${
+                                      left > 0 ? "text-amber-400" : "text-emerald-400"
+                                    }`}
+                                  >
+                                    {formatMoney(left)}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-xs text-zinc-200">
+                                    {o.name}
+                                    {o.recurringId && (
+                                      <span className="ml-1 text-[10px] text-violet-400">↻</span>
+                                    )}
+                                    <span className="text-zinc-500">
+                                      {" · "}
+                                      {o.branch}
+                                    </span>
+                                  </span>
+                                  <span className="hidden shrink-0 text-[10px] text-zinc-500 sm:inline">
+                                    {formatMoney(o.paid)}/{formatMoney(o.amount)}
+                                  </span>
+                                  {o.plannedPayDate && (
+                                    <span className="hidden shrink-0 text-[10px] text-violet-400/90 md:inline">
+                                      {o.plannedPayDate}
+                                    </span>
+                                  )}
+                                  <span className="shrink-0 text-[10px] text-zinc-600">
+                                    {open ? "▲" : "▼"}
+                                  </span>
+                                </button>
+                                {open && (
+                                  <div className="space-y-2 border-t border-zinc-800/50 px-2.5 py-2">
+                                    {o.comment && (
+                                      <p className="text-[10px] text-zinc-500">{o.comment}</p>
+                                    )}
+                                    {left > 0 ? (
+                                      <div className="flex flex-wrap items-end gap-1.5">
+                                        <div className="w-[88px]">
+                                          <label className={labelCls}>თანხა</label>
+                                          <input
+                                            className={inputCls}
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            max={left}
+                                            value={obPayInputs[o.id] ?? ""}
+                                            onChange={(e) =>
+                                              setObPayInputs((m) => ({
+                                                ...m,
+                                                [o.id]: e.target.value,
+                                              }))
+                                            }
+                                            placeholder={String(Math.round(left))}
+                                          />
+                                        </div>
+                                        <div className="min-w-[100px] flex-1">
+                                          <label className={labelCls}>საშუალება</label>
+                                          <select
+                                            className={inputCls}
+                                            value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
+                                            onChange={(e) =>
+                                              setObPayMethods((m) => ({
+                                                ...m,
+                                                [o.id]: e.target.value as PaymentMethod,
+                                              }))
+                                            }
+                                          >
+                                            {SETTLEMENT_PAYMENT_METHODS.map((m) => (
+                                              <option key={m} value={m}>
+                                                {m}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div className="min-w-[90px] flex-1">
+                                          <label className={labelCls}>ფილიალი</label>
+                                          <select
+                                            className={inputCls}
+                                            value={
+                                              obPayBranches[o.id] ??
+                                              (o.branch !== "ყველა" ? o.branch : "საერთო")
+                                            }
+                                            onChange={(e) =>
+                                              setObPayBranches((m) => ({
+                                                ...m,
+                                                [o.id]: e.target.value as ExpenseBranch,
+                                              }))
+                                            }
+                                          >
+                                            {EXPENSE_BRANCHES.map((b) => (
+                                              <option key={b} value={b}>
+                                                {b}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className={`${btnCls} bg-violet-600 hover:bg-violet-500`}
+                                          onClick={() => payObligation(o.id)}
+                                        >
+                                          გასტუმრება
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="rounded px-2 py-1.5 text-[10px] text-red-400"
+                                          onClick={() => deleteObligation(o.id)}
+                                        >
+                                          წაშლა
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-[11px] text-emerald-400">სრულად ✓</p>
+                                        <button
+                                          type="button"
+                                          className="text-[10px] text-red-400"
+                                          onClick={() => deleteObligation(o.id)}
+                                        >
+                                          წაშლა
+                                        </button>
+                                      </div>
+                                    )}
+                                    {payments.length > 0 && (
+                                      <div className="space-y-0.5">
+                                        {payments.slice(0, 5).map((p) => (
+                                          <p key={p.id} className="text-[10px] text-zinc-500">
+                                            {formatDate(p.paidAt)} · {formatMoney(p.amount)}
+                                            {p.paymentMethod ? ` · ${p.paymentMethod}` : ""}
+                                            {p.branch ? ` · ${p.branch}` : ""}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
