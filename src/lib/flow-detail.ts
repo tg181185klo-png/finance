@@ -3,7 +3,7 @@ import { effectiveTxBranch, txMatchesBranchFilter } from "./branch-allocation";
 import { KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "./constants";
 import { txInPeriod } from "./period-filter";
 import type { Branch, PaymentMethod, Transaction, TxRecurrence } from "./types";
-import { countsTowardOperatingExpenses, txPaymentMethod, txRecurrence } from "./utils";
+import { countsTowardOperatingExpenses, isCreditOrder, saleCreditPaid, txPaymentMethod, txRecurrence } from "./utils";
 
 export type FlowBranchScope = Branch | "ყველა" | typeof KUTAISI_DISTRIB_LABEL;
 
@@ -98,12 +98,14 @@ export function computeScopePeriodStats(
     if (!txMatchesFlowScope(t, scope)) continue;
     const method = txPaymentMethod(t);
     if (t.type === "sale") {
-      revenueTotal += t.amount;
-      if (method === CONSIGNMENT_METHOD) {
-        /* მისაღები — ქეში/ბარათი/ბანკის ბალანსში არ ჯდება სანამ არ დაიფარება */
-      } else if (method === CASH_METHOD) revenueCash += t.amount;
-      else if (method === CARD_METHOD) revenueCard += t.amount;
-      else if (method === BANK_METHOD) revenueBank += t.amount;
+      if (isCreditOrder(t) || method === CONSIGNMENT_METHOD) {
+        revenueTotal += saleCreditPaid(t);
+      } else {
+        revenueTotal += t.amount;
+        if (method === CASH_METHOD) revenueCash += t.amount;
+        else if (method === CARD_METHOD) revenueCard += t.amount;
+        else if (method === BANK_METHOD) revenueBank += t.amount;
+      }
     } else if (t.type === "expense") {
       if (method === CASH_METHOD) expenseCash += t.amount;
       else if (method === CARD_METHOD) expenseCard += t.amount;

@@ -18,6 +18,10 @@ export function paymentShort(m: PaymentMethod) {
   return m;
 }
 
+export function isConsignmentOrCreditSale(sale: Sale) {
+  return sale.paymentMethod === "კონსიგნაცია" || sale.paymentStatus === "ბე (ავანსი)";
+}
+
 export function saleGroupKey(sale: Sale): string {
   if (sale.distribuciaOrderId) return `dist-order:${sale.distribuciaOrderId}`;
   if (sale.clientSaleId) return `client:${sale.clientSaleId}`;

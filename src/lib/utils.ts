@@ -176,8 +176,8 @@ export function calcBalances(
   for (const t of tx) {
     const txBranch = effectiveTxBranch(t);
     if (!matchBranch(txBranch, branch)) continue;
-    if (t.type === "sale") {
-      b.revenue += t.amount;
+      if (t.type === "sale") {
+      b.revenue += isCreditOrder(t) ? saleCreditPaid(t) : t.amount;
       if (isCreditOrder(t)) {
         const left = saleCreditRemaining(t);
         if (left > 0 && !t.orderCompletedAt) b.credit += left;

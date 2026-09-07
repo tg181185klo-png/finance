@@ -11,9 +11,10 @@ import {
   isZeroTradeReport,
   paymentBucket,
   paymentShort,
+  isConsignmentOrCreditSale,
   type SalePaymentGroup,
 } from "@/lib/branch-payments";
-import { isCreditOrder, isCreditOrderActive } from "@/lib/utils";
+import { isCreditOrderActive, saleCreditRemaining } from "@/lib/utils";
 import { currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
 import { CurrentBalanceStrip } from "@/components/OpeningBalancesSummary";
 
@@ -28,6 +29,7 @@ type DaySummary = {
   bank: number;
   card: number;
   total: number;
+  consignment: number;
   zeroReports: number;
 };
 
@@ -96,6 +98,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function isCreditGroup(group: SalePaymentGroup) {
+  return (
+    paymentBucket(group.paymentMethod) === "credit" ||
+    group.lines.some((l) => isConsignmentOrCreditSale(l) && isCreditOrderActive(l))
+  );
+}
+
 async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: PaymentMethod) {
   if (group.distribuciaOrderId) {
     const res = await fetch("/api/distribucia/sync", {
@@ -161,9 +170,7 @@ export default function BranchPaymentsPanel({
   const { from, to } = useMemo(() => monthStartEnd(activeMonth), [activeMonth]);
 
   const sales = useMemo(() => {
-    const all = transactions.filter(
-      (t): t is Sale => t.type === "sale" && !(isCreditOrder(t) && isCreditOrderActive(t))
-    );
+    const all = transactions.filter((t): t is Sale => t.type === "sale");
     if (combined) return branchesSalesForPayments(all, scopeBranches, from, to);
     return branchSalesForPayments(all, primaryBranch, from, to);
   }, [transactions, combined, scopeBranches, primaryBranch, from, to]);
@@ -216,12 +223,18 @@ export default function BranchPaymentsPanel({
         bank: 0,
         card: 0,
         total: 0,
+        consignment: 0,
         zeroReports: 0,
       };
-      cur.groups += 1;
-      cur.total += group.total;
-      const bucket = paymentBucket(group.paymentMethod);
-      if (bucket !== "credit") cur[bucket] += group.total;
+      if (isCreditGroup(group)) {
+        const left = group.lines.reduce((s, l) => s + saleCreditRemaining(l), 0);
+        cur.consignment += left > 0 ? left : group.total;
+      } else {
+        cur.groups += 1;
+        cur.total += group.total;
+        const bucket = paymentBucket(group.paymentMethod);
+        if (bucket !== "credit") cur[bucket] += group.total;
+      }
       byDay.set(group.date, cur);
     }
     for (const z of zeroRows) {
@@ -232,6 +245,7 @@ export default function BranchPaymentsPanel({
         bank: 0,
         card: 0,
         total: 0,
+        consignment: 0,
         zeroReports: 0,
       };
       cur.zeroReports += 1;
@@ -245,21 +259,24 @@ export default function BranchPaymentsPanel({
     let bank = 0;
     let card = 0;
     let zeros = 0;
+    let consignment = 0;
     for (const d of daySummaries) {
       cash += d.cash;
       bank += d.bank;
       card += d.card;
       zeros += d.zeroReports;
+      consignment += d.consignment;
     }
     return {
       cash,
       bank,
       card,
+      consignment,
       total: cash + bank + card,
-      groups: groups.length,
+      groups: groups.filter((g) => !isCreditGroup(g)).length,
       zeros,
     };
-  }, [daySummaries, groups.length]);
+  }, [daySummaries, groups]);
 
   const groupsByDay = useMemo(() => {
     const map = new Map<string, SalePaymentGroup[]>();
@@ -339,7 +356,7 @@ export default function BranchPaymentsPanel({
 
         <div className={`mb-4 grid gap-3 ${showCard ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-            <p className="text-xs text-zinc-500">გაყიდვები</p>
+            <p className="text-xs text-zinc-500">ნავაჭრი (გაყიდვები)</p>
             <p className="mt-1 text-lg font-semibold">{monthTotals.groups}</p>
           </div>
           <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-3">
@@ -357,8 +374,13 @@ export default function BranchPaymentsPanel({
             </div>
           )}
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
-            <p className="text-xs text-zinc-500">ჯამი</p>
+            <p className="text-xs text-zinc-500">ნავაჭრის ჯამი</p>
             <p className="mt-1 text-lg font-semibold">{formatMoney(monthTotals.total)}</p>
+            {monthTotals.consignment > 0 && (
+              <p className="mt-1 text-[10px] text-teal-400/90">
+                კონსიგნაცია (არ შედის): {formatMoney(monthTotals.consignment)}
+              </p>
+            )}
           </div>
         </div>
 
@@ -395,7 +417,7 @@ export default function BranchPaymentsPanel({
               </thead>
               <tbody>
                 {daySummaries.map((day) => {
-                  const isZeroOnly = day.groups === 0 && day.zeroReports > 0;
+                  const isZeroOnly = day.groups === 0 && day.zeroReports > 0 && day.consignment <= 0;
                   return (
                     <Fragment key={day.date}>
                       <tr
@@ -407,6 +429,11 @@ export default function BranchPaymentsPanel({
                           {day.date}
                           {isZeroOnly && (
                             <span className="ml-2 text-[10px] font-normal text-zinc-500">ნულოვანი</span>
+                          )}
+                          {day.consignment > 0 && (
+                            <span className="ml-2 text-[10px] font-normal text-teal-400">
+                              კონსიგნაცია {formatMoney(day.consignment)}
+                            </span>
                           )}
                         </td>
                         <td className="py-2 pr-3 text-right">{day.groups}</td>
@@ -451,11 +478,27 @@ export default function BranchPaymentsPanel({
                               ))}
                               {(groupsByDay.get(day.date) ?? []).map((group) => {
                                 const opts = branchPaymentOptions(group.branch);
+                                const credit = isCreditGroup(group);
+                                const remaining = credit
+                                  ? group.lines.reduce((s, l) => s + saleCreditRemaining(l), 0)
+                                  : group.total;
+                                const issuer =
+                                  group.lines.find((l) => l.employeeName?.trim())?.employeeName?.trim() ||
+                                  null;
                                 return (
                                   <div
                                     key={group.groupId}
-                                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
+                                    className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                                      credit
+                                        ? "border-teal-900/50 bg-teal-950/20"
+                                        : "border-zinc-800/80 bg-zinc-950/40"
+                                    }`}
                                   >
+                                    {credit && (
+                                      <span className="min-w-[5.5rem] shrink-0 font-semibold text-teal-300">
+                                        {formatMoney(remaining)}
+                                      </span>
+                                    )}
                                     <div className="min-w-0 flex-1">
                                       <p className="font-medium text-zinc-200">
                                         {combined && (
@@ -464,18 +507,26 @@ export default function BranchPaymentsPanel({
                                           </span>
                                         )}
                                         {group.label}
+                                        {credit && (
+                                          <span className="ml-2 text-[10px] font-medium text-teal-400">
+                                            კონსიგნაცია → მისაღები
+                                          </span>
+                                        )}
                                       </p>
                                       <p className="text-zinc-500">
                                         {group.lines.length} ხაზი ·{" "}
                                         {group.lines.map((l) => l.productName).join(", ")}
+                                        {issuer ? ` · გასცა: ${issuer}` : ""}
                                       </p>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-medium text-emerald-400">
-                                        {formatMoney(group.total)}
-                                      </span>
-                                      {readOnly ? (
-                                        <span className="text-zinc-400">
+                                      {!credit && (
+                                        <span className="font-medium text-emerald-400">
+                                          {formatMoney(group.total)}
+                                        </span>
+                                      )}
+                                      {readOnly || credit ? (
+                                        <span className={credit ? "text-teal-400" : "text-zinc-400"}>
                                           {paymentShort(group.paymentMethod)}
                                         </span>
                                       ) : (
