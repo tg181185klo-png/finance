@@ -6,14 +6,13 @@ import type { StatementLedgerHint } from "@/lib/bank-statement";
 type Props = {
   onMarked?: () => void | Promise<void>;
   onHints?: (hints: Record<string, StatementLedgerHint>, periodFrom?: string) => void;
+  onReviewed?: (bankLedgerReviewed: Record<string, string>) => void;
 };
 
 const btnCls =
   "rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-medium hover:bg-violet-600 disabled:opacity-40";
-const btnSec =
-  "rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-40";
 
-export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
+export default function BankStatementMatchPanel({ onMarked, onHints, onReviewed }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -24,9 +23,10 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
     unmatched: number;
     appMissing: number;
     annotated: number;
+    marked: number;
   } | null>(null);
 
-  async function upload(markReviewed: boolean) {
+  async function upload() {
     const file = fileRef.current?.files?.[0];
     if (!file) {
       setErr("აირჩიეთ ბანკის ამონაწერი (.xlsx)");
@@ -38,7 +38,6 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      if (markReviewed) form.append("markReviewed", "true");
       const res = await fetch("/api/bank-statement/match", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "შეცდომა");
@@ -46,24 +45,30 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
       const hints = (data.hints ?? {}) as Record<string, StatementLedgerHint>;
       onHints?.(hints, data.periodFrom);
 
+      if (data.bankLedgerReviewed && typeof data.bankLedgerReviewed === "object") {
+        onReviewed?.(data.bankLedgerReviewed as Record<string, string>);
+      }
+
       const annotated = Object.keys(hints).length;
+      const marked = typeof data.marked === "number" ? data.marked : 0;
       setSummary({
         periodLabel: data.periodLabel || `${data.periodFrom} — ${data.periodTo}`,
         matched: data.summary?.matched ?? 0,
         unmatched: data.summary?.unmatched ?? 0,
         appMissing: data.summary?.appMissingInStatement ?? 0,
         annotated,
+        marked,
       });
 
       if (annotated === 0) {
         setMsg(
           `შედარება დასრულდა, მაგრამ დამთხვევა ვერ მოიძებნა (${data.fileName}). შეამოწმეთ თვე/თანხები.`
         );
-      } else if (markReviewed) {
-        setMsg(`მიეწერა ${annotated} ჩანაწერს · მონიშნულია აისახად: ${data.marked}`);
-        await onMarked?.();
       } else {
-        setMsg(`მიეწერა ${annotated} ჩანაწერს ქვემოთ სიაში · ${data.fileName}`);
+        setMsg(
+          `მიეწერა ${annotated} ჩანაწერს · ნანახად მონიშნულია ${marked} · ${data.fileName}`
+        );
+        await onMarked?.();
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "შეცდომა");
@@ -76,8 +81,8 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
     <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-5">
       <h2 className="font-semibold text-sky-200">ბანკის ამონაწერი — შედარება</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        ატვირთეთ Excel ამონაწერი. თანხითა და თარიღით (მიახლოებითაც) დამთხვეული ბარათის და ანგარიშის
-        ჩანაწერებს ქვემოთ მიეწერება ამონაწერის თარიღი, გადმომრიცხავი/მიმღები და სხვაობა.
+        ატვირთეთ Excel ამონაწერი. დამთხვეული ჩანაწერები ავტომატურად მოინიშნება ნანახად; გადმორიცხვებსა და
+        ხარჯებს მიეწერება გადმომრიცხავი ან ხარჯის გამწევი/მიმღები.
       </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
@@ -90,11 +95,8 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
             className="block w-full max-w-sm text-xs text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-800 file:px-3 file:py-1.5 file:text-xs file:text-white"
           />
         </div>
-        <button type="button" className={btnCls} disabled={busy} onClick={() => void upload(false)}>
+        <button type="button" className={btnCls} disabled={busy} onClick={() => void upload()}>
           შედარება
-        </button>
-        <button type="button" className={btnSec} disabled={busy} onClick={() => void upload(true)}>
-          შედარება + აისახა მონიშვნა
         </button>
       </div>
 
@@ -113,17 +115,15 @@ export default function BankStatementMatchPanel({ onMarked, onHints }: Props) {
           <span className="rounded-lg border border-emerald-900/50 px-2 py-1 text-emerald-300">
             მიეწერა: {summary.annotated}
           </span>
+          <span className="rounded-lg border border-violet-900/50 px-2 py-1 text-violet-300">
+            ნანახი: {summary.marked}
+          </span>
           <span className="rounded-lg border border-zinc-700 px-2 py-1 text-zinc-400">
             დამთხვევა: {summary.matched}
           </span>
           {summary.unmatched > 0 && (
             <span className="rounded-lg border border-amber-900/50 px-2 py-1 text-amber-300">
-              ამონაწერში უცნობი: {summary.unmatched}
-            </span>
-          )}
-          {summary.appMissing > 0 && (
-            <span className="rounded-lg border border-red-900/40 px-2 py-1 text-red-300">
-              აპშია, ამონაწერში არა: {summary.appMissing}
+              ამონაწერში უპასუხო: {summary.unmatched}
             </span>
           )}
         </div>

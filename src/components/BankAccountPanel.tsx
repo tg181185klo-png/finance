@@ -39,6 +39,7 @@ type Props = {
   bankLedgerReviewed: Record<string, string>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onToggleReview: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
+  onBankLedgerReviewed?: (bankLedgerReviewed: Record<string, string>) => void;
   onRefresh: (patch?: {
     branchCash?: Record<Branch, BranchCash>;
   }) => void | Promise<void>;
@@ -76,6 +77,7 @@ export default function BankAccountPanel({
   bankLedgerReviewed,
   onUpdatePayment,
   onToggleReview,
+  onBankLedgerReviewed,
   onRefresh,
 }: Props) {
   const [viewMonth, setViewMonth] = useState(currentMonth());
@@ -275,6 +277,7 @@ export default function BankAccountPanel({
 
       <BankStatementMatchPanel
         onMarked={onRefresh}
+        onReviewed={onBankLedgerReviewed}
         onHints={(hints) => {
           setStatementHints(hints);
           setBranchFilter("ყველა");
@@ -441,7 +444,7 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2 text-center">ნანახია</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ამონაწერის თარიღი</th>
                   <th className="whitespace-nowrap px-2.5 py-2 font-semibold text-zinc-300">
-                    გადმომრიცხავი / მიმღები
+                    გადმომრიცხავი / გამწევი
                   </th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">სხვაობა</th>
                 </tr>
@@ -561,8 +564,8 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ამონაწერის ატვირთვისას თანხითა და თარიღით დამთხვეულ შემოსავალსა და ხარჯს ბოლოში მიეწერება ამონაწერის
-          თარიღი, გადმომრიცხავი/მიმღები და სხვაობა. ✓-ით მონიშნეთ ნანახი ჩარიცხვები.
+          ამონაწერის ატვირთვისას დამთხვეული ჩანაწერები ნანახად მოინიშნება. გადმორიცხვებსა და ხარჯებს
+          მიეწერება გადმომრიცხავი ან ხარჯის გამწევი/მიმღები, თარიღი და სხვაობა.
         </p>
       </div>
     </section>

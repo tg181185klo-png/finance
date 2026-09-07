@@ -244,7 +244,27 @@ function extractCounterpartyName(
   if (cleaned.length >= 3 && cleaned.length <= 80 && !isOwnOrNoiseParty(cleaned)) {
     return cleaned;
   }
+
+  // ბოლო მცდელობა: ქართული სახელი+გვარი ტექსტიდან (გადმორიცხვა/ხარჯი)
+  for (const src of [purpose, description, partyCol]) {
+    const person = extractGeorgianPersonName(src);
+    if (person) return person;
+  }
   return "";
+}
+
+function extractGeorgianPersonName(text: string): string {
+  if (!text) return "";
+  const cleaned = text
+    .replace(/თანხა\s*:\s*GEL\s*[\d\s.,]+/gi, " ")
+    .replace(/თარიღი\s*:\s*\d{1,2}[./]\d{1,2}[./]\d{4}/gi, " ")
+    .replace(/GE\d[\dA-Z]*/gi, " ")
+    .replace(/\s+/g, " ");
+  const m = cleaned.match(/([ა-ჰ]{2,}(?:\s+[ა-ჰ]{2,}){1,3})/);
+  if (!m?.[1]) return "";
+  const name = cleanPartyName(m[1]);
+  if (!name || isOwnOrNoiseParty(name)) return "";
+  return name;
 }
 
 function amountsClose(a: number, b: number, tol = 0.05): boolean {
@@ -686,9 +706,15 @@ export function buildStatementLedgerHints(matches: StatementMatchRow[]): Record<
       statementDate: m.line.statementDate || m.line.date,
       statementSender:
         m.line.senderName ||
+        (m.candidate.kind === "expense" || m.candidate.channel === "bank"
+          ? m.candidate.buyerName
+          : "") ||
         (m.candidate.channel === "card" ? m.candidate.buyerName : "") ||
         "",
-      statementAmount: m.line.matchAmount || m.line.credit || m.line.amount,
+      statementAmount:
+        m.line.direction === "out"
+          ? m.line.debit || m.line.amount
+          : m.line.matchAmount || m.line.credit || m.line.amount,
       commission: m.commission,
       status: "matched",
     };

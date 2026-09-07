@@ -16,25 +16,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Excel ამონაწერი საჭიროა" }, { status: 400 });
     }
 
-    const markReviewed = form.get("markReviewed") === "true";
     const buffer = Buffer.from(await file.arrayBuffer());
     const store = await readStore();
     const result = runBankStatementMatch(buffer, store.transactions);
 
-    if (markReviewed && result.summary.matchedIds.length > 0) {
+    let bankLedgerReviewed = store.bankLedgerReviewed ?? {};
+    const matchedIds = result.summary.matchedIds;
+    if (matchedIds.length > 0) {
       const now = new Date().toISOString();
-      await updateStore((s) => {
+      const updated = await updateStore((s) => {
         if (!s.bankLedgerReviewed) s.bankLedgerReviewed = {};
-        for (const id of result.summary.matchedIds) {
+        for (const id of matchedIds) {
           s.bankLedgerReviewed![id] = now;
         }
       });
+      bankLedgerReviewed = updated.bankLedgerReviewed ?? {};
     }
 
     return NextResponse.json({
       ok: true,
       fileName: file.name,
-      marked: markReviewed ? result.summary.matchedIds.length : 0,
+      marked: matchedIds.length,
+      bankLedgerReviewed,
       ...result,
     });
   } catch (e) {

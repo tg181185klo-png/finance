@@ -2560,6 +2560,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onUpdatePayment={updateTxPayment}
           onToggleReview={toggleBankLedgerReview}
+          onBankLedgerReviewed={(bankLedgerReviewed) => {
+            storeLoadGen.current += 1;
+            setStore((prev) => (prev ? { ...prev, bankLedgerReviewed } : prev));
+          }}
           onRefresh={async () => {
             await refresh();
           }}
