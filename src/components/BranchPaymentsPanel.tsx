@@ -69,6 +69,12 @@ type Props = {
   onRefresh: () => void | Promise<void>;
   header?: React.ReactNode;
   subtitle?: string;
+  /** თუ გადმოცემულია — ამ თვეს იყენებს (YYYY-MM) */
+  month?: string;
+  /** გადახდის ცვლილების გარეშე */
+  readOnly?: boolean;
+  /** საწყისი ნაშთის ზოლი და ძებნა დამალული */
+  compact?: boolean;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -116,16 +122,20 @@ export default function BranchPaymentsPanel({
   onRefresh,
   header,
   subtitle,
+  month: monthProp,
+  readOnly = false,
+  compact = false,
 }: Props) {
   const theme = THEMES[branch];
   const paymentOptions = branchPaymentOptions(branch);
-  const [viewMonth, setViewMonth] = useState(currentMonth());
+  const [viewMonth, setViewMonth] = useState(monthProp ?? currentMonth());
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
   const [err, setErr] = useState("");
 
-  const { from, to } = useMemo(() => monthStartEnd(viewMonth), [viewMonth]);
+  const activeMonth = monthProp ?? viewMonth;
+  const { from, to } = useMemo(() => monthStartEnd(activeMonth), [activeMonth]);
 
   const sales = useMemo(() => {
     const all = transactions.filter(
@@ -217,17 +227,19 @@ export default function BranchPaymentsPanel({
             <h2 className={`font-semibold ${theme.title}`}>{branch} — გადახდები</h2>
             <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
           </div>
-          <Field label="თვე">
-            <input
-              type="month"
-              className={`${inputCls} w-auto`}
-              value={viewMonth}
-              onChange={(e) => setViewMonth(e.target.value)}
-            />
-          </Field>
+          {!monthProp && (
+            <Field label="თვე">
+              <input
+                type="month"
+                className={`${inputCls} w-auto`}
+                value={viewMonth}
+                onChange={(e) => setViewMonth(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
 
-        {branchCash && (
+        {!compact && branchCash && (
           <div className="mb-4">
             <CurrentBalanceStrip branchCash={branchCash} transactions={transactions} branch={branch} />
           </div>
@@ -258,16 +270,18 @@ export default function BranchPaymentsPanel({
           </div>
         </div>
 
-        <div className="mb-4">
-          <Field label="ძებნა">
-            <input
-              className={inputCls}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="მომხმარებელი, პროდუქტი..."
-            />
-          </Field>
-        </div>
+        {!compact && (
+          <div className="mb-4">
+            <Field label="ძებნა">
+              <input
+                className={inputCls}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="მომხმარებელი, პროდუქტი..."
+              />
+            </Field>
+          </div>
+        )}
 
         {err && <p className="mb-2 text-sm text-red-400">{err}</p>}
 
@@ -327,20 +341,24 @@ export default function BranchPaymentsPanel({
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-medium text-emerald-400">{formatMoney(group.total)}</span>
-                                  <select
-                                    className={selectCls}
-                                    value={group.paymentMethod}
-                                    disabled={busyGroupId === group.groupId}
-                                    onChange={(e) =>
-                                      handlePaymentChange(group, e.target.value as PaymentMethod)
-                                    }
-                                  >
-                                    {paymentOptions.map((m) => (
-                                      <option key={m} value={m}>
-                                        {paymentShort(m)}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {readOnly ? (
+                                    <span className="text-zinc-400">{paymentShort(group.paymentMethod)}</span>
+                                  ) : (
+                                    <select
+                                      className={selectCls}
+                                      value={group.paymentMethod}
+                                      disabled={busyGroupId === group.groupId}
+                                      onChange={(e) =>
+                                        handlePaymentChange(group, e.target.value as PaymentMethod)
+                                      }
+                                    >
+                                      {paymentOptions.map((m) => (
+                                        <option key={m} value={m}>
+                                          {paymentShort(m)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
                                 </div>
                               </div>
                             ))}

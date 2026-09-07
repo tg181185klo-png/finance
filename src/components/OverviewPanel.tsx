@@ -20,6 +20,11 @@ import {
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import TransactionTable from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
+import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
+
+/** დროებით დამალული სექციები მიმოხილვაზე */
+const SHOW_OBJECTS_SECTION = false;
+const SHOW_TRANSACTIONS_SECTION = false;
 
 const scopeBtn = (on: boolean) =>
   `rounded-xl px-4 py-2 text-sm font-medium transition ${
@@ -214,6 +219,7 @@ type Props = {
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
   onToggleReview?: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
+  onRefresh?: () => void | Promise<void>;
 };
 
 export default function OverviewPanel({
@@ -228,6 +234,7 @@ export default function OverviewPanel({
   onUpdatePayment,
   onUpdateDriver,
   onToggleReview,
+  onRefresh,
 }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [scope, setScope] = useState<ViewScope>("company");
@@ -243,6 +250,14 @@ export default function OverviewPanel({
     }
     return { from: period.from, to: period.to, rangeLabel: period.label };
   }, [rangeMode, selectedDay, period.from, period.to, period.label]);
+
+  const paymentsMonth = useMemo(() => from.slice(0, 7), [from]);
+
+  const paymentBranches = useMemo((): Branch[] => {
+    if (scope === "company") return [...BRANCHES];
+    if (scope === KUTAISI_DISTRIB_LABEL) return [...KUTAISI_DISTRIB_BRANCHES];
+    return [scope];
+  }, [scope]);
 
   function toggleDetail(kind: FlowDetailKind, detailScope: ViewScope) {
     toggle({ kind, scope: toFlowScope(detailScope), from, to, rangeLabel });
@@ -453,6 +468,7 @@ export default function OverviewPanel({
 
           {companyOpen && detailDrillPanel}
 
+          {SHOW_OBJECTS_SECTION && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
             <button
               type="button"
@@ -515,6 +531,7 @@ export default function OverviewPanel({
               </div>
             )}
           </div>
+          )}
         </>
       )}
 
@@ -553,6 +570,24 @@ export default function OverviewPanel({
         </div>
       )}
 
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-zinc-300">
+          გადახდები დღეების მიხედვით · {paymentsMonth}
+        </h3>
+        {paymentBranches.map((b) => (
+          <BranchPaymentsPanel
+            key={b}
+            branch={b}
+            transactions={transactions}
+            month={paymentsMonth}
+            compact
+            readOnly={readOnly || !onRefresh}
+            onRefresh={onRefresh ?? (async () => undefined)}
+          />
+        ))}
+      </div>
+
+      {SHOW_TRANSACTIONS_SECTION && (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
         <h3 className="mb-1 font-semibold">
           ტრანზაქციები — {scopeLabel(scope)}
@@ -572,6 +607,7 @@ export default function OverviewPanel({
           onToggleReview={readOnly ? undefined : onToggleReview}
         />
       </div>
+      )}
 
       <BranchActivityPanel
         branchReports={branchReports}

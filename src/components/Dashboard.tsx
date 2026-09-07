@@ -1672,6 +1672,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           onUpdatePayment={updateTxPayment}
           onUpdateDriver={updateTxDriver}
           onToggleReview={toggleBankLedgerReview}
+          onRefresh={refresh}
         />
       )}
 
