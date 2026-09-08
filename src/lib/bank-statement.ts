@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Transaction } from "./types";
-import { saleGroupLabel } from "./branch-payments";
+import { saleGroupKey, saleGroupLabel } from "./branch-payments";
 import { isCreditOrder, isCreditOrderActive, txPaymentMethod } from "./utils";
 import { BANK_METHOD, CARD_METHOD } from "./bank-ledger";
 
@@ -208,11 +208,9 @@ function namesOverlap(a: string, b: string): boolean {
   return aParts.some((p) => bParts.some((q) => p.includes(q) || q.includes(p)));
 }
 
-/** შედარებისთვის: ერთი გადახდა = clientSale/distribucia; სხვა გაყიდვები ცალ-ცალკე (ბარათი) */
+/** შედარებისთვის: ერთი გადახდა = clientSale / report+მყიდველი / distribucia */
 function matchSaleKey(sale: Extract<Transaction, { type: "sale" }>): string {
-  if (sale.distribuciaOrderId) return `dist-order:${sale.distribuciaOrderId}`;
-  if (sale.clientSaleId) return `client:${sale.clientSaleId}`;
-  return `tx:${sale.id}`;
+  return saleGroupKey(sale);
 }
 
 /** საკუთარი ანგარიში / ხმაური — არ არის ჩარიცხვის ავტორი */

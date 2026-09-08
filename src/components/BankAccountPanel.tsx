@@ -5,6 +5,8 @@ import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types
 import { BRANCHES, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import {
   buildAccountLedgerRows,
+  ledgerRowHint,
+  ledgerRowReviewed,
   ledgerTotals,
   nonCashOpening,
   type AccountLedgerRow,
@@ -117,9 +119,10 @@ export default function BankAccountPanel({
       channelFilter,
       operationalFrom: OPERATIONAL_DATA_FROM,
     }).filter((r) => {
-      if (onlyUnreviewed && bankLedgerReviewed[r.id]) return false;
+      if (onlyUnreviewed && ledgerRowReviewed(r, bankLedgerReviewed)) return false;
       if (!q) return true;
-      return [r.label, r.comment, r.depositorName, r.branch, r.date, statementHints[r.id]?.statementSender]
+      const hint = ledgerRowHint(r, statementHints);
+      return [r.label, r.comment, r.depositorName, r.branch, r.date, hint?.statementSender]
         .join(" ")
         .toLowerCase()
         .includes(q);
@@ -133,7 +136,7 @@ export default function BankAccountPanel({
       branch: branchFilter,
       channelFilter,
       operationalFrom: OPERATIONAL_DATA_FROM,
-    }).filter((r) => !bankLedgerReviewed[r.id]).length;
+    }).filter((r) => r.direction === "in" && !ledgerRowReviewed(r, bankLedgerReviewed)).length;
   }, [transactions, from, to, branchFilter, channelFilter, bankLedgerReviewed]);
 
   const totals = useMemo(() => ledgerTotals(rows), [rows]);
@@ -194,10 +197,11 @@ export default function BankAccountPanel({
     }));
   }
 
-  async function toggleReview(id: string, currentlyReviewed: boolean) {
-    setReviewBusy(id);
+  async function toggleReview(ids: string | string[], currentlyReviewed: boolean) {
+    const list = Array.isArray(ids) ? ids : [ids];
+    setReviewBusy(list[0] ?? null);
     try {
-      await onToggleReview(id, !currentlyReviewed);
+      await onToggleReview(list, !currentlyReviewed);
     } finally {
       setReviewBusy(null);
     }
@@ -309,7 +313,7 @@ export default function BankAccountPanel({
           <div>
             <h2 className="font-semibold text-violet-200">ბარათი და საბანკო ანგარიში — მოძრაობა</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              დღიური რეპორტიდან შემოსული (ბარათი/ანგარიში), ვალდებულებების გასტუმრება და ხარჯები
+              ერთი სტრიქონი = ერთი ფულადი გადახდა (პროდუქტები ჯამში), რომ ამონაწერთან დადარება ზუსტი იყოს
               {Object.keys(statementHints).length > 0
                 ? ` · ამონაწერიდან მიეწერა ${Object.keys(statementHints).length} ჩანაწერს`
                 : ""}
@@ -437,7 +441,7 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2">გაყიდვის თარიღი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ფილიალი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ტიპი</th>
-                  <th className="whitespace-nowrap px-2.5 py-2">ჩამრიცხავი / აღწერა</th>
+                  <th className="whitespace-nowrap px-2.5 py-2">ჩამრიცხავი / გადახდა</th>
                   <th className="whitespace-nowrap px-2.5 py-2">არხი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">გადახდა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">თანხა</th>
@@ -451,9 +455,9 @@ export default function BankAccountPanel({
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const reviewed = Boolean(bankLedgerReviewed[row.id]);
+                  const reviewed = ledgerRowReviewed(row, bankLedgerReviewed);
                   const isIncoming = row.direction === "in";
-                  const hint = statementHints[row.id];
+                  const hint = ledgerRowHint(row, statementHints);
                   return (
                     <tr
                       key={row.id}
@@ -476,8 +480,13 @@ export default function BankAccountPanel({
                       >
                         {typeLabel(row)}
                       </td>
-                      <td className="max-w-[160px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-200">
+                      <td className="max-w-[200px] whitespace-normal break-words px-2.5 py-2 text-xs font-medium text-sky-200">
                         {row.depositorName || "—"}
+                        {row.productCount > 1 && (
+                          <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                            {row.productCount} პროდუქტი · {row.comment}
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-2 text-xs text-sky-300">
                         {channelLabel(row.channel)}
@@ -487,7 +496,10 @@ export default function BankAccountPanel({
                           className={selectCls}
                           value={row.paymentMethod}
                           onChange={async (e) => {
-                            await onUpdatePayment(row.id, e.target.value as PaymentMethod);
+                            const method = e.target.value as PaymentMethod;
+                            for (const id of row.ids) {
+                              await onUpdatePayment(id, method);
+                            }
                           }}
                         >
                           {PAYMENT_METHODS.map((m) => (
@@ -510,7 +522,7 @@ export default function BankAccountPanel({
                           type="button"
                           title={reviewed ? "ნანახია — მონიშვნის მოხსნა" : "მონიშნე როგორც ნანახი"}
                           disabled={reviewBusy === row.id}
-                          onClick={() => void toggleReview(row.id, reviewed)}
+                          onClick={() => void toggleReview(row.ids, reviewed)}
                           className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm transition ${
                             reviewed
                               ? "border-emerald-600 bg-emerald-950/50 text-emerald-400"
