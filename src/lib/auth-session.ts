@@ -11,10 +11,10 @@ function secret(): string {
 }
 
 export function adminCredentials() {
+  // Dashboard შესვლა მხოლოდ — სხვა PIN/მოქმედებები ADMIN_PIN (12345)
   return {
-    username: process.env.ADMIN_USERNAME || "admin",
-    /** მხოლოდ შესვლა — არ იყენებს ADMIN_PIN-ს (PIN რჩება სხვა მოქმედებებისთვის) */
-    password: process.env.ADMIN_PASSWORD || "12345687",
+    username: "LASHA",
+    password: "12345687",
   };
 }
 

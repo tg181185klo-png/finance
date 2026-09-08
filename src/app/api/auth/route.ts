@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
   const username = String(body.username ?? "").trim();
   const password = String(body.password ?? body.pin ?? "");
 
-  if (username !== creds.username || password !== creds.password) {
+  const userOk = username.toLowerCase() === creds.username.toLowerCase();
+  if (!userOk || password !== creds.password) {
     return NextResponse.json({ error: "არასწორი მომხმარებელი ან პაროლი" }, { status: 403 });
   }
 
