@@ -30,6 +30,13 @@ import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import CostingPanel from "@/components/CostingPanel";
+import {
+  hiddenDashboardTabs,
+  readHiddenTabIds,
+  visibleDashboardTabs,
+  writeHiddenTabIds,
+  type DashboardTabId,
+} from "@/lib/dashboard-menu";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import AccountingSystemPanel from "@/components/AccountingSystemPanel";
@@ -102,42 +109,7 @@ const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2
 const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
 
-type Tab =
-  | "system"
-  | "owner"
-  | "main"
-  | "overview"
-  | "balances"
-  | "expenses"
-  | "clients"
-  | "obligations"
-  | "reports"
-  | "branches"
-  | "payments"
-  | "bank"
-  | "inventory"
-  | "employees"
-  | "employee-bonus"
-  | "costing";
-
-const DASHBOARD_TABS: { id: Tab; label: string }[] = [
-  { id: "system", label: "ჩემი აღრიცხვის სისტემა" },
-  { id: "owner", label: "მფლობელის მაჩვენებლები" },
-  { id: "main", label: "ჩაწერა" },
-  { id: "overview", label: "მიმოხილვა" },
-  { id: "balances", label: "ბალანსები" },
-  { id: "expenses", label: "ხარჯები" },
-  { id: "clients", label: "კლიენტები" },
-  { id: "employee-bonus", label: "გაყიდვის ბონუსი" },
-  { id: "costing", label: "თვითღირებულება" },
-  { id: "reports", label: "რეპორტები" },
-  { id: "branches", label: "ფილიალები" },
-  { id: "payments", label: "გადახდები" },
-  { id: "bank", label: "საბანკო ანგარიში" },
-  { id: "obligations", label: "ვალდებულებები" },
-  { id: "employees", label: "თანამშრომლები" },
-  { id: "inventory", label: "მარაგი" },
-];
+type Tab = DashboardTabId;
 
 function parseNum(raw: string): number {
   if (!raw.trim()) return 0;
@@ -180,6 +152,7 @@ type DashboardProps = {
 
 export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [tab, setTab] = useState<Tab>("system");
+  const [hiddenTabs, setHiddenTabs] = useState<DashboardTabId[]>([]);
   const [store, setStore] = useState<Store | null>(null);
   const [storeWarning, setStoreWarning] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -295,6 +268,20 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     });
     return list;
   }, []);
+
+  useEffect(() => {
+    setHiddenTabs(readHiddenTabIds());
+  }, []);
+
+  const menuTabs = useMemo(() => visibleDashboardTabs(hiddenTabs), [hiddenTabs]);
+  const hiddenMenuTabs = useMemo(() => hiddenDashboardTabs(hiddenTabs), [hiddenTabs]);
+
+  function unhideTab(id: DashboardTabId) {
+    const next = hiddenTabs.filter((t) => t !== id);
+    setHiddenTabs(next);
+    writeHiddenTabIds(next);
+    setTab(id);
+  }
 
   const loadStore = useCallback(async () => {
     const gen = ++storeLoadGen.current;
@@ -1228,13 +1215,29 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               <select
                 className={`${inputCls} min-h-11 text-base font-medium sm:text-sm`}
                 value={tab}
-                onChange={(e) => setTab(e.target.value as Tab)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v.startsWith("unhide:")) {
+                    unhideTab(v.slice(7) as DashboardTabId);
+                    return;
+                  }
+                  setTab(v as Tab);
+                }}
               >
-                {DASHBOARD_TABS.map((t) => (
+                {menuTabs.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label}
                   </option>
                 ))}
+                {hiddenMenuTabs.length > 0 && (
+                  <optgroup label="დამალული — გამოსაჩენად აირჩიე">
+                    {hiddenMenuTabs.map((t) => (
+                      <option key={`h-${t.id}`} value={`unhide:${t.id}`}>
+                        ↩ {t.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
             <div>
