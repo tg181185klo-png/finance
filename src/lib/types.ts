@@ -307,6 +307,8 @@ export interface Store {
   customers: Customer[];
   /** საბანკო/ბარათის შემოსავლის ტრანზაქციის ID → ნანახობის დრო */
   bankLedgerReviewed?: Record<string, string>;
+  /** თვითღირებულება / მასალა / დისტრიბუტორის ანაზღაურება */
+  costSettings?: import("./product-cost").CostSettings;
 }
 
 export interface Balances {

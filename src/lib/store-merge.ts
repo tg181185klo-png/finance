@@ -1,5 +1,6 @@
 import { BRANCHES } from "./constants";
 import type { Branch, BranchCash, BranchInventory, Store } from "./types";
+import { emptyCostSettings } from "./product-cost";
 import { emptyBranchCash, emptyInventory } from "./utils";
 
 export const DEFAULT_OVERVIEW_REPORT_TOKEN = "ovw-mr9k2";
@@ -58,6 +59,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     attendance: data.attendance ?? [],
     customers: data.customers ?? [],
     bankLedgerReviewed: data.bankLedgerReviewed ?? {},
+    costSettings: data.costSettings ?? emptyCostSettings(),
   };
 }
 

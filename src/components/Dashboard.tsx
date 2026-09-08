@@ -29,6 +29,7 @@ import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
+import CostingPanel from "@/components/CostingPanel";
 import BalancesPanel from "@/components/BalancesPanel";
 import OpeningBalancesSummary from "@/components/OpeningBalancesSummary";
 import AccountingSystemPanel from "@/components/AccountingSystemPanel";
@@ -116,7 +117,8 @@ type Tab =
   | "bank"
   | "inventory"
   | "employees"
-  | "employee-bonus";
+  | "employee-bonus"
+  | "costing";
 
 const DASHBOARD_TABS: { id: Tab; label: string }[] = [
   { id: "system", label: "ჩემი აღრიცხვის სისტემა" },
@@ -127,6 +129,7 @@ const DASHBOARD_TABS: { id: Tab; label: string }[] = [
   { id: "expenses", label: "ხარჯები" },
   { id: "clients", label: "კლიენტები" },
   { id: "employee-bonus", label: "გაყიდვის ბონუსი" },
+  { id: "costing", label: "თვითღირებულება" },
   { id: "reports", label: "რეპორტები" },
   { id: "branches", label: "ფილიალები" },
   { id: "payments", label: "გადახდები" },
@@ -2566,6 +2569,17 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           }}
           onRefresh={async () => {
             await refresh();
+          }}
+        />
+      )}
+
+      {tab === "costing" && !loading && (
+        <CostingPanel
+          transactions={operationalTx}
+          costSettings={activeStore.costSettings ?? { recipes: [], months: {} }}
+          onCostSettings={(costSettings) => {
+            storeLoadGen.current += 1;
+            setStore((prev) => (prev ? { ...prev, costSettings } : prev));
           }}
         />
       )}
