@@ -95,7 +95,10 @@ function cellStr(v: unknown): string {
 function cellNum(v: unknown): number {
   if (v == null || v === "") return 0;
   if (typeof v === "number" && Number.isFinite(v)) return v;
-  const s = String(v).replace(/\s/g, "").replace(",", ".");
+  let s = String(v).replace(/\s/g, "").replace(",", ".");
+  // (405.70) → −405.70 (გასავალი ამონაწერში)
+  const paren = s.match(/^\((.+)\)$/);
+  if (paren) s = `-${paren[1]}`;
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
@@ -125,9 +128,11 @@ function parseMoneyToken(raw: string): number | null {
 function extractGrossFromDescription(desc: string): number | null {
   const patterns = [
     /თანხა\s*:\s*GEL\s*([\d\s.,]+)/i,
+    /თანხა\s*:\s*GEL([\d\s.,]+)/i,
     /თანხა\s*:\s*([\d\s.,]+)\s*GEL/i,
     /amount\s*:\s*GEL\s*([\d\s.,]+)/i,
     /GEL\s*([\d\s.,]+)/i,
+    /GEL([\d.,]+)/i,
   ];
   for (const re of patterns) {
     const m = desc.match(re);
@@ -161,6 +166,48 @@ function looksLikeBankTransferLine(line: BankStatementLine): boolean {
   return /გადმორიცხვ|გადარიცხვ|transfer|პირდაპირი/.test(d) && !looksLikeCardLine(line);
 }
 
+function inferDirection(
+  debit: number,
+  credit: number,
+  amountCell: number,
+  description: string,
+  opType: string
+): StatementDirection {
+  // აღწერა უფრო სანდოა — სვეტები ხშირად არეულია
+  if (/მიმღები\s*[:：]/i.test(description) || /beneficiary\s*[:：]/i.test(description)) return "out";
+  if (/გადმ?ომრიცხავი\s*[:：]/i.test(description) || /გადამრიცხავი\s*[:：]/i.test(description)) {
+    return "in";
+  }
+  if (/გადარიცხვა/.test(description.toLowerCase()) && (opType === "PMD" || opType === "TPA")) {
+    return "out";
+  }
+
+  if (credit > 0 && !(debit > 0)) return "in";
+  if (debit > 0 && !(credit > 0)) return "out";
+  if (amountCell < 0) return "out";
+  if (amountCell > 0 && (opType === "PMD" || opType === "TPA")) return "out";
+  if (credit > 0) return "in";
+  return "out";
+}
+
+function nameTokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[\s,./\\+_()\-–—]+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 2 && !/^(შპს|სს|ltd|llc|gel|the|and|და)$/i.test(p));
+}
+
+function namesOverlap(a: string, b: string): boolean {
+  if (!a.trim() || !b.trim()) return false;
+  const al = a.toLowerCase();
+  const bl = b.toLowerCase();
+  if (al.includes(bl) || bl.includes(al)) return true;
+  const aParts = nameTokens(a);
+  const bParts = nameTokens(b);
+  return aParts.some((p) => bParts.some((q) => p.includes(q) || q.includes(p)));
+}
+
 /** შედარებისთვის: ერთი გადახდა = clientSale/distribucia; სხვა გაყიდვები ცალ-ცალკე (ბარათი) */
 function matchSaleKey(sale: Extract<Transaction, { type: "sale" }>): string {
   if (sale.distribuciaOrderId) return `dist-order:${sale.distribuciaOrderId}`;
@@ -177,6 +224,7 @@ function isOwnOrNoiseParty(name: string): boolean {
   const compact = n.replace(/\s+/g, "").toLowerCase();
   if (/პლასტიკგოლდ|plasticgold/i.test(compact)) return true;
   if (/პლასტიკ\s*გოლდ/i.test(n)) return true;
+  if (/ბანკი|bagage|საქართველოს\s*ბანკი/i.test(n)) return true;
   if (/^(trn|pmd|tpa|cco|fee|საკომისიო|ვალუტ)/i.test(n)) return true;
   return false;
 }
@@ -426,9 +474,24 @@ export function parseBankStatementExcel(buffer: Buffer): {
       }
     }
     const purpose = cellStr(row[cols.purpose]) || cellStr(row[19]) || cellStr(row[20]);
+    // მიმღები/კონტრაგენტი — მთელ სტრიქონში ვეძებთ (არა მხოლოდ ფიქსირებულ ინდექსებზე)
+    if (!partyCol) {
+      for (let c = 0; c < row.length; c++) {
+        const cleaned = cleanPartyName(cellStr(row[c]));
+        if (cleaned && !isOwnOrNoiseParty(cleaned) && !/^GE\d/i.test(cleaned) && cleaned.length <= 80) {
+          // გამოტოვე უბრალო დანიშნულება თუ ძალიან ზოგადია
+          if (/^(გადარიცხვას|პროდუქციის საფასური)$/i.test(cleaned)) continue;
+          if (/ბანკი|bagage/i.test(cleaned)) continue;
+          partyCol = cleaned;
+          break;
+        }
+      }
+    }
     const amountCell = cellNum(row[cols.amount]);
+    // ზოგ ამონაწერში თანხა მხოლოდ აღწერაშია: თანხა: GEL405.70
+    const descAmount = extractGrossFromDescription(description) ?? 0;
 
-    const direction: StatementDirection = credit > 0 ? "in" : "out";
+    const direction = inferDirection(debit, credit, amountCell, description, opType);
     const signed =
       amountCell !== 0
         ? amountCell
@@ -436,15 +499,17 @@ export function parseBankStatementExcel(buffer: Buffer): {
           ? credit
           : debit > 0
             ? -debit
-            : 0;
-    if (signed === 0 && credit === 0 && debit === 0) continue;
+            : direction === "out"
+              ? -(descAmount || 0)
+              : descAmount;
+    if (signed === 0 && credit === 0 && debit === 0 && descAmount === 0) continue;
 
-    const grossAmount = direction === "in" ? extractGrossFromDescription(description) : null;
+    const grossAmount = descAmount > 0 ? descAmount : null;
     const payDate = extractPaymentDate(description);
     const date = payDate || statementDate;
     const senderName = extractCounterpartyName(direction, partyCol, description, purpose);
 
-    const absAmount = Math.abs(signed) || credit || debit;
+    const absAmount = Math.abs(signed) || credit || debit || descAmount;
     const matchAmount = grossAmount ?? (direction === "in" ? credit || absAmount : debit || absAmount);
 
     lines.push({
@@ -577,11 +642,11 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
 
   const cardLine = looksLikeCardLine(line);
   const bankLine = looksLikeBankTransferLine(line);
-  // ბარათის სტრიქონი მხოლოდ ბარათის ჩანაწერებს; გადარიცხვა — ანგარიშს
-  if (cardLine && c.channel !== "card") return -1;
-  if (bankLine && c.channel !== "bank") return -1;
+  // აპში ხშირად ბარათია, ამონაწერში PMD — არ ვბლოკავთ არხით
+  const channelMismatch =
+    (cardLine && c.channel !== "card") || (bankLine && c.channel !== "bank");
 
-  const loose = cardLine || c.channel === "card";
+  const loose = cardLine || bankLine || c.channel === "card" || c.kind === "expense";
   const statementAmts = [line.matchAmount, line.amount, line.credit, line.debit, line.grossAmount ?? 0].filter(
     (n) => n > 0
   );
@@ -589,8 +654,7 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
   if (!amountOk) return -1;
 
   const dayGap = Math.min(daysApart(line.date, c.date), daysApart(line.statementDate, c.date));
-  // მიახლოებითი თარიღი: ბარათზე დასახლება ხშირად 1–7 დღით გვიანია
-  const maxGap = loose ? 45 : 30;
+  const maxGap = loose || channelMismatch ? 45 : 30;
   if (dayGap > maxGap) return -1;
 
   let score = 100 - dayGap * 2;
@@ -600,19 +664,18 @@ function scoreMatch(line: BankStatementLine, c: MatchCandidate): number {
     score += 12;
   }
 
-  if (cardLine && c.channel === "card") score += 25;
-  if (bankLine && c.channel === "bank") score += 20;
-  if (line.opType === "TRN" && c.channel === "card") score += 10;
-  if ((line.opType === "PMD" || line.opType === "TPA") && c.channel === "bank") score += 10;
-
-  const party = line.senderName.toLowerCase();
-  const name = c.buyerName.toLowerCase();
-  if (party && name) {
-    const partyParts = party.split(/\s+/).filter((p) => p.length > 1);
-    const nameParts = name.split(/\s+/).filter((p) => p.length > 1);
-    const overlap = partyParts.some((p) => name.includes(p)) || nameParts.some((p) => party.includes(p));
-    if (overlap) score += 25;
+  if (!channelMismatch) {
+    if (cardLine && c.channel === "card") score += 25;
+    if (bankLine && c.channel === "bank") score += 20;
+  } else {
+    score -= 10;
   }
+  if (line.opType === "TRN" && c.channel === "card") score += 10;
+  if ((line.opType === "PMD" || line.opType === "TPA") && (c.channel === "bank" || c.kind === "expense")) {
+    score += 12;
+  }
+
+  if (namesOverlap(line.senderName, `${c.buyerName} ${c.label}`)) score += 35;
 
   return score;
 }
