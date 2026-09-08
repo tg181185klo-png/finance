@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { BRANCHES } from "@/lib/dashboard-data";
-import { buildBranchCogsReport } from "@/lib/cogs-report";
+import { buildAllBranchesCogs, buildBranchCogsReport } from "@/lib/cogs-report";
 import {
   calcUnitCost,
+  collectRecipeValueGroups,
   emptyCostSettings,
   emptyDistributorPay,
   emptyMonthCostSettings,
@@ -31,7 +32,25 @@ type Props = {
   onCostSettings: (next: CostSettings) => void;
 };
 
-type View = "month" | "recipes" | "report";
+type View = "month" | "prices" | "recipes" | "report" | "all";
+
+type BulkField = "materialPerKg" | "sellPrice" | "distPrice" | "wagePerUnit" | "elecPrice";
+
+const BULK_FIELDS: { field: BulkField; label: string }[] = [
+  { field: "materialPerKg", label: "1 კგ მასალა (მაგ. 3.5)" },
+  { field: "sellPrice", label: "გასაყიდი ფასი (ახალი)" },
+  { field: "distPrice", label: "დისტრიბუციის ფასი" },
+  { field: "wagePerUnit", label: "ხელფასი ცალზე" },
+  { field: "elecPrice", label: "ელ. ფასი" },
+];
+
+const VIEW_TABS: { id: View; label: string }[] = [
+  { id: "month", label: "თვე / ობიექტი" },
+  { id: "prices", label: "ერთიანი ფასები" },
+  { id: "recipes", label: "პროდუქტის რეცეპტები" },
+  { id: "report", label: "ობიექტის ანგარიში" },
+  { id: "all", label: "ყველა ფილიალი" },
+];
 
 export default function CostingPanel({ transactions, costSettings, onCostSettings }: Props) {
   const [view, setView] = useState<View>("month");
@@ -50,6 +69,11 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
   const report = useMemo(
     () => buildBranchCogsReport(transactions, settings, branch, month),
     [transactions, settings, branch, month]
+  );
+
+  const allReports = useMemo(
+    () => buildAllBranchesCogs(transactions, settings, month),
+    [transactions, settings, month]
   );
 
   const filteredRecipes = useMemo(() => {
@@ -118,11 +142,23 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
     if (data) setMsg(`${updated.code} განახლდა`);
   }
 
+  async function bulkReplace(field: BulkField, fromValue: number, toValue: number) {
+    const data = await api({ action: "bulkReplace", field, fromValue, toValue });
+    if (data) {
+      setMsg(`${data.changed ?? 0} პროდუქტი განახლდა (${fromValue} → ${toValue})`);
+    }
+  }
+
   function updateLocalRecipe(code: string, patch: Partial<ProductCostRecipe>) {
     onCostSettings({
       ...settings,
       recipes: settings.recipes.map((r) => (r.code === code ? { ...r, ...patch } : r)),
     });
+  }
+
+  function openBranchReport(b: Branch) {
+    setBranch(b);
+    setView("report");
   }
 
   return (
@@ -153,13 +189,7 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {(
-            [
-              ["month", "თვე / ობიექტი"],
-              ["recipes", "პროდუქტის რეცეპტები"],
-              ["report", "ობიექტის ანგარიში"],
-            ] as const
-          ).map(([id, label]) => (
+          {VIEW_TABS.map(({ id, label }) => (
             <button
               key={id}
               type="button"
@@ -184,16 +214,18 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
               onChange={(e) => setMonth(e.target.value)}
             />
           </div>
-          <div>
-            <label className={labelCls}>ობიექტი</label>
-            <select className={inputCls} value={branch} onChange={(e) => setBranch(e.target.value as Branch)}>
-              {BRANCHES.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(view === "month" || view === "report") && (
+            <div>
+              <label className={labelCls}>ობიექტი</label>
+              <select className={inputCls} value={branch} onChange={(e) => setBranch(e.target.value as Branch)}>
+                {BRANCHES.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {msg && <p className="mt-3 text-sm text-emerald-400">{msg}</p>}
@@ -226,6 +258,27 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
               onSave={(v) => void saveDistributor(v)}
             />
           </div>
+        </div>
+      )}
+
+      {view === "prices" && (
+        <div className="space-y-4">
+          {!settings.recipes.length ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+              <p className="text-sm text-zinc-500">ჯერ ატვირთე ცხრილი ღილაკით „ცხრილიდან წამოღება“.</p>
+            </div>
+          ) : (
+            BULK_FIELDS.map(({ field, label }) => (
+              <BulkFieldPanel
+                key={field}
+                field={field}
+                label={label}
+                recipes={settings.recipes}
+                busy={busy}
+                onReplace={(from, to) => void bulkReplace(field, from, to)}
+              />
+            ))
+          )}
         </div>
       )}
 
@@ -349,27 +402,52 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="შემოსავალი" value={`+${formatMoney(report.revenue)}`} tone="emerald" />
-            <Stat label="თვითღირებულება (COGS)" value={formatMoney(report.cogs)} tone="amber" />
-            <Stat label="ობიექტის ხარჯები" value={formatMoney(report.expenses)} tone="red" />
-            <Stat
-              label={branch === "დისტრიბუცია" ? "დისტრიბუტორი" : "მოგება ხარჯების შემდეგ"}
-              value={
-                branch === "დისტრიბუცია"
-                  ? formatMoney(report.distributorPay)
-                  : formatMoney(report.netAfterExpenses)
-              }
-              tone="violet"
-            />
+            <Stat label="COGS" value={formatMoney(report.cogs)} tone="amber" />
+            <Stat label="მასალა" value={formatMoney(report.cogsMaterial)} tone="amber" />
+            <Stat label="ელ." value={formatMoney(report.cogsElectricity)} tone="amber" />
+            <Stat label="წარმ.ხელფასი" value={formatMoney(report.cogsWage)} tone="amber" />
+            <Stat label="ხელფასი (ხარჯი)" value={formatMoney(report.salaryExpenses)} tone="red" />
+            <Stat label="იჯარა" value={formatMoney(report.rentExpenses)} tone="red" />
+            <Stat label="საწვავი" value={formatMoney(report.fuelExpenses)} tone="red" />
+            <Stat label="სხვა" value={formatMoney(report.otherExpenses)} tone="red" />
+            {branch === "დისტრიბუცია" && (
+              <Stat label="დისტრიბუტორი" value={formatMoney(report.distributorPay)} tone="violet" />
+            )}
+            <Stat label="სუფთა მოგება" value={formatMoney(report.netAfterExpenses)} tone="violet" />
           </div>
 
-          {branch === "დისტრიბუცია" && (
-            <p className="mt-2 text-xs text-zinc-500">
-              სუფთა მოგება (შემოსავალი − COGS − ხარჯი − დისტრიბუტორი):{" "}
-              <span className="font-medium text-violet-300">{formatMoney(report.netAfterExpenses)}</span>
-            </p>
+          {report.expensesByCategory.length > 0 && (
+            <div className="mt-6">
+              <h4 className="mb-2 text-sm font-medium text-zinc-300">ხარჯების დეტალიზაცია</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[400px] border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-800 text-zinc-500">
+                      <th className="px-2 py-2">კატეგორია</th>
+                      <th className="px-2 py-2 text-right">თანხა</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.expensesByCategory.map((row) => (
+                      <tr key={row.category} className="border-b border-zinc-800/60">
+                        <td className="px-2 py-1.5">{row.category}</td>
+                        <td className="px-2 py-1.5 text-right text-red-300">{formatMoney(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-zinc-700 font-semibold">
+                      <td className="px-2 py-2">ჯამი</td>
+                      <td className="px-2 py-2 text-right text-red-300">{formatMoney(report.expenses)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
           )}
 
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-6 overflow-x-auto">
+            <h4 className="mb-2 text-sm font-medium text-zinc-300">პროდუქტები</h4>
             <table className="w-full min-w-[900px] border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-500">
@@ -427,7 +505,197 @@ export default function CostingPanel({ transactions, costSettings, onCostSetting
           </div>
         </div>
       )}
+
+      {view === "all" && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+          <h3 className="font-medium text-zinc-200">ყველა ფილიალი · {month}</h3>
+          <p className="mt-1 text-xs text-zinc-500">დააწკაპუნე ფილიალზე დეტალური ანგარიშის სანახავად</p>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[1200px] border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-500">
+                  <th className="px-2 py-2">ფილიალი</th>
+                  <th className="px-2 py-2 text-right">შემოსავალი</th>
+                  <th className="px-2 py-2 text-right">COGS</th>
+                  <th className="px-2 py-2 text-right">მასალა</th>
+                  <th className="px-2 py-2 text-right">ელ.</th>
+                  <th className="px-2 py-2 text-right">წარმ.ხელფასი</th>
+                  <th className="px-2 py-2 text-right">ხელფასი(ხარჯი)</th>
+                  <th className="px-2 py-2 text-right">იჯარა</th>
+                  <th className="px-2 py-2 text-right">საწვავი</th>
+                  <th className="px-2 py-2 text-right">სხვა ხარჯი</th>
+                  <th className="px-2 py-2 text-right">დისტრიბუტორი</th>
+                  <th className="px-2 py-2 text-right">სუფთა მოგება</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allReports.map((r) => (
+                  <tr
+                    key={r.branch}
+                    className="cursor-pointer border-b border-zinc-800/60 hover:bg-amber-950/30"
+                    onClick={() => openBranchReport(r.branch)}
+                  >
+                    <td className="px-2 py-1.5 font-medium text-amber-200">{r.branch}</td>
+                    <td className="px-2 py-1.5 text-right text-emerald-400">{formatMoney(r.revenue)}</td>
+                    <td className="px-2 py-1.5 text-right text-amber-200">{formatMoney(r.cogs)}</td>
+                    <td className="px-2 py-1.5 text-right text-zinc-400">{formatMoney(r.cogsMaterial)}</td>
+                    <td className="px-2 py-1.5 text-right text-zinc-400">{formatMoney(r.cogsElectricity)}</td>
+                    <td className="px-2 py-1.5 text-right text-zinc-400">{formatMoney(r.cogsWage)}</td>
+                    <td className="px-2 py-1.5 text-right text-red-300">{formatMoney(r.salaryExpenses)}</td>
+                    <td className="px-2 py-1.5 text-right text-red-300">{formatMoney(r.rentExpenses)}</td>
+                    <td className="px-2 py-1.5 text-right text-red-300">{formatMoney(r.fuelExpenses)}</td>
+                    <td className="px-2 py-1.5 text-right text-red-300">{formatMoney(r.otherExpenses)}</td>
+                    <td className="px-2 py-1.5 text-right text-violet-300">{formatMoney(r.distributorPay)}</td>
+                    <td className="px-2 py-1.5 text-right font-medium text-violet-200">
+                      {formatMoney(r.netAfterExpenses)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-zinc-700 font-semibold">
+                  <td className="px-2 py-2">ჯამი</td>
+                  <td className="px-2 py-2 text-right text-emerald-400">
+                    {formatMoney(allReports.reduce((s, r) => s + r.revenue, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-amber-200">
+                    {formatMoney(allReports.reduce((s, r) => s + r.cogs, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {formatMoney(allReports.reduce((s, r) => s + r.cogsMaterial, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {formatMoney(allReports.reduce((s, r) => s + r.cogsElectricity, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {formatMoney(allReports.reduce((s, r) => s + r.cogsWage, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-red-300">
+                    {formatMoney(allReports.reduce((s, r) => s + r.salaryExpenses, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-red-300">
+                    {formatMoney(allReports.reduce((s, r) => s + r.rentExpenses, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-red-300">
+                    {formatMoney(allReports.reduce((s, r) => s + r.fuelExpenses, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-red-300">
+                    {formatMoney(allReports.reduce((s, r) => s + r.otherExpenses, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-violet-300">
+                    {formatMoney(allReports.reduce((s, r) => s + r.distributorPay, 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right text-violet-200">
+                    {formatMoney(allReports.reduce((s, r) => s + r.netAfterExpenses, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function BulkFieldPanel({
+  field,
+  label,
+  recipes,
+  busy,
+  onReplace,
+}: {
+  field: BulkField;
+  label: string;
+  recipes: ProductCostRecipe[];
+  busy: boolean;
+  onReplace: (from: number, to: number) => void;
+}) {
+  const groups = useMemo(() => collectRecipeValueGroups(recipes, field), [recipes, field]);
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+      <h3 className="font-medium text-zinc-200">{label}</h3>
+      <p className="mt-1 text-xs text-zinc-500">
+        {groups.length} უნიკალური მნიშვნელობა · {recipes.length} პროდუქტი
+      </p>
+
+      {groups.length === 0 ? (
+        <p className="mt-3 text-sm text-zinc-500">მონაცემები არ არის</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[500px] border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-zinc-800 text-zinc-500">
+                <th className="px-2 py-2 text-right">მიმდინარე</th>
+                <th className="px-2 py-2 text-right">პროდუქტი</th>
+                <th className="px-2 py-2 text-right">ახალი</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <BulkReplaceRow
+                  key={g.value}
+                  value={g.value}
+                  count={g.count}
+                  busy={busy}
+                  onReplace={onReplace}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkReplaceRow({
+  value,
+  count,
+  busy,
+  onReplace,
+}: {
+  value: number;
+  count: number;
+  busy: boolean;
+  onReplace: (from: number, to: number) => void;
+}) {
+  const [newVal, setNewVal] = useState("");
+
+  return (
+    <tr className="border-b border-zinc-800/60">
+      <td className="px-2 py-1.5 text-right font-medium text-amber-200">{value}</td>
+      <td className="px-2 py-1.5 text-right text-zinc-400">{count}</td>
+      <td className="px-2 py-1.5 text-right">
+        <input
+          className={smallInputCls}
+          type="number"
+          step="0.01"
+          placeholder="..."
+          value={newVal}
+          onChange={(e) => setNewVal(e.target.value)}
+        />
+      </td>
+      <td className="px-2 py-1.5">
+        <button
+          type="button"
+          className={btnCls}
+          disabled={busy || !newVal.trim()}
+          onClick={() => {
+            const to = parseFloat(newVal);
+            if (Number.isFinite(to)) {
+              onReplace(value, to);
+              setNewVal("");
+            }
+          }}
+        >
+          ყველგან შეცვლა
+        </button>
+      </td>
+    </tr>
   );
 }
 

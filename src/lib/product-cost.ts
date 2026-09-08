@@ -168,6 +168,46 @@ export function calcDistributorPay(
   return round2(fixed + fromPct);
 }
 
+export function replaceRecipeFieldValue(
+  recipes: ProductCostRecipe[],
+  field: keyof Pick<
+    ProductCostRecipe,
+    "materialPerKg" | "elecPrice" | "wagePerUnit" | "sellPrice" | "distPrice"
+  >,
+  from: number,
+  to: number
+): { recipes: ProductCostRecipe[]; changed: number } {
+  const fromR = Math.round(from * 100) / 100;
+  const toR = Math.round(to * 100) / 100;
+  let changed = 0;
+  const next = recipes.map((r) => {
+    const cur = Math.round(Number(r[field]) * 100) / 100;
+    if (cur !== fromR) return r;
+    changed += 1;
+    return { ...r, [field]: toR };
+  });
+  return { recipes: next, changed };
+}
+
+/** უნიკალური მნიშვნელობები ველზე — რამდენ პროდუქტზე გვხვდება */
+export function collectRecipeValueGroups(
+  recipes: ProductCostRecipe[],
+  field: keyof Pick<
+    ProductCostRecipe,
+    "materialPerKg" | "elecPrice" | "wagePerUnit" | "sellPrice" | "distPrice"
+  >
+): { value: number; count: number }[] {
+  const map = new Map<number, number>();
+  for (const r of recipes) {
+    const v = Math.round(Number(r[field]) * 100) / 100;
+    if (!Number.isFinite(v)) continue;
+    map.set(v, (map.get(v) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value - b.value);
+}
+
 export function parseMoneyKa(raw: string): number {
   const s = (raw ?? "").trim().replace(/\s/g, "").replace(",", ".");
   const n = parseFloat(s);

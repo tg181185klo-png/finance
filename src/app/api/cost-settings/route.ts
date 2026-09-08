@@ -4,6 +4,7 @@ import { fetchCostRecipesFromGoogleSheet } from "@/lib/cost-sheet-sync";
 import {
   emptyCostSettings,
   emptyMonthCostSettings,
+  replaceRecipeFieldValue,
   type CostSettings,
   type MonthCostSettings,
   type ProductCostRecipe,
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (authError) return authError;
 
     const body = (await req.json()) as {
-      action: "syncSheet" | "saveRecipes" | "saveMonth" | "replaceAll";
+      action: "syncSheet" | "saveRecipes" | "saveMonth" | "replaceAll" | "bulkReplace";
       forceSheetDefaults?: boolean;
       recipes?: ProductCostRecipe[];
       month?: string;
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
       branch?: Branch;
       materialPerKg?: number;
       electricityPrice?: number;
+      field?: "materialPerKg" | "elecPrice" | "wagePerUnit" | "sellPrice" | "distPrice";
+      fromValue?: number;
+      toValue?: number;
     };
 
     if (body.action === "syncSheet") {
@@ -140,6 +144,47 @@ export async function POST(req: NextRequest) {
         s.costSettings = body.costSettings!;
       });
       return NextResponse.json({ ok: true, costSettings: store.costSettings });
+    }
+
+    if (body.action === "bulkReplace") {
+      const field = body.field;
+      const fromValue = Number(body.fromValue);
+      const toValue = Number(body.toValue);
+      if (!field || !Number.isFinite(fromValue) || !Number.isFinite(toValue)) {
+        return NextResponse.json({ error: "field, fromValue, toValue საჭიროა" }, { status: 400 });
+      }
+
+      let changed = 0;
+      const store = await updateStore((s) => {
+        const cur = s.costSettings ?? emptyCostSettings();
+        const result = replaceRecipeFieldValue(cur.recipes, field, fromValue, toValue);
+        changed = result.changed;
+        const months = { ...cur.months };
+        if (field === "materialPerKg") {
+          const fromR = Math.round(fromValue * 100) / 100;
+          const toR = Math.round(toValue * 100) / 100;
+          for (const [mKey, mVal] of Object.entries(months)) {
+            const branches = { ...mVal.branches };
+            let touched = false;
+            for (const [bKey, bVal] of Object.entries(branches)) {
+              if (!bVal) continue;
+              const curMat = Math.round((bVal.materialPerKg || 0) * 100) / 100;
+              if (curMat === fromR) {
+                branches[bKey as Branch] = { ...bVal, materialPerKg: toR };
+                touched = true;
+              }
+            }
+            if (touched) months[mKey] = { ...mVal, branches };
+          }
+        }
+        s.costSettings = { ...cur, recipes: result.recipes, months };
+      });
+
+      return NextResponse.json({
+        ok: true,
+        costSettings: store.costSettings,
+        changed,
+      });
     }
 
     return NextResponse.json({ error: "უცნობი action" }, { status: 400 });
