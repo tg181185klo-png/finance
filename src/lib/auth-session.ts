@@ -13,7 +13,8 @@ function secret(): string {
 export function adminCredentials() {
   return {
     username: process.env.ADMIN_USERNAME || "admin",
-    password: process.env.ADMIN_PASSWORD || process.env.ADMIN_PIN || "12345",
+    /** მხოლოდ შესვლა — არ იყენებს ADMIN_PIN-ს (PIN რჩება სხვა მოქმედებებისთვის) */
+    password: process.env.ADMIN_PASSWORD || "12345687",
   };
 }
 
