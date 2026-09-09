@@ -12,6 +12,11 @@ import {
   readFromSupabaseStorage,
   writeToSupabaseStorage,
 } from "./supabase-store";
+import {
+  hasSupabaseRestStore,
+  readFromSupabaseRest,
+  writeToSupabaseRest,
+} from "./supabase-rest-store";
 import { mergeStore } from "./store-merge";
 
 export { mergeStore } from "./store-merge";
@@ -20,10 +25,17 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const BLOB_PATH = "fin-dashboard/store.json";
 
+/** Blob suspended / broken — აღარ ვცდილობთ */
+let blobDisabled = process.env.DISABLE_VERCEL_BLOB === "1" || process.env.DISABLE_VERCEL_BLOB === "true";
+
+function isBlobSuspendedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /suspended|blob.*unavailable|store has been suspended/i.test(msg);
+}
+
 function hasBlobStorage() {
-  return Boolean(
-    env.blobToken || process.env.VERCEL_OIDC_TOKEN || process.env.BLOB_STORE_ID,
-  );
+  if (blobDisabled) return false;
+  return Boolean(env.blobToken || process.env.VERCEL_OIDC_TOKEN || process.env.BLOB_STORE_ID);
 }
 
 export const DEFAULT_STORE: Store = mergeStore({});
@@ -34,7 +46,15 @@ async function loadStoreRaw(): Promise<Store | null> {
       const pg = await readFromPostgres();
       if (pg) return mergeStore(pg);
     } catch {
-      // fall through to supabase storage / blob
+      // fall through
+    }
+  }
+  if (hasSupabaseRestStore()) {
+    try {
+      const rest = await readFromSupabaseRest();
+      if (rest) return rest;
+    } catch {
+      // fall through
     }
   }
   if (hasSupabaseStorage()) {
@@ -46,7 +66,12 @@ async function loadStoreRaw(): Promise<Store | null> {
     }
   }
   if (hasBlobStorage()) {
-    return await readFromBlob();
+    try {
+      const blob = await readFromBlob();
+      if (blob) return blob;
+    } catch (err) {
+      if (isBlobSuspendedError(err)) blobDisabled = true;
+    }
   }
   try {
     return await readFromFile();
@@ -66,6 +91,14 @@ async function persistStore(store: Store) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
+  if (hasSupabaseRestStore()) {
+    try {
+      await writeToSupabaseRest(store);
+      return;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
   if (hasSupabaseStorage()) {
     try {
       await writeToSupabaseStorage(store);
@@ -75,8 +108,13 @@ async function persistStore(store: Store) {
     }
   }
   if (hasBlobStorage()) {
-    await writeToBlob(store);
-    return;
+    try {
+      await writeToBlob(store);
+      return;
+    } catch (err) {
+      if (isBlobSuspendedError(err)) blobDisabled = true;
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
   }
   try {
     await writeToFile(store);
@@ -84,20 +122,44 @@ async function persistStore(store: Store) {
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
   }
-  throw new Error(errors[0] ?? "მონაცემების შენახვა ვერ მოხერხდა");
+  throw new Error(
+    errors.find((e) => /suspended/i.test(e))
+      ? "Vercel Blob შეჩერებულია — მონაცემები Supabase-ზე ინახება. განაახლეთ გვერდი და კიდევ სცადეთ."
+      : errors[0] ?? "მონაცემების შენახვა ვერ მოხერხდა"
+  );
 }
 
 async function migrateToPostgresIfNeeded() {
-  if (!hasPostgres()) return;
+  if (!hasPostgres() && !hasSupabaseRestStore()) return;
   try {
-    const existing = await readFromPostgres();
-    if (existing) return;
-    const blob = hasSupabaseStorage()
-      ? await readFromSupabaseStorage().catch(() => null)
-      : null;
-    const vercelBlob = hasBlobStorage() ? await readFromBlob() : null;
-    const file = blob ?? vercelBlob ?? (await readFromFile().catch(() => null));
-    if (file) await writeToPostgres(mergeStore(file));
+    if (hasPostgres()) {
+      const existing = await readFromPostgres();
+      if (existing) return;
+    }
+    if (hasSupabaseRestStore()) {
+      const existing = await readFromSupabaseRest().catch(() => null);
+      if (existing) return;
+    }
+
+    let seed: Store | null = null;
+    if (hasSupabaseStorage()) {
+      seed = await readFromSupabaseStorage().catch(() => null);
+    }
+    if (!seed && hasBlobStorage()) {
+      try {
+        seed = await readFromBlob();
+      } catch (err) {
+        if (isBlobSuspendedError(err)) blobDisabled = true;
+      }
+    }
+    if (!seed) {
+      seed = await readFromFile().catch(() => null);
+    }
+    if (!seed) return;
+
+    const merged = mergeStore(seed);
+    if (hasPostgres()) await writeToPostgres(merged);
+    else if (hasSupabaseRestStore()) await writeToSupabaseRest(merged);
   } catch {
     // Migration is best-effort
   }
@@ -120,7 +182,11 @@ async function readFromBlob(): Promise<Store | null> {
       const res = await fetch(`${meta.url}?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) continue;
       return mergeStore((await res.json()) as Partial<Store>);
-    } catch {
+    } catch (err) {
+      if (isBlobSuspendedError(err)) {
+        blobDisabled = true;
+        throw err;
+      }
       await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
     }
   }
@@ -160,7 +226,6 @@ export async function readStore(): Promise<Store> {
     if (syncMonthObligationCycles(store, m)) changed = true;
   }
 
-  // მიმდინარე თვე ყოველთვის სინქში იყოს (ნარჩენები + ყოველთვიური)
   if (syncMonthObligationCycles(store, currentMonth())) changed = true;
 
   if (!loaded) {
@@ -225,6 +290,7 @@ export function dateOnly(iso: string) {
 
 export function storageMode() {
   if (hasPostgres()) return "supabase-postgres";
+  if (hasSupabaseRestStore()) return "supabase-rest";
   if (hasSupabaseStorage()) return "supabase-storage";
   if (hasBlobStorage()) return "vercel-blob";
   return "local-file";
@@ -233,10 +299,13 @@ export function storageMode() {
 export async function diagnoseStorage() {
   const postgres = await import("./db").then((m) => m.testPostgres());
   const supabase = await import("./supabase-store").then((m) => m.testSupabaseStorage());
+  const supabaseRest = await import("./supabase-rest-store").then((m) => m.testSupabaseRest());
   return {
     mode: storageMode(),
     postgres,
     supabase,
+    supabaseRest,
     blob: hasBlobStorage(),
+    blobDisabled,
   };
 }
