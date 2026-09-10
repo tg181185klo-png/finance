@@ -1,5 +1,7 @@
 "use client";
 
+import BackupPanel from "@/components/BackupPanel";
+
 type NavTarget =
   | "overview"
   | "bank"
@@ -194,6 +196,8 @@ export default function AccountingSystemPanel({ onOpen }: Props) {
           ერთმანეთთანაა დაკავშირებული — რომ ნახო სრული სურათი და გააკონტროლო ფული.
         </p>
       </div>
+
+      <BackupPanel />
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-zinc-200">რას გაძლევს სისტემა</h3>

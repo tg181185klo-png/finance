@@ -300,11 +300,13 @@ export async function diagnoseStorage() {
   const postgres = await import("./db").then((m) => m.testPostgres());
   const supabase = await import("./supabase-store").then((m) => m.testSupabaseStorage());
   const supabaseRest = await import("./supabase-rest-store").then((m) => m.testSupabaseRest());
+  const backups = await import("./store-backup").then((m) => m.testStoreBackups());
   return {
     mode: storageMode(),
     postgres,
     supabase,
     supabaseRest,
+    backups,
     blob: hasBlobStorage(),
     blobDisabled,
   };

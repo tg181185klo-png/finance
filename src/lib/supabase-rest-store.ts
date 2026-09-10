@@ -31,7 +31,7 @@ export function hasSupabaseRestStore() {
 
 let client: SupabaseClient | null = null;
 
-function getRestClient() {
+export function getSupabaseRestClient() {
   if (!client) {
     client = createClient(supabaseRestUrl(), supabaseRestKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -42,7 +42,7 @@ function getRestClient() {
 
 export async function readFromSupabaseRest(): Promise<Store | null> {
   if (!hasSupabaseRestStore()) return null;
-  const sb = getRestClient();
+  const sb = getSupabaseRestClient();
   const { data, error } = await sb.from("finance_store").select("payload").eq("id", "main").maybeSingle();
   if (error) throw new Error(`Supabase store read: ${error.message}`);
   if (!data?.payload) return null;
@@ -51,7 +51,7 @@ export async function readFromSupabaseRest(): Promise<Store | null> {
 
 export async function writeToSupabaseRest(store: Store) {
   if (!hasSupabaseRestStore()) throw new Error("Supabase REST store not configured");
-  const sb = getRestClient();
+  const sb = getSupabaseRestClient();
   const payload = JSON.parse(JSON.stringify(store));
   const { error } = await sb.from("finance_store").upsert(
     {
@@ -62,12 +62,16 @@ export async function writeToSupabaseRest(store: Store) {
     { onConflict: "id" }
   );
   if (error) throw new Error(`Supabase store write: ${error.message}`);
+
+  // ისტორიული ასლი — თუ Blob ისევ გაფუჭდება, აქედან აღდგება
+  const { maybeCreateAutoBackup } = await import("./store-backup");
+  maybeCreateAutoBackup(store, "supabase-rest").catch(() => {});
 }
 
 export async function testSupabaseRest(): Promise<{ ok: boolean; error?: string }> {
   if (!hasSupabaseRestStore()) return { ok: false, error: "Supabase REST not configured" };
   try {
-    const sb = getRestClient();
+    const sb = getSupabaseRestClient();
     const { error } = await sb.from("finance_store").select("id").eq("id", "main").limit(1);
     if (error) return { ok: false, error: error.message };
     return { ok: true };
