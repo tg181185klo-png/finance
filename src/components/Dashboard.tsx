@@ -340,6 +340,21 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     return () => clearInterval(id);
   }, [loading, loadStore]);
 
+  useEffect(() => {
+    if (loading) return;
+    function refreshNow() {
+      if (document.visibilityState === "visible") {
+        loadStore().catch(() => {});
+      }
+    }
+    document.addEventListener("visibilitychange", refreshNow);
+    window.addEventListener("focus", refreshNow);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshNow);
+      window.removeEventListener("focus", refreshNow);
+    };
+  }, [loading, loadStore]);
+
   const activeStore = store ?? mergeStore({});
   const tx = activeStore.transactions;
   const operationalTx = useMemo(() => filterOperationalTransactions(tx), [tx]);
@@ -2388,6 +2403,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       {tab === "inventory" && !loading && (
         <section className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
+            <p className="mt-1 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება ბაზაში (ცალკე შენახვა არ გჭირდებათ).</p>
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
               <p className="mb-3 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება (0.6 წმ შემდეგ)</p>

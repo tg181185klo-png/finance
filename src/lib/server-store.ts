@@ -14,12 +14,14 @@ import {
 } from "./supabase-store";
 import {
   hasSupabaseRestStore,
-  readFromSupabaseRest,
+  readSupabaseRestSnapshot,
   writeToSupabaseRest,
+  StoreConflictError,
 } from "./supabase-rest-store";
 import { mergeStore } from "./store-merge";
 
 export { mergeStore } from "./store-merge";
+export { StoreConflictError } from "./supabase-rest-store";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
@@ -27,6 +29,9 @@ const BLOB_PATH = "fin-dashboard/store.json";
 
 /** Blob suspended / broken — აღარ ვცდილობთ */
 let blobDisabled = process.env.DISABLE_VERCEL_BLOB === "1" || process.env.DISABLE_VERCEL_BLOB === "true";
+
+/** ბოლო წაკითხული Supabase updated_at — conflict-safe ჩაწერისთვის */
+let lastKnownUpdatedAt: string | null = null;
 
 function isBlobSuspendedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -51,8 +56,12 @@ async function loadStoreRaw(): Promise<Store | null> {
   }
   if (hasSupabaseRestStore()) {
     try {
-      const rest = await readFromSupabaseRest();
-      if (rest) return rest;
+      const snap = await readSupabaseRestSnapshot();
+      if (snap) {
+        lastKnownUpdatedAt = snap.updatedAt;
+        return snap.store;
+      }
+      lastKnownUpdatedAt = null;
     } catch {
       // fall through
     }
@@ -80,12 +89,22 @@ async function loadStoreRaw(): Promise<Store | null> {
   }
 }
 
-async function persistStore(store: Store) {
+async function backupAfterWrite(store: Store, source: string) {
+  try {
+    const { backupStoreNow } = await import("./store-backup");
+    await backupStoreNow(store, source);
+  } catch (err) {
+    console.error("backup after write failed", err);
+  }
+}
+
+async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
   const errors: string[] = [];
 
   if (hasPostgres()) {
     try {
       await writeToPostgres(store);
+      await backupAfterWrite(store, "postgres");
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -93,15 +112,19 @@ async function persistStore(store: Store) {
   }
   if (hasSupabaseRestStore()) {
     try {
-      await writeToSupabaseRest(store);
+      const nextAt = await writeToSupabaseRest(store, expectedUpdatedAt);
+      lastKnownUpdatedAt = nextAt;
+      await backupAfterWrite(store, "supabase-rest");
       return;
     } catch (err) {
+      if (err instanceof StoreConflictError) throw err;
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
   if (hasSupabaseStorage()) {
     try {
       await writeToSupabaseStorage(store);
+      await backupAfterWrite(store, "supabase-storage");
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -110,6 +133,7 @@ async function persistStore(store: Store) {
   if (hasBlobStorage()) {
     try {
       await writeToBlob(store);
+      await backupAfterWrite(store, "vercel-blob");
       return;
     } catch (err) {
       if (isBlobSuspendedError(err)) blobDisabled = true;
@@ -118,6 +142,7 @@ async function persistStore(store: Store) {
   }
   try {
     await writeToFile(store);
+    await backupAfterWrite(store, "local-file");
     return;
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
@@ -137,7 +162,7 @@ async function migrateToPostgresIfNeeded() {
       if (existing) return;
     }
     if (hasSupabaseRestStore()) {
-      const existing = await readFromSupabaseRest().catch(() => null);
+      const existing = await readSupabaseRestSnapshot().catch(() => null);
       if (existing) return;
     }
 
@@ -230,7 +255,7 @@ export async function readStore(): Promise<Store> {
 
   if (!loaded) {
     try {
-      await persistStore(store);
+      await persistStore(store, hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined);
     } catch {
       // Storage may be read-only or misconfigured — still return defaults for UI
     }
@@ -240,7 +265,7 @@ export async function readStore(): Promise<Store> {
   const missingIds = (loaded.transactions ?? []).some((t) => !t.id);
   if (changed || missingIds) {
     try {
-      await persistStore(store);
+      await persistStore(store, hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined);
     } catch {
       // Obligation sync failed to persist — return in-memory store anyway
     }
@@ -249,24 +274,26 @@ export async function readStore(): Promise<Store> {
 }
 
 export async function writeStore(store: Store) {
-  await persistStore(store);
+  await persistStore(store, hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined);
 }
 
 export async function updateStore(
   mutator: (store: Store) => void,
-  retries = 4
+  retries = 6
 ): Promise<Store> {
   let lastError: Error | null = null;
 
   for (let i = 0; i < retries; i++) {
     try {
       const store = await readStore();
+      const expectedAt = hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined;
       mutator(store);
-      await writeStore(store);
+      await persistStore(store, expectedAt);
       return store;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+      const conflict = err instanceof StoreConflictError || /StoreConflict|განაახლა/i.test(lastError.message);
+      await new Promise((r) => setTimeout(r, conflict ? 80 * (i + 1) : 120 * (i + 1)));
     }
   }
 

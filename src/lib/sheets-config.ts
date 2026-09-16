@@ -19,4 +19,4 @@ export const PRODUCT_SHEETS = [
 export const PRODUCTS_REFRESH_MS = 60_000;
 
 /** ადმინ პანელში მონაცემების ავტო-განახლება (ფილიალის რეპორტები და ა.შ.) */
-export const STORE_REFRESH_MS = 10_000;
+export const STORE_REFRESH_MS = 4_000;

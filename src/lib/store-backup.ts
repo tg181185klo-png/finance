@@ -19,10 +19,11 @@ export type StoreBackup = StoreBackupMeta & {
   payload: Store;
 };
 
-const WRITE_BACKUP_MIN_MS = 30 * 60 * 1000;
+/** სწრაფი ზედიზედ ჩაწერებისას (მაგ. მარაგის autosave) — მინ. ინტერვალი */
+const WRITE_BACKUP_MIN_MS = 3_000;
 const KEEP_RECENT_DAYS = 7;
 const KEEP_DAILY_DAYS = 90;
-const MAX_BACKUPS = 200;
+const MAX_BACKUPS = 300;
 
 let lastWriteBackupAt = 0;
 
@@ -101,13 +102,29 @@ export async function createStoreBackup(
   };
 }
 
-/** შენახვისას — მაქს. ერთხელ 30 წუთში (დღიური cron ცალკეა) */
+/**
+ * ყოველი წარმატებული შენახვის შემდეგ — მაშინვე ბექაპი.
+ * მხოლოდ 3 წამიანი coalesce სწრაფი ზედიზედ ჩაწერებისთვის.
+ */
 export async function maybeCreateAutoBackup(store: Store, source = "write") {
   if (!canBackupStore()) return null;
   if (Date.now() - lastWriteBackupAt < WRITE_BACKUP_MIN_MS) return null;
   try {
     return await createStoreBackup(store, "auto", source);
-  } catch {
+  } catch (err) {
+    console.error("auto backup failed", err);
+    return null;
+  }
+}
+
+/** იძულებითი ბექაპი (ფილიალის გაგზავნა / მნიშვნელოვანი ჩაწერა) — throttle-ის გარეშე */
+export async function backupStoreNow(store: Store, source = "write") {
+  if (!canBackupStore()) return null;
+  try {
+    lastWriteBackupAt = 0;
+    return await createStoreBackup(store, "auto", source);
+  } catch (err) {
+    console.error("backupStoreNow failed", err);
     return null;
   }
 }
