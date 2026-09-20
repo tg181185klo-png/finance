@@ -288,22 +288,24 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     try {
       const res = await fetch("/api/store", { cache: "no-store" });
       const raw = await res.json();
-      const warning = typeof raw._loadWarning === "string" ? raw._loadWarning : "";
-      const { _loadWarning: _, ...payload } = raw;
-      if (!res.ok && !isStorePayload(payload)) {
+      if (!res.ok) {
         throw new Error(raw.error || "მონაცემების ჩატვირთვა ვერ მოხერხდა");
       }
-      const data = mergeStore(isStorePayload(payload) ? payload : {});
+      if (!isStorePayload(raw)) {
+        throw new Error("მონაცემების ფორმატი არასწორია");
+      }
+      const data = mergeStore(raw);
       if (gen !== storeLoadGen.current) return data;
       setStore(data);
-      setStoreWarning(warning);
+      setStoreWarning("");
       return data;
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "მონაცემების ჩატვირთვა ვერ მოხერხდა";
       if (gen !== storeLoadGen.current) return mergeStore({});
-      const fallback = mergeStore({});
-      setStore(fallback);
-      setStoreWarning(e instanceof Error ? e.message : "მონაცემების ჩატვირთვა ვერ მოხერხდა");
-      return fallback;
+      // შეცდომისას ძველი store არ იშლება ცარიელით — რომ UI შემთხვევით არ გადაწეროს ბაზას
+      setStore((prev) => prev ?? null);
+      setStoreWarning(msg);
+      return null;
     }
   }, []);
 

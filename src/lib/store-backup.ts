@@ -171,42 +171,65 @@ export async function pruneStoreBackups() {
   const sb = getSupabaseRestClient();
   const { data, error } = await sb
     .from("finance_store_backups")
-    .select("id, created_at, reason")
+    .select("id, created_at, reason, meta")
     .order("created_at", { ascending: false })
     .limit(500);
   if (error || !data?.length) return;
 
   const now = Date.now();
   const keep = new Set<string>();
-  const seenDay = new Set<string>();
+  const bestByDay = new Map<string, { id: string; txs: number }>();
 
-  for (const row of data) {
+  type Row = { id: string; created_at: string; reason: string; meta?: Record<string, unknown> | null };
+  const rows = data as Row[];
+
+  const txCount = (row: Row) => Number(row.meta?.transactions ?? 0);
+
+  // ბოლო 7 დღე: ვინახავთ ყველა არა-ცარიელს + მაქს. რამდენიმე ცარიელს
+  let emptyRecentKept = 0;
+  for (const row of rows) {
     const t = new Date(row.created_at).getTime();
     const ageDays = (now - t) / (24 * 60 * 60 * 1000);
+    if (ageDays > KEEP_RECENT_DAYS) continue;
+    const txs = txCount(row);
+    if (txs > 0) {
+      keep.add(row.id);
+    } else if (emptyRecentKept < 3) {
+      keep.add(row.id);
+      emptyRecentKept += 1;
+    }
+  }
+
+  // 7–90 დღე: დღეში ერთი — ყველაზე მდიდარი (ტრანზაქციებით)
+  for (const row of rows) {
+    const t = new Date(row.created_at).getTime();
+    const ageDays = (now - t) / (24 * 60 * 60 * 1000);
+    if (ageDays <= KEEP_RECENT_DAYS || ageDays > KEEP_DAILY_DAYS) continue;
     const day = row.created_at.slice(0, 10);
+    const txs = txCount(row);
+    const prev = bestByDay.get(day);
+    if (!prev || txs > prev.txs) bestByDay.set(day, { id: row.id, txs });
+    if (row.reason === "manual" || row.reason === "pre-restore") keep.add(row.id);
+  }
+  for (const v of bestByDay.values()) keep.add(v.id);
 
-    if (ageDays <= KEEP_RECENT_DAYS) {
-      keep.add(row.id);
-      continue;
-    }
-    if (ageDays <= KEEP_DAILY_DAYS && !seenDay.has(day)) {
-      seenDay.add(day);
-      keep.add(row.id);
-      continue;
-    }
-    if (row.reason === "manual" && ageDays <= KEEP_DAILY_DAYS) {
-      keep.add(row.id);
-    }
+  // ყოველთვის შევინახოთ ისტორიაში ყველაზე დიდი ბექაპები
+  const richest = [...rows].sort((a, b) => txCount(b) - txCount(a)).slice(0, 20);
+  for (const row of richest) {
+    if (txCount(row) > 0) keep.add(row.id);
   }
 
-  // Always keep newest MAX_BACKUPS among selected + fill from newest
-  const ordered = data.map((r) => r.id);
-  for (const id of ordered) {
+  // შეავსე MAX_BACKUPS-მდე ახლიდან (არა-ცარიელი უპირატესი)
+  for (const row of rows) {
     if (keep.size >= MAX_BACKUPS) break;
-    keep.add(id);
+    if (txCount(row) > 0) keep.add(row.id);
+  }
+  for (const row of rows) {
+    if (keep.size >= MAX_BACKUPS) break;
+    keep.add(row.id);
   }
 
-  const toDelete = data.filter((r) => !keep.has(r.id)).map((r) => r.id);
+  const toDelete = rows.filter((r) => !keep.has(r.id)).map((r) => r.id);
   if (!toDelete.length) return;
   for (let i = 0; i < toDelete.length; i += 50) {
     const chunk = toDelete.slice(i, i + 50);

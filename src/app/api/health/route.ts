@@ -14,6 +14,7 @@ export async function GET() {
       diagnosis,
       transactions: store.transactions.length,
       branchReports: store.branchReports.length,
+      employees: store.employees?.length ?? 0,
       sheetId: env.googleSheetId,
       appUrl: env.appUrl || null,
       commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || null,

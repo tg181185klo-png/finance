@@ -98,35 +98,91 @@ async function backupAfterWrite(store: Store, source: string) {
   }
 }
 
-async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
-  const errors: string[] = [];
-  const emptyIncoming =
-    (store.transactions?.length ?? 0) === 0 && (store.branchReports?.length ?? 0) === 0;
+export type PersistOptions = {
+  /** მხოლოდ ადმინის ბექაპიდან აღდგენისთვის — უსაფრთხოების გარდების გვერდის ავლით */
+  allowDestructive?: boolean;
+  /** ბექაპის source ტეგი */
+  backupSource?: string;
+};
 
-  // ცარიელი store-ით სავსე ბაზის გადაწერა აკრძალულია
-  if (emptyIncoming && hasSupabaseRestStore()) {
-    try {
-      const snap = await readSupabaseRestSnapshot();
-      const existingTxs = snap?.store.transactions?.length ?? 0;
-      const existingReports = snap?.store.branchReports?.length ?? 0;
-      if (existingTxs > 0 || existingReports > 0) {
-        throw new Error(
-          "ცარიელი მონაცემებით შენახვა უარყოფილია — ბაზაში უკვე არის ტრანზაქციები/რეპორტები"
-        );
-      }
-    } catch (err) {
-      if (err instanceof Error && /ცარიელი მონაცემებით/.test(err.message)) throw err;
-      // თუ წაკითხვა ვერ მოხერხდა — უსაფრთხოებისთვის ცარიელს მაინც არ ვწერთ
-      if (emptyIncoming) {
-        throw new Error("ცარიელი მონაცემების შენახვა ვერ მოხერხდა — ბაზის შემოწმება ვერ გაკეთდა");
-      }
+function storeCounts(store: Store) {
+  return {
+    txs: store.transactions?.length ?? 0,
+    reports: store.branchReports?.length ?? 0,
+    employees: store.employees?.length ?? 0,
+  };
+}
+
+/**
+ * იცავს ბაზას შემთხვევითი გაწმენდისგან:
+ * 1) ცარიელი store არ გადაწერს სავსე ბაზას
+ * 2) მკვეთრი შემცირება (ტრანზაქციები/რეპორტები/თანამშრომლები) უარყოფილია
+ */
+async function assertSafePersist(incoming: Store, allowDestructive?: boolean) {
+  if (allowDestructive) return;
+  if (!hasSupabaseRestStore()) return;
+
+  let existing: Store | null = null;
+  try {
+    const snap = await readSupabaseRestSnapshot();
+    existing = snap?.store ?? null;
+  } catch {
+    const empty =
+      (incoming.transactions?.length ?? 0) === 0 &&
+      (incoming.branchReports?.length ?? 0) === 0;
+    if (empty) {
+      throw new Error("ცარიელი მონაცემების შენახვა ვერ მოხერხდა — ბაზის შემოწმება ვერ გაკეთდა");
+    }
+    // სავსე ჩაწერა — თუ წაკითხვა ვერ მოხერხდა, მაინც ვუშვებთ (ფილიალის გაგზავნა არ უნდა ჩაჭრას)
+    return;
+  }
+
+  if (!existing) return;
+
+  const cur = storeCounts(existing);
+  const next = storeCounts(incoming);
+
+  if (cur.txs > 0 || cur.reports > 0) {
+    if (next.txs === 0 && next.reports === 0) {
+      throw new Error(
+        "ცარიელი მონაცემებით შენახვა უარყოფილია — ბაზაში უკვე არის ტრანზაქციები/რეპორტები"
+      );
     }
   }
+
+  // მკვეთრი შემცირება: >50% და მინ. 30 ჩანაწერის დაკარგვა
+  if (cur.txs >= 30 && next.txs < cur.txs * 0.5 && cur.txs - next.txs >= 30) {
+    throw new Error(
+      `შენახვა უარყოფილია — ტრანზაქციები არ შეიძლება შემცირდეს ${cur.txs}-დან ${next.txs}-მდე`
+    );
+  }
+  if (cur.reports >= 5 && next.reports < cur.reports * 0.5 && cur.reports - next.reports >= 3) {
+    throw new Error(
+      `შენახვა უარყოფილია — რეპორტები არ შეიძლება შემცირდეს ${cur.reports}-დან ${next.reports}-მდე`
+    );
+  }
+  // თანამშრომლების მასობრივი წაშლა (ფილიალის გაგზავნა ამას ვერ გააკეთებს)
+  if (cur.employees >= 5 && next.employees < 3 && next.employees < cur.employees * 0.4) {
+    throw new Error(
+      `შენახვა უარყოფილია — თანამშრომლები არ შეიძლება შემცირდეს ${cur.employees}-დან ${next.employees}-მდე`
+    );
+  }
+}
+
+async function persistStore(
+  store: Store,
+  expectedUpdatedAt?: string | null,
+  options?: PersistOptions
+) {
+  const errors: string[] = [];
+  await assertSafePersist(store, options?.allowDestructive);
+
+  const backupSource = options?.backupSource ?? "write";
 
   if (hasPostgres()) {
     try {
       await writeToPostgres(store);
-      await backupAfterWrite(store, "postgres");
+      await backupAfterWrite(store, `postgres:${backupSource}`);
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -136,17 +192,19 @@ async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
     try {
       const nextAt = await writeToSupabaseRest(store, expectedUpdatedAt);
       lastKnownUpdatedAt = nextAt;
-      await backupAfterWrite(store, "supabase-rest");
+      await backupAfterWrite(store, `supabase-rest:${backupSource}`);
       return;
     } catch (err) {
       if (err instanceof StoreConflictError) throw err;
+      // უსაფრთხოების გარდა — არ ვცდილობთ სხვა backend-ზე ცარიელ/საშიშ ჩაწერას
+      if (err instanceof Error && /უარყოფილია|ვერ მოხერხდა — ბაზის/.test(err.message)) throw err;
       errors.push(err instanceof Error ? err.message : String(err));
     }
   }
   if (hasSupabaseStorage()) {
     try {
       await writeToSupabaseStorage(store);
-      await backupAfterWrite(store, "supabase-storage");
+      await backupAfterWrite(store, `supabase-storage:${backupSource}`);
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -155,7 +213,7 @@ async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
   if (hasBlobStorage()) {
     try {
       await writeToBlob(store);
-      await backupAfterWrite(store, "vercel-blob");
+      await backupAfterWrite(store, `vercel-blob:${backupSource}`);
       return;
     } catch (err) {
       if (isBlobSuspendedError(err)) blobDisabled = true;
@@ -164,7 +222,7 @@ async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
   }
   try {
     await writeToFile(store);
-    await backupAfterWrite(store, "local-file");
+    await backupAfterWrite(store, `local-file:${backupSource}`);
     return;
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
@@ -291,26 +349,55 @@ export async function readStore(): Promise<Store> {
   return store;
 }
 
-export async function writeStore(store: Store) {
-  await persistStore(store, hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined);
+export async function writeStore(store: Store, options?: PersistOptions) {
+  await persistStore(
+    store,
+    hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined,
+    options
+  );
 }
 
 export async function updateStore(
   mutator: (store: Store) => void,
-  retries = 6
+  retriesOrOptions: number | (PersistOptions & { retries?: number }) = 6
 ): Promise<Store> {
+  const options: PersistOptions & { retries?: number } =
+    typeof retriesOrOptions === "number" ? { retries: retriesOrOptions } : retriesOrOptions;
+  const retries = options.retries ?? 6;
   let lastError: Error | null = null;
 
   for (let i = 0; i < retries; i++) {
     try {
       const store = await readStore();
+      // თუ ბაზა ვერ ჩაიტვირთა — ცარიელ default-ზე მუტაცია/ჩაწერა აკრძალულია
+      if (
+        !options.allowDestructive &&
+        hasSupabaseRestStore() &&
+        (store.transactions?.length ?? 0) === 0 &&
+        (store.branchReports?.length ?? 0) === 0
+      ) {
+        const snap = await readSupabaseRestSnapshot().catch(() => null);
+        const existingTxs = snap?.store.transactions?.length ?? 0;
+        const existingReports = snap?.store.branchReports?.length ?? 0;
+        if (existingTxs > 0 || existingReports > 0) {
+          throw new Error("ბაზის ჩატვირთვა ვერ მოხერხდა — შენახვა გადაიდო რომ მონაცემები არ დაიკარგოს");
+        }
+        // ბაზა მართლა ცარიელია ან წაკითხვა ჩაიშალა — ხელახლა ვცდილობთ
+        if (!snap && i < retries - 1) {
+          await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+          continue;
+        }
+      }
       const expectedAt = hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined;
       mutator(store);
-      await persistStore(store, expectedAt);
+      await persistStore(store, expectedAt, options);
       return store;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      const conflict = err instanceof StoreConflictError || /StoreConflict|განაახლა/i.test(lastError.message);
+      const conflict =
+        err instanceof StoreConflictError || /StoreConflict|განაახლა/i.test(lastError.message);
+      const refused = /უარყოფილია|გადაიდო|ვერ მოხერხდა — ბაზის/.test(lastError.message);
+      if (refused && !conflict) throw lastError;
       await new Promise((r) => setTimeout(r, conflict ? 80 * (i + 1) : 120 * (i + 1)));
     }
   }

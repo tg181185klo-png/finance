@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       // ჯერ მიმდინარე მდგომარეობის ასლი — შემთხვევითი აღდგენისგან დასაცავად
       const current = await readStore();
       await createStoreBackup(current, "pre-restore", "admin");
-      await writeStore(bak.payload);
+      await writeStore(bak.payload, { allowDestructive: true, backupSource: "restore" });
 
       return NextResponse.json({
         ok: true,

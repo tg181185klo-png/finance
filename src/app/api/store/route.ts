@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
-import { mergeStore } from "@/lib/store-merge";
 import { readStore } from "@/lib/server-store";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +15,10 @@ export async function GET() {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
-    const store = mergeStore({});
+    // ცარიელ store-ს აღარ ვაბრუნებთ წარმატებულ პასუხად — UI არ უნდა იფიქროს რომ ბაზა ცარიელია
     return NextResponse.json(
-      { ...store, _loadWarning: msg },
-      { headers: { "Cache-Control": "no-store, max-age=0" } }
+      { error: msg },
+      { status: 503, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   }
 }

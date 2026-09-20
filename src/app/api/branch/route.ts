@@ -156,7 +156,7 @@ async function submitBranchReport(body: SubmitBody) {
         }
         recordSubmission(report, reportingEmployee, now);
         noopReport = report;
-      });
+      }, { backupSource: "branch-portal" });
       return { ok: true as const, report: noopReport!, merged: true as const, noop: true as const };
     }
   }
@@ -221,7 +221,7 @@ async function submitBranchReport(body: SubmitBody) {
           })
         );
       }
-    });
+    }, { backupSource: "branch-portal" });
 
     return { ok: true as const, report: mergedReport!, merged: true as const };
   }
@@ -440,7 +440,7 @@ async function submitBranchReport(body: SubmitBody) {
         })
       );
     }
-  });
+  }, { backupSource: "branch-portal" });
 
   return { ok: true as const, report };
 }
