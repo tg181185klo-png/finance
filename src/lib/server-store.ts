@@ -100,6 +100,28 @@ async function backupAfterWrite(store: Store, source: string) {
 
 async function persistStore(store: Store, expectedUpdatedAt?: string | null) {
   const errors: string[] = [];
+  const emptyIncoming =
+    (store.transactions?.length ?? 0) === 0 && (store.branchReports?.length ?? 0) === 0;
+
+  // ცარიელი store-ით სავსე ბაზის გადაწერა აკრძალულია
+  if (emptyIncoming && hasSupabaseRestStore()) {
+    try {
+      const snap = await readSupabaseRestSnapshot();
+      const existingTxs = snap?.store.transactions?.length ?? 0;
+      const existingReports = snap?.store.branchReports?.length ?? 0;
+      if (existingTxs > 0 || existingReports > 0) {
+        throw new Error(
+          "ცარიელი მონაცემებით შენახვა უარყოფილია — ბაზაში უკვე არის ტრანზაქციები/რეპორტები"
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && /ცარიელი მონაცემებით/.test(err.message)) throw err;
+      // თუ წაკითხვა ვერ მოხერხდა — უსაფრთხოებისთვის ცარიელს მაინც არ ვწერთ
+      if (emptyIncoming) {
+        throw new Error("ცარიელი მონაცემების შენახვა ვერ მოხერხდა — ბაზის შემოწმება ვერ გაკეთდა");
+      }
+    }
+  }
 
   if (hasPostgres()) {
     try {
@@ -253,12 +275,8 @@ export async function readStore(): Promise<Store> {
 
   if (syncMonthObligationCycles(store, currentMonth())) changed = true;
 
+  // ცარიელ default-ს ბაზაში აღარ ვწერთ — წაკითხვის შეცდომისას ძველი მონაცემები არ უნდა წაიშალოს
   if (!loaded) {
-    try {
-      await persistStore(store, hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined);
-    } catch {
-      // Storage may be read-only or misconfigured — still return defaults for UI
-    }
     return store;
   }
 

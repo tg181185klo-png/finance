@@ -102,12 +102,20 @@ export async function createStoreBackup(
   };
 }
 
+function isSuspiciouslyEmpty(store: Store) {
+  const txs = store.transactions?.length ?? 0;
+  const reports = store.branchReports?.length ?? 0;
+  return txs === 0 && reports === 0;
+}
+
 /**
  * ყოველი წარმატებული შენახვის შემდეგ — მაშინვე ბექაპი.
  * მხოლოდ 3 წამიანი coalesce სწრაფი ზედიზედ ჩაწერებისთვის.
+ * ცარიელ store-ს არ ვბექაპებთ — რომ ცარიელი ასლები არ გადაფაროს ისტორიას.
  */
 export async function maybeCreateAutoBackup(store: Store, source = "write") {
   if (!canBackupStore()) return null;
+  if (isSuspiciouslyEmpty(store)) return null;
   if (Date.now() - lastWriteBackupAt < WRITE_BACKUP_MIN_MS) return null;
   try {
     return await createStoreBackup(store, "auto", source);
@@ -120,6 +128,7 @@ export async function maybeCreateAutoBackup(store: Store, source = "write") {
 /** იძულებითი ბექაპი (ფილიალის გაგზავნა / მნიშვნელოვანი ჩაწერა) — throttle-ის გარეშე */
 export async function backupStoreNow(store: Store, source = "write") {
   if (!canBackupStore()) return null;
+  if (isSuspiciouslyEmpty(store) && source !== "admin-manual") return null;
   try {
     lastWriteBackupAt = 0;
     return await createStoreBackup(store, "auto", source);
