@@ -78,7 +78,7 @@ export interface Sale {
   orderCompletedAt?: string;
   /** კონსიგნაცია / ბე — დაგეგმილი გადახდის თარიღი (YYYY-MM-DD) */
   creditDueDate?: string;
-  /** polimeri-distribucia აპის შეკვეთის ID */
+  /** polimeridistribucia აპის შეკვეთის ID */
   distribuciaOrderId?: string;
 }
 

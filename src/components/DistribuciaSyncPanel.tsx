@@ -7,7 +7,7 @@ const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2
 const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
 
-const APP_URL = "https://polimeri-distribucia.netlify.app";
+const APP_URL = "https://polimeridistribucia.netlify.app";
 
 type DayCustomer = {
   storeName: string;
@@ -115,7 +115,7 @@ export default function DistribuciaSyncPanel({ onSynced }: Props) {
           <p className="mt-1 text-xs text-zinc-500">
             მონაცემები იღება{" "}
             <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline">
-              polimeri-distribucia.netlify.app
+              polimeridistribucia.netlify.app
             </a>
             -დან · დღიური შეკვეთები და მომხმარებლები
           </p>

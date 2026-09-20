@@ -311,7 +311,7 @@ export default function TransactionTable({
                     {t.source === "branch" && <span className="ml-1 text-xs text-zinc-500">📱</span>}
                     {t.source === "import" && <span className="ml-1 text-xs text-zinc-500">📊</span>}
                     {t.source === "distribucia" && (
-                      <span className="ml-1 text-xs text-zinc-500" title="polimeri აპი">
+                      <span className="ml-1 text-xs text-zinc-500" title="დისტრიბუციის აპი">
                         🚐
                       </span>
                     )}
