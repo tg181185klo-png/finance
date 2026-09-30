@@ -216,6 +216,43 @@ export function buildDistribuciaPreview(orders: DistribuciaOrder[], fromDate: st
   };
 }
 
+/** შიგთავსის ანაბეჭდი — გადახდის მეთოდს არ ითვლის, რომ ხელით შეცვლილი გადახდა არ წაიშალოს */
+export function distribuciaFingerprint(
+  sales: Pick<Sale, "id" | "date" | "productCode" | "productName" | "quantity" | "amount" | "buyerName">[]
+) {
+  return sales
+    .map(
+      (s) =>
+        `${s.id}|${s.date.slice(0, 16)}|${s.productCode}|${s.productName}|${s.quantity}|${s.amount}|${s.buyerName ?? ""}`
+    )
+    .sort()
+    .join("\n");
+}
+
+export function applyDistribuciaOrders(
+  transactions: Transaction[],
+  orders: DistribuciaOrder[],
+  fromDate: string
+): { transactions: Transaction[]; unchanged: boolean; imported: number; removed: number } {
+  const replacing = transactions.filter((t): t is Sale => {
+    if (!isDistribuciaSale(t) || t.type !== "sale") return false;
+    return t.date.slice(0, 10) >= fromDate;
+  });
+  const paymentMap = buildDistribuciaPaymentMap(replacing);
+  const newSales = ordersToSales(orders, fromDate, "დისტრიბუცია", paymentMap);
+  const unchanged = distribuciaFingerprint(replacing) === distribuciaFingerprint(newSales);
+  if (unchanged) {
+    return { transactions, unchanged: true, imported: newSales.length, removed: 0 };
+  }
+  const kept = removeDistribuciaSales(transactions, fromDate);
+  return {
+    transactions: [...newSales, ...kept],
+    unchanged: false,
+    imported: newSales.length,
+    removed: transactions.length - kept.length,
+  };
+}
+
 export function removeDistribuciaSales<T extends { id: string; source?: string; date: string }>(
   transactions: T[],
   fromDate: string

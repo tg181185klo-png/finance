@@ -20,27 +20,53 @@ export type DashboardTabId =
 
 export type DashboardTab = { id: DashboardTabId; label: string };
 
-/** სრული სია (ანბანის მიხედვით ka) */
-export const ALL_DASHBOARD_TABS: DashboardTab[] = (
-  [
-    { id: "balances", label: "ბალანსები" },
-    { id: "payments", label: "გადახდები" },
-    { id: "employee-bonus", label: "გაყიდვის ბონუსი" },
-    { id: "obligations", label: "ვალდებულებები" },
-    { id: "employees", label: "თანამშრომლები" },
-    { id: "costing", label: "თვითღირებულება" },
-    { id: "clients", label: "კლიენტები" },
-    { id: "inventory", label: "მარაგი" },
-    { id: "overview", label: "მიმოხილვა" },
-    { id: "owner", label: "მფლობელის მაჩვენებლები" },
-    { id: "reports", label: "რეპორტები" },
-    { id: "bank", label: "საბანკო ანგარიში" },
-    { id: "branches", label: "ფილიალები" },
-    { id: "main", label: "ჩაწერა" },
-    { id: "system", label: "ჩემი აღრიცხვის სისტემა" },
-    { id: "expenses", label: "ხარჯები" },
-  ] as DashboardTab[]
-).sort((a, b) => a.label.localeCompare(b.label, "ka"));
+/** მენიუ აღრიცხვის წიგნების მიხედვით, არა ანბანით */
+export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = [
+  {
+    label: "შემოსავალი",
+    tabs: [
+      { id: "main", label: "შემოსავლის ჩაწერა" },
+      { id: "clients", label: "მომხმარებლები" },
+      { id: "employee-bonus", label: "ვინ მოიყვანა და ბონუსი" },
+    ],
+  },
+  {
+    label: "ხარჯი",
+    tabs: [{ id: "expenses", label: "ხარჯის ჩაწერა" }],
+  },
+  {
+    label: "ვალდებულებები",
+    tabs: [
+      { id: "obligations", label: "მიმდინარე ვალდებულებები" },
+      { id: "balances", label: "საიდან გავისტუმრო" },
+      { id: "payments", label: "გადახდები" },
+      { id: "bank", label: "საბანკო ანგარიში" },
+    ],
+  },
+  {
+    label: "რეპორტები",
+    tabs: [
+      { id: "reports", label: "რეპორტების ამოღება" },
+      { id: "overview", label: "მიმოხილვა" },
+      { id: "owner", label: "მფლობელის მაჩვენებლები" },
+    ],
+  },
+  {
+    label: "სამუშაო",
+    tabs: [
+      { id: "branches", label: "ფილიალები" },
+      { id: "employees", label: "თანამშრომლები" },
+      { id: "inventory", label: "მარაგი" },
+      { id: "costing", label: "თვითღირებულება" },
+    ],
+  },
+  {
+    label: "სისტემა",
+    tabs: [{ id: "system", label: "აღრიცხვის რუკა" }],
+  },
+];
+
+export const ALL_DASHBOARD_TABS: DashboardTab[] = DASHBOARD_MENU_GROUPS.flatMap((g) => g.tabs);
 
 const HIDDEN_KEY = "finance-dashboard-hidden-tabs";
 

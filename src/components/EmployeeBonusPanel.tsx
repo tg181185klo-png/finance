@@ -10,6 +10,7 @@ import {
   buildBonusSaleLines,
   buildClientTradingSummary,
   buildEmployeeBonusSummary,
+  buildRecordedSaleBonusLines,
 } from "@/lib/employee-bonus-report";
 import { branchDriverEmployees } from "@/lib/branch-drivers";
 import type { ResolvedPeriod } from "@/lib/period-filter";
@@ -25,6 +26,7 @@ type View = "daily" | "employees" | "clients";
 
 type Props = {
   branchReports: BranchDailyReport[];
+  transactions?: Transaction[];
   customers: Customer[];
   employees: Employee[];
   period: ResolvedPeriod;
@@ -37,6 +39,7 @@ type Props = {
 
 export default function EmployeeBonusPanel({
   branchReports,
+  transactions = [],
   customers,
   employees,
   period,
@@ -49,10 +52,13 @@ export default function EmployeeBonusPanel({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [err, setErr] = useState("");
 
-  const lines = useMemo(
-    () => buildBonusSaleLines(branchReports, customers, period.from, period.to, branch),
-    [branchReports, customers, period.from, period.to, branch]
-  );
+  const lines = useMemo(() => {
+    const fromReports = buildBonusSaleLines(branchReports, customers, period.from, period.to, branch);
+    const fromRecorded = buildRecordedSaleBonusLines(transactions, customers, period.from, period.to, branch);
+    return [...fromReports, ...fromRecorded].sort(
+      (a, b) => b.date.localeCompare(a.date) || b.amount - a.amount
+    );
+  }, [branchReports, transactions, customers, period.from, period.to, branch]);
 
   const filteredLines = useMemo(
     () => (dayFilter ? lines.filter((l) => l.date === dayFilter) : lines),
@@ -80,6 +86,22 @@ export default function EmployeeBonusPanel({
     setBusyKey(key);
     setErr("");
     try {
+      if (line.reportId.startsWith("tx:")) {
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "updateDriver",
+            id: line.clientSaleId,
+            driverEmployeeId: emp.id,
+            driverEmployeeName: emp.name,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "შეცდომა");
+        await onRefresh({ transactions: data.transactions });
+        return;
+      }
       const res = await fetch("/api/branch-sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,7 +131,7 @@ export default function EmployeeBonusPanel({
       <div className="rounded-xl border border-violet-900/40 bg-violet-950/15 p-4">
         <h2 className="text-lg font-semibold">თანამშრომლის გაყიდვების რეპორტი</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          ფილიალის პორტალიდან გაგზავნილი გაყიდვები · პერიოდი: {period.label} · ბონუსი: ახალი კლიენტი{" "}
+          ფილიალის რეპორტი და შემოსავალში მითითებული მომყოლი · პერიოდი: {period.label} · ბონუსი: ახალი კლიენტი{" "}
           {BONUS_RATE_NEW * 100}% · ძველი {BONUS_RATE_LEGACY * 100}%
         </p>
         <p className="mt-1 text-xs text-violet-300/80">

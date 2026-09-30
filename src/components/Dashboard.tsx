@@ -31,6 +31,7 @@ import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
 import CostingPanel from "@/components/CostingPanel";
 import {
+  DASHBOARD_MENU_GROUPS,
   hiddenDashboardTabs,
   readHiddenTabIds,
   visibleDashboardTabs,
@@ -184,6 +185,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [otherSaleName, setOtherSaleName] = useState("");
   const [saleProductListOpen, setSaleProductListOpen] = useState(false);
   const [buyerName, setBuyerName] = useState("");
+  const [saleEmployeeId, setSaleEmployeeId] = useState("");
+  const [distribuciaNote, setDistribuciaNote] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
   const [creditDueDate, setCreditDueDate] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
@@ -197,6 +200,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [eAmount, setEAmount] = useState("");
   const [eRecurrence, setERecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [eComment, setEComment] = useState("");
+  const [eSpentBy, setESpentBy] = useState("");
   const [ePayMethod, setEPayMethod] = useState<ExpensePaymentMethod>("ქეში (ნაღდი)");
   const [eDate, setEDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sDate, setSDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -344,6 +348,43 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   useEffect(() => {
     if (loading) return;
+    let stopped = false;
+    async function syncDistribucia() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch("/api/distribucia/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auto: true }),
+        });
+        const data = await res.json();
+        if (stopped || !res.ok) return;
+        if (data.unchanged) {
+          setDistribuciaNote("დისტრიბუცია სინქრონშია");
+          return;
+        }
+        await loadStore();
+        setDistribuciaNote(
+          `დისტრიბუცია განახლდა · ${data.imported ?? 0} ხაზი`
+        );
+      } catch {
+        if (!stopped) setDistribuciaNote("დისტრიბუციის სინქრონი ამ წუთში ვერ მოხერხდა");
+      }
+    }
+    void syncDistribucia();
+    const id = setInterval(syncDistribucia, 60_000);
+    window.addEventListener("focus", syncDistribucia);
+    document.addEventListener("visibilitychange", syncDistribucia);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      window.removeEventListener("focus", syncDistribucia);
+      document.removeEventListener("visibilitychange", syncDistribucia);
+    };
+  }, [loading, loadStore]);
+
+  useEffect(() => {
+    if (loading) return;
     function refreshNow() {
       if (document.visibilityState === "visible") {
         loadStore().catch(() => {});
@@ -378,6 +419,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const mainTabRows = useMemo(() => {
     return operationalTx
       .filter((t) => {
+        if (t.type !== "sale") return false;
         if (!txInPeriod(t.date, period.from, period.to)) return false;
         if (filter !== "ყველა" && !txMatchesBranchFilter(t, filter)) return false;
         return true;
@@ -745,7 +787,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       comment: sComment.trim() || (saleIsOther ? productName : `${selected.name} × ${qty}`),
       recurrence: sRecurrence,
       source: "admin",
-      buyerName: isCreditSale ? buyerName.trim() || undefined : undefined,
+      buyerName: buyerName.trim() || undefined,
+      employeeName: (activeStore.employees ?? []).find((emp) => emp.id === saleEmployeeId)?.name,
       creditPaid: isCreditSale ? advance : undefined,
       creditDueDate: isCreditSale ? due : undefined,
     };
@@ -773,6 +816,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setSComment("");
       setOtherSaleName("");
       setBuyerName("");
+      setSaleEmployeeId("");
       setCreditAdvance("");
       setCreditDueDate("");
     } catch (e) {
@@ -795,6 +839,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       recurrence: eRecurrence,
       source: "admin",
       expensePaymentMethod: ePayMethod,
+      spentBy: eSpentBy.trim() || undefined,
     };
     try {
       const data = await apiTx("POST", { transaction: expense });
@@ -811,6 +856,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setSaveMsg("ხარჯი შენახულია ✓");
       setEAmount("");
       setEComment("");
+      setESpentBy("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "ხარჯი ვერ შეინახა");
     }
@@ -1209,6 +1255,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 {loading
                   ? "იტვირთება..."
                   : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
+                {distribuciaNote && <span className="ml-2 text-violet-300">{distribuciaNote}</span>}
                 {saveMsg && <span className="ml-2 text-emerald-400">{saveMsg}</span>}
               </p>
             </div>
@@ -1241,11 +1288,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   setTab(v as Tab);
                 }}
               >
-                {menuTabs.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
+                {DASHBOARD_MENU_GROUPS.map((group) => {
+                  const tabs = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
+                  if (!tabs.length) return null;
+                  return (
+                    <optgroup key={group.label} label={group.label}>
+                      {tabs.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
                 {hiddenMenuTabs.length > 0 && (
                   <optgroup label="დამალული — გამოსაჩენად აირჩიე">
                     {hiddenMenuTabs.map((t) => (
@@ -1430,8 +1485,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           )}
 
           <div className="mb-6 grid gap-4 lg:grid-cols-2">
-            <form onSubmit={addSale} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <h2 className="mb-4 text-lg font-semibold text-emerald-400">გაყიდვა</h2>
+            <form onSubmit={addSale} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-2">
+              <h2 className="mb-1 text-lg font-semibold text-emerald-400">შემოსავალი</h2>
+              <p className="mb-4 text-xs text-zinc-500">
+                რა შემოვიდა, ვინ იყო მომხმარებელი და ვინ მოიყვანა — ბონუსი იმას ერიცხება.
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="თარიღი">
                   <input type="date" className={inputCls} value={sDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setSDate(e.target.value)} required />
@@ -1564,11 +1622,24 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                     {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </Field>
+                <Field label="მომხმარებელი">
+                  <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="სახელი ან კომპანია" />
+                </Field>
+                <Field label="ვინ მოიყვანა (ბონუსი)">
+                  <select className={inputCls} value={saleEmployeeId} onChange={(e) => setSaleEmployeeId(e.target.value)}>
+                    <option value="">— არ არის —</option>
+                    {(activeStore.employees ?? [])
+                      .filter((emp) => emp.active)
+                      .map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name}
+                          {emp.branch ? ` · ${emp.branch}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
                 {(payStatus === "ბე (ავანსი)" || payMethod === "კონსიგნაცია") && (
                   <>
-                    <Field label="მყიდველი / კომპანია">
-                      <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="მაგ: შპს ვოლფ ინვესტი" />
-                    </Field>
                     {payStatus === "ბე (ავანსი)" && payMethod !== "კონსიგნაცია" && (
                       <>
                         <Field label="ავანსი / ბე (₾)">
@@ -1615,44 +1686,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               </button>
             </form>
 
-            <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <h2 className="mb-4 text-lg font-semibold text-red-400">ხარჯი</h2>
-              <p className="mb-3 text-xs text-zinc-500">ხარჯის თარიღი — სექტემბრის 2026-დან</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="თარიღი">
-                  <input type="date" className={inputCls} value={eDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setEDate(e.target.value)} required />
-                </Field>
-                <Field label="ფილიალი">
-                  <select className={inputCls} value={eBranch} onChange={(e) => setEBranch(e.target.value as ExpenseBranch)}>
-                    {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                </Field>
-                <Field label="კატეგორია">
-                  <select className={inputCls} value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
-                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </Field>
-                <Field label="თანხა (₾)"><input className={inputCls} type="number" min={0} step={0.01} value={eAmount} onChange={(e) => setEAmount(e.target.value)} required /></Field>
-                <Field label="გადახდის მეთოდი">
-                  <select className={inputCls} value={ePayMethod} onChange={(e) => setEPayMethod(e.target.value as ExpensePaymentMethod)}>
-                    {EXPENSE_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </Field>
-                <Field label="ტიპი (მოგება-ზარალი)">
-                  <select className={inputCls} value={eRecurrence} onChange={(e) => setERecurrence(e.target.value as TxRecurrence)}>
-                    {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </Field>
-                <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={eComment} onChange={(e) => setEComment(e.target.value)} placeholder="მაგ: ივანე ხელფასი, ელექტროენერგია..." /></Field></div>
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">ხარჯი ავტომატურად ემთხვევა ვალდებულებას კატეგორიით ან სახელით</p>
-              <button type="submit" className={`${btnCls} mt-4 bg-red-600 hover:bg-red-500`}>დაფიქსირება</button>
-            </form>
           </div>
 
           <section className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
             <h3 className="mb-2 font-semibold">
-              {filter === "ყველა" ? "ტრანზაქციები" : `ტრანზაქციები — ${filter}`}
+              {filter === "ყველა" ? "შემოსავლები" : `შემოსავლები — ${filter}`}
               <span className="ml-2 text-sm font-normal text-zinc-500">
                 ({mainTabGroupCount}) · {period.label}
               </span>
@@ -1950,11 +1988,62 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       )}
 
       {tab === "expenses" && !loading && (
+        <div className="space-y-6">
+          <form onSubmit={addExpense} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <h2 className="mb-1 text-lg font-semibold text-red-400">ხარჯი</h2>
+            <p className="mb-4 text-xs text-zinc-500">ვინ დახარჯა, რა თანხა და რაში გავიდა. თარიღი — სექტემბრის 2026-დან.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="თარიღი">
+                <input type="date" className={inputCls} value={eDate} min={OPERATIONAL_DATA_FROM} onChange={(e) => setEDate(e.target.value)} required />
+              </Field>
+              <Field label="ფილიალი">
+                <select className={inputCls} value={eBranch} onChange={(e) => setEBranch(e.target.value as ExpenseBranch)}>
+                  {EXPENSE_BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </Field>
+              <Field label="ვინ დახარჯა">
+                <input
+                  className={inputCls}
+                  list="expense-spent-by"
+                  value={eSpentBy}
+                  onChange={(e) => setESpentBy(e.target.value)}
+                  placeholder="სახელი"
+                />
+                <datalist id="expense-spent-by">
+                  {(activeStore.employees ?? [])
+                    .filter((emp) => emp.active)
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.name} />
+                    ))}
+                </datalist>
+              </Field>
+              <Field label="რაში გავიდა">
+                <select className={inputCls} value={category} onChange={(e) => setCategory(e.target.value as ExpenseCategory)}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <Field label="თანხა (₾)"><input className={inputCls} type="number" min={0} step={0.01} value={eAmount} onChange={(e) => setEAmount(e.target.value)} required /></Field>
+              <Field label="საიდან გაისტუმრა">
+                <select className={inputCls} value={ePayMethod} onChange={(e) => setEPayMethod(e.target.value as ExpensePaymentMethod)}>
+                  {EXPENSE_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label="ტიპი (მოგება-ზარალი)">
+                <select className={inputCls} value={eRecurrence} onChange={(e) => setERecurrence(e.target.value as TxRecurrence)}>
+                  {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </Field>
+              <div className="sm:col-span-2"><Field label="კომენტარი"><input className={inputCls} value={eComment} onChange={(e) => setEComment(e.target.value)} placeholder="დეტალი, თუ კატეგორია საკმარისი არ არის" /></Field></div>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">ხარჯი ავტომატურად ემთხვევა ვალდებულებას კატეგორიით ან სახელით</p>
+            <button type="submit" className={`${btnCls} mt-4 bg-red-600 hover:bg-red-500`}>დაფიქსირება</button>
+          </form>
         <ExpensesPanel
           expenses={operationalTx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
         />
+        </div>
       )}
 
       {tab === "clients" && !loading && (
@@ -1972,6 +2061,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       {tab === "employee-bonus" && !loading && (
         <EmployeeBonusPanel
           branchReports={activeStore.branchReports ?? []}
+          transactions={tx}
           customers={activeStore.customers ?? []}
           employees={activeStore.employees ?? []}
           period={period}
@@ -1982,6 +2072,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "obligations" && (
         <section className="space-y-3">
+          <p className="text-xs text-zinc-500">
+            მისაღები არის ის, რაც მომხმარებელს უნდა შემოიტანოს. გადასახდელი არის ის, რაც ჩვენ უნდა გავისტუმროთ — ქეშიდან, ბარათიდან ან ანგარიშიდან. ნაშთი ჩანს «საიდან გავისტუმრო»-ში.
+          </p>
           <ReceivablesPanel
             sales={creditTx}
             store={activeStore}

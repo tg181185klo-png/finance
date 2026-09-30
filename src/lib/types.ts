@@ -118,6 +118,8 @@ export interface Expense {
   reportId?: string;
   obligationId?: string;
   expensePaymentMethod?: ExpensePaymentMethod;
+  /** ვინ დახარჯა ეს თანხა */
+  spentBy?: string;
 }
 
 export type DepositKind = "founder" | "loan_repayment" | "other";

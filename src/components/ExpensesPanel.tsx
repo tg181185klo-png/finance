@@ -229,7 +229,8 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pr-3">თარიღი</th>
                   <th className="pb-2 pr-3">ფილიალი</th>
-                  <th className="pb-2 pr-3">კატეგორია</th>
+                  <th className="pb-2 pr-3">ვინ დახარჯა</th>
+                  <th className="pb-2 pr-3">რაში</th>
                   <th className="pb-2 pr-3">კომენტარი</th>
                   <th className="pb-2 pr-3">წყარო</th>
                   <th className="pb-2 pr-3">გადახდა</th>
@@ -242,6 +243,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                   <tr key={e.id} className="border-b border-zinc-800/50">
                     <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(e.date)}</td>
                     <td className="py-2 pr-3">{effectiveExpenseBranch(e)}</td>
+                    <td className="py-2 pr-3">{e.spentBy || "—"}</td>
                     <td className="py-2 pr-3">{e.category}</td>
                     <td className="py-2 pr-3 text-zinc-500">{e.comment || "—"}</td>
                     <td className="py-2 pr-3 text-xs text-zinc-500">{sourceLabel(e.source)}</td>

@@ -1,4 +1,4 @@
-import type { Branch, BranchClientSale, BranchDailyReport, Customer } from "./types";
+import type { Branch, BranchClientSale, BranchDailyReport, Customer, Transaction } from "./types";
 import { branchSaleBuyerName, customerDedupeKey, customerDisplayName, normalizeId, normalizePhone } from "./customers";
 
 export const BONUS_RATE_NEW = 0.01;
@@ -139,6 +139,48 @@ export function buildBonusSaleLines(
   }
 
   return lines.sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+}
+
+/** ადმინში ჩაწერილი შემოსავალი, სადაც მითითებულია ვინ მოიყვანა. ფილიალის რეპორტის ხაზები აქ არ მეორდება. */
+export function buildRecordedSaleBonusLines(
+  transactions: Transaction[],
+  customers: Customer[],
+  from: string,
+  to: string,
+  branchFilter?: Branch | "ყველა"
+): BonusSaleLine[] {
+  const lines: BonusSaleLine[] = [];
+  for (const t of transactions) {
+    if (t.type !== "sale") continue;
+    if (t.reportId || t.clientSaleId) continue;
+    const employeeName = t.employeeName?.trim();
+    if (!employeeName) continue;
+    const date = t.date.slice(0, 10);
+    if (date < from || date > to) continue;
+    if (branchFilter && branchFilter !== "ყველა" && t.branch !== branchFilter) continue;
+    if (!t.amount || t.amount <= 0) continue;
+    const clientName = t.buyerName?.trim() || t.comment || t.productName;
+    const legacy = customers.some(
+      (c) => c.isLegacy && customerDisplayName(c).trim().toLowerCase() === clientName.trim().toLowerCase()
+    );
+    const rate = bonusRate(legacy);
+    lines.push({
+      reportId: `tx:${t.id}`,
+      clientSaleId: t.id,
+      date,
+      branch: t.branch,
+      employeeName,
+      clientName,
+      clientKey: `sale:${t.id}`,
+      isLegacy: legacy,
+      clientStatus: legacy ? "ძველი" : "ახალი",
+      amount: t.amount,
+      bonusRate: rate,
+      bonusAmount: t.amount * rate,
+      productsSummary: `${t.productName} ×${t.quantity}`,
+    });
+  }
+  return lines;
 }
 
 export function buildEmployeeBonusSummary(lines: BonusSaleLine[]): EmployeeBonusRow[] {

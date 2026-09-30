@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import {
   DISTRIBUCIA_SYNC_FROM,
-  buildDistribuciaPaymentMap,
+  applyDistribuciaOrders,
   buildDistribuciaPreview,
   fetchDistribuciaOrders,
   isDistribuciaSale,
-  removeDistribuciaSales,
-  ordersToSales,
 } from "@/lib/distribucia-sync";
-import { updateStore } from "@/lib/server-store";
+import { readStore, updateStore } from "@/lib/server-store";
 import type { PaymentMethod } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +43,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       from?: string;
       replace?: boolean;
+      auto?: boolean;
       action?: "updatePayment";
       orderId?: string;
       transactionId?: string;
@@ -80,26 +79,33 @@ export async function POST(req: NextRequest) {
     const orders = await fetchDistribuciaOrders();
     const preview = buildDistribuciaPreview(orders, fromDate);
 
-    let removed = 0;
-    let imported = 0;
-    const store = await updateStore((s) => {
-      const replacing = s.transactions.filter((t) => {
-        if (!isDistribuciaSale(t)) return false;
-        return t.date.slice(0, 10) >= fromDate;
+    const current = await readStore();
+    const first = applyDistribuciaOrders(current.transactions, orders, fromDate);
+    if (first.unchanged) {
+      return NextResponse.json({
+        ok: true,
+        unchanged: true,
+        fromDate,
+        imported: first.imported,
+        removed: 0,
+        orders: preview.orders,
+        revenue: preview.revenue,
+        days: preview.days.length,
       });
-      const paymentMap = buildDistribuciaPaymentMap(replacing);
-      const newSales = ordersToSales(orders, fromDate, "დისტრიბუცია", paymentMap);
-      imported = newSales.length;
-      const kept = removeDistribuciaSales(s.transactions, fromDate);
-      removed = s.transactions.length - kept.length;
-      s.transactions = [...newSales, ...kept];
+    }
+
+    const store = await updateStore((s) => {
+      const applied = applyDistribuciaOrders(s.transactions, orders, fromDate);
+      if (applied.unchanged) return;
+      s.transactions = applied.transactions;
     });
 
     return NextResponse.json({
       ok: true,
+      unchanged: false,
       fromDate,
-      imported,
-      removed,
+      imported: first.imported,
+      removed: first.removed,
       orders: preview.orders,
       revenue: preview.revenue,
       days: preview.days.length,
