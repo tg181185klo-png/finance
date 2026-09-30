@@ -33,6 +33,7 @@ import CostingPanel from "@/components/CostingPanel";
 import {
   DASHBOARD_MENU_GROUPS,
   hiddenDashboardTabs,
+  menuGroupForTab,
   readHiddenTabIds,
   visibleDashboardTabs,
   writeHiddenTabIds,
@@ -1273,45 +1274,69 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            {DASHBOARD_MENU_GROUPS.map((group) => {
+              const active = group.tabs.some((t) => t.id === tab);
+              return (
+                <button
+                  key={group.label}
+                  type="button"
+                  className={`min-h-10 rounded-lg px-3 py-2 text-sm font-medium ${
+                    active
+                      ? "bg-emerald-600 text-white"
+                      : "border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                  }`}
+                  onClick={() => {
+                    if (active) return;
+                    const next = group.tabs.find((t) => menuTabs.some((v) => v.id === t.id)) ?? group.tabs[0];
+                    if (next) setTab(next.id);
+                  }}
+                >
+                  {group.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            <div>
-              <label className={labelCls}>მენიუ</label>
-              <select
-                className={`${inputCls} min-h-11 text-base font-medium sm:text-sm`}
-                value={tab}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v.startsWith("unhide:")) {
-                    unhideTab(v.slice(7) as DashboardTabId);
-                    return;
-                  }
-                  setTab(v as Tab);
-                }}
-              >
-                {DASHBOARD_MENU_GROUPS.map((group) => {
-                  const tabs = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
-                  if (!tabs.length) return null;
-                  return (
-                    <optgroup key={group.label} label={group.label}>
-                      {tabs.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-                {hiddenMenuTabs.length > 0 && (
-                  <optgroup label="დამალული — გამოსაჩენად აირჩიე">
-                    {hiddenMenuTabs.map((t) => (
-                      <option key={`h-${t.id}`} value={`unhide:${t.id}`}>
-                        ↩ {t.label}
+            {(() => {
+              const group = menuGroupForTab(tab);
+              const pages = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
+              const hiddenHere = hiddenMenuTabs.filter((t) => group.tabs.some((p) => p.id === t.id));
+              if (pages.length < 2 && hiddenHere.length === 0) return null;
+              return (
+                <div>
+                  <label className={labelCls}>{group.label}</label>
+                  <select
+                    className={`${inputCls} min-h-11 text-base font-medium sm:text-sm`}
+                    value={tab}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v.startsWith("unhide:")) {
+                        unhideTab(v.slice(7) as DashboardTabId);
+                        return;
+                      }
+                      setTab(v as Tab);
+                    }}
+                  >
+                    {pages.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
                       </option>
                     ))}
-                  </optgroup>
-                )}
-              </select>
-            </div>
+                    {hiddenHere.length > 0 && (
+                      <optgroup label="დამალული — გამოსაჩენად აირჩიე">
+                        {hiddenHere.map((t) => (
+                          <option key={`h-${t.id}`} value={`unhide:${t.id}`}>
+                            ↩ {t.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+              );
+            })()}
             <div>
               <label className={labelCls}>ფილიალი</label>
               <select

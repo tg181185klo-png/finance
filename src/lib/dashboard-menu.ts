@@ -1,4 +1,4 @@
-/** ადმინ მენიუს ტაბები — ანბანით; დამალული ტაბები localStorage-ში */
+/** ადმინ მენიუ — ჯერ წიგნი, მერე მხოლოდ იმ წიგნის გვერდები */
 
 export type DashboardTabId =
   | "system"
@@ -20,7 +20,7 @@ export type DashboardTabId =
 
 export type DashboardTab = { id: DashboardTabId; label: string };
 
-/** მენიუ აღრიცხვის წიგნების მიხედვით, არა ანბანით */
+/** ზედა რიგი ოთხი წიგნია. დანარჩენი გვერდი იმ წიგნშია, სადაც ეძებ. */
 export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = [
   {
     label: "შემოსავალი",
@@ -28,11 +28,17 @@ export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = 
       { id: "main", label: "შემოსავლის ჩაწერა" },
       { id: "clients", label: "მომხმარებლები" },
       { id: "employee-bonus", label: "ვინ მოიყვანა და ბონუსი" },
+      { id: "branches", label: "ფილიალები" },
+      { id: "employees", label: "თანამშრომლები" },
+      { id: "inventory", label: "მარაგი" },
     ],
   },
   {
     label: "ხარჯი",
-    tabs: [{ id: "expenses", label: "ხარჯის ჩაწერა" }],
+    tabs: [
+      { id: "expenses", label: "ხარჯის ჩაწერა" },
+      { id: "costing", label: "თვითღირებულება" },
+    ],
   },
   {
     label: "ვალდებულებები",
@@ -49,24 +55,16 @@ export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = 
       { id: "reports", label: "რეპორტების ამოღება" },
       { id: "overview", label: "მიმოხილვა" },
       { id: "owner", label: "მფლობელის მაჩვენებლები" },
+      { id: "system", label: "აღრიცხვის რუკა" },
     ],
-  },
-  {
-    label: "სამუშაო",
-    tabs: [
-      { id: "branches", label: "ფილიალები" },
-      { id: "employees", label: "თანამშრომლები" },
-      { id: "inventory", label: "მარაგი" },
-      { id: "costing", label: "თვითღირებულება" },
-    ],
-  },
-  {
-    label: "სისტემა",
-    tabs: [{ id: "system", label: "აღრიცხვის რუკა" }],
   },
 ];
 
 export const ALL_DASHBOARD_TABS: DashboardTab[] = DASHBOARD_MENU_GROUPS.flatMap((g) => g.tabs);
+
+export function menuGroupForTab(id: DashboardTabId) {
+  return DASHBOARD_MENU_GROUPS.find((g) => g.tabs.some((t) => t.id === id)) ?? DASHBOARD_MENU_GROUPS[0];
+}
 
 const HIDDEN_KEY = "finance-dashboard-hidden-tabs";
 
