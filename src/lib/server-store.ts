@@ -89,15 +89,6 @@ async function loadStoreRaw(): Promise<Store | null> {
   }
 }
 
-async function backupAfterWrite(store: Store, source: string) {
-  try {
-    const { backupStoreNow } = await import("./store-backup");
-    await backupStoreNow(store, source);
-  } catch (err) {
-    console.error("backup after write failed", err);
-  }
-}
-
 export type PersistOptions = {
   /** მხოლოდ ადმინის ბექაპიდან აღდგენისთვის — უსაფრთხოების გარდების გვერდის ავლით */
   allowDestructive?: boolean;
@@ -177,12 +168,9 @@ async function persistStore(
   const errors: string[] = [];
   await assertSafePersist(store, options?.allowDestructive);
 
-  const backupSource = options?.backupSource ?? "write";
-
   if (hasPostgres()) {
     try {
       await writeToPostgres(store);
-      await backupAfterWrite(store, `postgres:${backupSource}`);
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -192,7 +180,6 @@ async function persistStore(
     try {
       const nextAt = await writeToSupabaseRest(store, expectedUpdatedAt);
       lastKnownUpdatedAt = nextAt;
-      await backupAfterWrite(store, `supabase-rest:${backupSource}`);
       return;
     } catch (err) {
       if (err instanceof StoreConflictError) throw err;
@@ -204,7 +191,6 @@ async function persistStore(
   if (hasSupabaseStorage()) {
     try {
       await writeToSupabaseStorage(store);
-      await backupAfterWrite(store, `supabase-storage:${backupSource}`);
       return;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -213,7 +199,6 @@ async function persistStore(
   if (hasBlobStorage()) {
     try {
       await writeToBlob(store);
-      await backupAfterWrite(store, `vercel-blob:${backupSource}`);
       return;
     } catch (err) {
       if (isBlobSuspendedError(err)) blobDisabled = true;
@@ -222,7 +207,6 @@ async function persistStore(
   }
   try {
     await writeToFile(store);
-    await backupAfterWrite(store, `local-file:${backupSource}`);
     return;
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));

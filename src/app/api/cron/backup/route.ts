@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readStore } from "@/lib/server-store";
-import { canBackupStore, createStoreBackup } from "@/lib/store-backup";
+import { canBackupStore, createStoreBackup, pruneStoreBackups } from "@/lib/store-backup";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     const store = await readStore();
     const meta = await createStoreBackup(store, "daily", "cron");
+    await pruneStoreBackups(20);
     return NextResponse.json({ ok: true, backup: meta });
   } catch (err) {
     return NextResponse.json(

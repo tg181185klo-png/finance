@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(bak);
   }
 
-  const backups = await listStoreBackups(60);
+  const backups = await listStoreBackups(31);
   return NextResponse.json({ ok: true, backups, canBackup: true });
 }
 
