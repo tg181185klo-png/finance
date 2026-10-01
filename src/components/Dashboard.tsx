@@ -33,7 +33,6 @@ import CostingPanel from "@/components/CostingPanel";
 import {
   DASHBOARD_MENU_GROUPS,
   hiddenDashboardTabs,
-  menuGroupForTab,
   readHiddenTabIds,
   visibleDashboardTabs,
   writeHiddenTabIds,
@@ -1246,7 +1245,54 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }
 
   return (
-    <div className="min-h-screen w-full">
+    <div className="flex min-h-screen w-full">
+      <aside className="sticky top-0 flex h-screen w-44 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950 px-2 py-3">
+        <p className="mb-3 px-2 text-[11px] font-semibold text-zinc-200">ფინანსები</p>
+        <nav className="space-y-3">
+          {DASHBOARD_MENU_GROUPS.map((group) => {
+            const pages = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
+            if (!pages.length) return null;
+            return (
+              <div key={group.label}>
+                <p className="px-2 pb-1 text-[10px] text-zinc-500">{group.label}</p>
+                <div className="space-y-0.5">
+                  {pages.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`block w-full rounded px-2 py-1 text-left text-[12px] leading-snug ${
+                        tab === t.id
+                          ? "bg-emerald-950 text-emerald-300"
+                          : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+                      }`}
+                      onClick={() => setTab(t.id)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+        {hiddenMenuTabs.length > 0 && (
+          <div className="mt-4 border-t border-zinc-800 pt-3">
+            <p className="px-2 pb-1 text-[10px] text-zinc-500">დამალული</p>
+            {hiddenMenuTabs.map((t) => (
+              <button
+                key={`h-${t.id}`}
+                type="button"
+                className="block w-full rounded px-2 py-1 text-left text-[12px] text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
+                onClick={() => unhideTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </aside>
+
+      <div className="min-w-0 flex-1">
       <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80">
         <div className="flex w-full flex-col gap-3 px-3 py-3 sm:px-4 lg:px-6 xl:px-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1274,69 +1320,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {DASHBOARD_MENU_GROUPS.map((group) => {
-              const active = group.tabs.some((t) => t.id === tab);
-              return (
-                <button
-                  key={group.label}
-                  type="button"
-                  className={`min-h-10 rounded-lg px-3 py-2 text-sm font-medium ${
-                    active
-                      ? "bg-emerald-600 text-white"
-                      : "border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
-                  }`}
-                  onClick={() => {
-                    if (active) return;
-                    const next = group.tabs.find((t) => menuTabs.some((v) => v.id === t.id)) ?? group.tabs[0];
-                    if (next) setTab(next.id);
-                  }}
-                >
-                  {group.label}
-                </button>
-              );
-            })}
-          </div>
-
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            {(() => {
-              const group = menuGroupForTab(tab);
-              const pages = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
-              const hiddenHere = hiddenMenuTabs.filter((t) => group.tabs.some((p) => p.id === t.id));
-              if (pages.length < 2 && hiddenHere.length === 0) return null;
-              return (
-                <div>
-                  <label className={labelCls}>{group.label}</label>
-                  <select
-                    className={`${inputCls} min-h-11 text-base font-medium sm:text-sm`}
-                    value={tab}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v.startsWith("unhide:")) {
-                        unhideTab(v.slice(7) as DashboardTabId);
-                        return;
-                      }
-                      setTab(v as Tab);
-                    }}
-                  >
-                    {pages.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.label}
-                      </option>
-                    ))}
-                    {hiddenHere.length > 0 && (
-                      <optgroup label="დამალული — გამოსაჩენად აირჩიე">
-                        {hiddenHere.map((t) => (
-                          <option key={`h-${t.id}`} value={`unhide:${t.id}`}>
-                            ↩ {t.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                </div>
-              );
-            })()}
             <div>
               <label className={labelCls}>ფილიალი</label>
               <select
@@ -2731,6 +2715,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         />
       )}
       </main>
+      </div>
     </div>
   );
 }
