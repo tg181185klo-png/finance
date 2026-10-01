@@ -16,7 +16,7 @@ export const PRODUCT_SHEETS = [
   { name: "თვითღირებულება", gid: env.googleSheetGidCost },
 ] as const;
 
-export const PRODUCTS_REFRESH_MS = 60_000;
+export const PRODUCTS_REFRESH_MS = 10_000;
 
 /** ადმინ პანელში მონაცემების ავტო-განახლება (ფილიალის რეპორტები და ა.შ.) */
 export const STORE_REFRESH_MS = 4_000;

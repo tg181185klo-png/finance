@@ -362,7 +362,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     const id = setInterval(() => {
       loadProducts().catch(() => {});
     }, PRODUCTS_REFRESH_MS);
-    return () => clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadProducts().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [loadProducts]);
 
   useEffect(() => {

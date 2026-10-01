@@ -2,9 +2,10 @@ import type { Product } from "./types";
 import { env, PRODUCT_SHEETS } from "./sheets-config";
 
 function sheetCsvUrl(name: string, gid?: string) {
-  const base = `https://docs.google.com/spreadsheets/d/${env.googleSheetId}`;
-  if (gid) return `${base}/export?format=csv&gid=${gid}`;
-  return `${base}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
+  const base = `https://docs.google.com/spreadsheets/d/${env.googleSheetId}/gviz/tq?tqx=out:csv`;
+  const fresh = `t=${Date.now()}`;
+  if (gid) return `${base}&gid=${gid}&${fresh}`;
+  return `${base}&sheet=${encodeURIComponent(name)}&${fresh}`;
 }
 
 function parseCsv(text: string): string[][] {
