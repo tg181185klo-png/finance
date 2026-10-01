@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { updateStore } from "@/lib/server-store";
 import { emptyBranchCash } from "@/lib/utils";
-import type { Branch, Store } from "@/lib/types";
+import { FRESH_START_MONTH } from "@/lib/report-config";
+import { BRANCHES } from "@/lib/constants";
+import type { Branch, BranchCash, Store } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,7 @@ export async function POST(req: NextRequest) {
       cash?: number;
       card?: number;
       bank?: number;
+      month?: string;
     };
 
     const branch = body.branch;
@@ -38,10 +41,26 @@ export async function POST(req: NextRequest) {
       ensureBranchBuckets(s, branch);
 
       if (body.action === "setCash") {
+        const month = body.month && body.month >= FRESH_START_MONTH ? body.month : "";
+        if (month) {
+          if (!s.openingByMonth) s.openingByMonth = {};
+          if (!s.openingByMonth[month]) {
+            s.openingByMonth[month] = Object.fromEntries(
+              BRANCHES.map((b) => [b, emptyBranchCash()])
+            ) as Record<Branch, BranchCash>;
+          }
+          const cur = s.openingByMonth[month][branch] ?? emptyBranchCash();
+          s.openingByMonth[month][branch] = {
+            cash: body.cash !== undefined ? safeNum(body.cash, cur.cash) : cur.cash,
+            card: body.card !== undefined ? safeNum(body.card, cur.card) : cur.card,
+            bank: body.bank !== undefined ? safeNum(body.bank, cur.bank) : cur.bank,
+          };
+          return;
+        }
         const cur = s.branchCash[branch];
         s.branchCash[branch] = {
           cash: body.cash !== undefined ? safeNum(body.cash, cur.cash) : cur.cash,
-          card: body.card !== undefined ? safeNum(body.card, cur.card) : cur.card,
+          card: body.card !== undefined ? safeNum(body.cash, cur.card) : cur.card,
           bank: body.bank !== undefined ? safeNum(body.bank, cur.bank) : cur.bank,
         };
         return;
@@ -68,6 +87,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         inventory: store.inventory,
         branchCash: store.branchCash,
+        openingByMonth: store.openingByMonth,
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );

@@ -1,4 +1,5 @@
 import { BRANCHES } from "./constants";
+import { FRESH_START_DATE, FRESH_START_MONTH } from "./report-config";
 import { effectiveDepositBranch, effectiveExpenseBranch, effectiveTxBranch, txMatchesBranchFilter } from "./branch-allocation";
 import type {
   Branch,
@@ -94,10 +95,19 @@ export function calcBalancesUpToDate(
   tx: Transaction[],
   branch: Branch | "ყველა",
   branchCash: Record<Branch, BranchCash> | undefined,
-  upToDate: string
+  upToDate: string,
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>
 ) {
-  const filtered = tx.filter((t) => t.date.slice(0, 10) <= upToDate);
-  return calcBalances(filtered, branch, branchCash);
+  const asOf = upToDate.slice(0, 10);
+  const fresh = asOf >= FRESH_START_DATE;
+  const filtered = tx.filter((t) => {
+    const d = t.date.slice(0, 10);
+    if (d > asOf) return false;
+    if (fresh && d < FRESH_START_DATE) return false;
+    return true;
+  });
+  const opening = fresh ? openingByMonth?.[asOf.slice(0, 7)] : branchCash;
+  return calcBalances(filtered, branch, opening);
 }
 
 function buildRecurrenceStats(filtered: Transaction[]): { recurring: RecurrenceStats; oneTime: RecurrenceStats } {
@@ -117,7 +127,8 @@ function buildByBranchStats(
   tx: Transaction[],
   from: string,
   to: string,
-  branchCash?: Record<Branch, BranchCash>
+  branchCash?: Record<Branch, BranchCash>,
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>
 ): BranchPeriodStats[] {
   return BRANCHES.map((br) => {
     let revenue = 0;
@@ -139,7 +150,7 @@ function buildByBranchStats(
         if (t.kind === "founder") founderDeposits += t.amount;
       }
     }
-    const bal = calcBalancesUpToDate(tx, br, branchCash, to);
+    const bal = calcBalancesUpToDate(tx, br, branchCash, to, openingByMonth);
     const net = revenue - expenses;
     return {
       branch: br,
@@ -228,6 +239,7 @@ function prevObligationRemaining(
   month: string,
   match: (o: Obligation) => boolean
 ): number {
+  if (month >= FRESH_START_MONTH) return 0;
   const prev = previousMonth(month);
   const prevOb = (store.obligations[prev] ?? []).find(match);
   return prevOb ? obligationRemaining(prevOb) : 0;
@@ -320,6 +332,7 @@ export function ensureSalaryCarryForwards(store: Store, month: string) {
 
 /** ყველა ყოველთვიური ციკლის სინქი მოცემულ თვეზე */
 export function syncMonthObligationCycles(store: Store, month: string) {
+  if (month >= FRESH_START_MONTH) return false;
   const a = ensureMonthObligations(store, month);
   const b = ensureSalaryCarryForwards(store, month);
   return a || b;
@@ -836,7 +849,8 @@ export function buildPeriodReport(
   from: string,
   to: string,
   branch: Branch | "ყველა",
-  branchCash?: Record<Branch, BranchCash>
+  branchCash?: Record<Branch, BranchCash>,
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>
 ): PeriodReport {
   const filtered = tx.filter((t) => {
     const d = t.date.slice(0, 10);
@@ -871,7 +885,7 @@ export function buildPeriodReport(
     .map(([date, v]) => {
       const cashByBranch = branchCash
         ? (Object.fromEntries(
-            BRANCHES.map((br) => [br, calcBalancesUpToDate(tx, br, branchCash, date).cash])
+            BRANCHES.map((br) => [br, calcBalancesUpToDate(tx, br, branchCash, date, openingByMonth).cash])
           ) as Record<Branch, number>)
         : undefined;
       return {
@@ -897,8 +911,8 @@ export function buildPeriodReport(
   }
 
   const { recurring, oneTime } = buildRecurrenceStats(filtered);
-  const byBranch = buildByBranchStats(tx, from, to, branchCash);
-  const endBal = calcBalancesUpToDate(tx, branch, branchCash, to);
+  const byBranch = buildByBranchStats(tx, from, to, branchCash, openingByMonth);
+  const endBal = calcBalancesUpToDate(tx, branch, branchCash, to, openingByMonth);
 
   const net = revenue - expenses;
   return {

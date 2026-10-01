@@ -3,11 +3,13 @@
 import type { Branch, BranchCash, Transaction } from "@/lib/types";
 import { KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "@/lib/constants";
 import { OPENING_BALANCE_DATE, buildBranchBalanceRows, sumOpening } from "@/lib/opening-balances";
-import { calcBalances, emptyBranchCash, formatMoney } from "@/lib/utils";
+import { calcBalancesUpToDate, emptyBranchCash, formatMoney } from "@/lib/utils";
+import { FRESH_START_DATE } from "@/lib/report-config";
 
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>;
   compact?: boolean;
   /** ჩაწერა გვერდი: ბარათი + ანგარიში ერთ ხაზად (მხოლოდ კომპანიის ჯამში) */
   mergeCardBank?: boolean;
@@ -25,17 +27,28 @@ function MoneyRow({ label, value, accent }: { label: string; value: string; acce
 export default function OpeningBalancesSummary({
   transactions,
   branchCash,
+  openingByMonth,
   compact,
   mergeCardBank,
   highlightBranch,
 }: Props) {
-  const rows = buildBranchBalanceRows(transactions, branchCash);
-  const companyOpening = sumOpening(branchCash);
-  const companyCurrent = calcBalances(transactions, "ყველა", branchCash);
+  const today = new Date().toISOString().slice(0, 10);
+  const fresh = today >= FRESH_START_DATE;
+  const rows = buildBranchBalanceRows(transactions, branchCash, today, openingByMonth);
+  const companyOpening = fresh
+    ? sumOpening(openingByMonth?.[today.slice(0, 7)] ?? {})
+    : sumOpening(branchCash);
+  const companyCurrent = calcBalancesUpToDate(
+    transactions,
+    "ყველა",
+    fresh ? undefined : branchCash,
+    today,
+    openingByMonth
+  );
 
   if (compact) {
     const shown = highlightBranch ? rows.filter((r) => r.branch === highlightBranch) : rows;
-    const companyBal = calcBalances(transactions, "ყველა", branchCash);
+    const companyBal = companyCurrent;
     const companyAccount = mergeCardBank
       ? companyBal.card + companyBal.bank
       : companyBal.bank;
@@ -82,7 +95,9 @@ export default function OpeningBalancesSummary({
   return (
     <section className="space-y-4">
       <div>
-        <h3 className="mb-1 text-sm font-semibold text-sky-300">საწყისი ნაშთები — {OPENING_BALANCE_DATE}</h3>
+        <h3 className="mb-1 text-sm font-semibold text-sky-300">
+          საწყისი ნაშთები — {fresh ? FRESH_START_DATE : OPENING_BALANCE_DATE}
+        </h3>
         <p className="text-xs text-zinc-500">ფილიალების მიხედვით · რედაქტირება: საბანკო ანგარიში ან ჩაწერა ტაბი</p>
       </div>
 
@@ -141,7 +156,9 @@ export function CurrentBalanceStrip({
   branchCash: Record<Branch, BranchCash>;
   branch?: Branch;
 }) {
-  const bal = calcBalances(transactions, branch ?? "ყველა", branchCash);
+  const today = new Date().toISOString().slice(0, 10);
+  const fresh = today >= FRESH_START_DATE;
+  const bal = calcBalancesUpToDate(transactions, branch ?? "ყველა", fresh ? undefined : branchCash, today);
   const title = branch ?? "კომპანია";
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-emerald-900/30 bg-emerald-950/10 px-3 py-2 text-xs text-zinc-400">
@@ -164,7 +181,9 @@ export function OpeningBalanceStrip({
   const title = branch ?? "კომპანია";
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-sky-900/30 bg-sky-950/10 px-3 py-2 text-xs text-zinc-400">
-      <span className="text-sky-300/90">{title} — საწყისი ({OPENING_BALANCE_DATE}):</span>
+      <span className="text-sky-300/90">
+        {title} — საწყისი ({new Date().toISOString().slice(0, 10) >= FRESH_START_DATE ? FRESH_START_DATE : OPENING_BALANCE_DATE}):
+      </span>
       <span className="text-emerald-400">ქეში {formatMoney(opening.cash)}</span>
       <span className="text-sky-400">ბარათი {formatMoney(opening.card)}</span>
       <span className="text-violet-400">ანგარიში {formatMoney(opening.bank)}</span>

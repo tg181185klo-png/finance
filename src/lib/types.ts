@@ -300,6 +300,8 @@ export interface Store {
   branchReports: BranchDailyReport[];
   inventory: Record<Branch, BranchInventory>;
   branchCash: Record<Branch, BranchCash>;
+  /** თვის საწყისი ნაშთი (YYYY-MM). ოქტომბრიდან სექტემბრის ნაშთს არ იყენებს. */
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>;
   recurringObligations: RecurringObligation[];
   obligationPayments: ObligationPayment[];
   creditPayments: CreditPayment[];

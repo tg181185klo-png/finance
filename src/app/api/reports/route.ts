@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
   const today = new Date().toISOString().slice(0, 10);
 
   if (mode === "today") {
-    const report = buildPeriodReport(store.transactions, store.obligations, today, today, branch, store.branchCash);
+    const report = buildPeriodReport(store.transactions, store.obligations, today, today, branch, store.branchCash,
+      store.openingByMonth);
     return NextResponse.json(report);
   }
 
@@ -33,7 +34,8 @@ export async function GET(req: NextRequest) {
       `${month}-01`,
       `${month}-${String(last).padStart(2, "0")}`,
       branch,
-      store.branchCash
+      store.branchCash,
+      store.openingByMonth
     );
     return NextResponse.json(report);
   }
@@ -52,7 +54,8 @@ export async function GET(req: NextRequest) {
         from,
         to,
         "ყველა",
-        store.branchCash
+        store.branchCash,
+        store.openingByMonth
       );
       return {
         month: m,
@@ -85,7 +88,8 @@ export async function GET(req: NextRequest) {
       from,
       to,
       branch,
-      store.branchCash
+      store.branchCash,
+      store.openingByMonth
     );
     return NextResponse.json(report);
   }
@@ -94,6 +98,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "from და to საჭიროა" }, { status: 400 });
   }
 
-  const report = buildPeriodReport(store.transactions, store.obligations, from, to, branch, store.branchCash);
+  const report = buildPeriodReport(store.transactions, store.obligations, from, to, branch, store.branchCash,
+      store.openingByMonth);
   return NextResponse.json(report);
 }

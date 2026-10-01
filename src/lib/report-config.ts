@@ -7,3 +7,7 @@ export const REPORT_HISTORY_MAX_MONTHS = 24;
 /** ჩაწერა / მიმოხილვა / ხარჯები — ამ თარიღიდან ჩანს მონაცემები (წინა თვეების იმპორტი არ ჩანს). */
 export const OPERATIONAL_DATA_FROM = "2026-09-01";
 export const OPERATIONAL_DATA_FROM_MONTH = "2026-09";
+
+/** ოქტომბრიდან ახალი აღრიცხვა: სექტემბერი არ გადმოდის, საწყისი თანხა ცალკე იწერება. */
+export const FRESH_START_MONTH = "2026-10";
+export const FRESH_START_DATE = "2026-10-01";

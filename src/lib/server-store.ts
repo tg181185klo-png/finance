@@ -5,6 +5,7 @@ import type { PutCommandOptions } from "@vercel/blob";
 import type { Branch, Store } from "./types";
 import { BRANCHES } from "./constants";
 import { syncMonthObligationCycles, currentMonth } from "./utils";
+import { FRESH_START_MONTH } from "./report-config";
 import { env } from "./env";
 import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
 import {
@@ -311,6 +312,17 @@ export async function readStore(): Promise<Store> {
   for (const m of Object.keys(store.obligations)) months.add(m);
 
   let changed = false;
+  for (const month of Object.keys(store.obligations)) {
+    if (month < FRESH_START_MONTH) continue;
+    const kept = (store.obligations[month] ?? []).filter(
+      (o) => !(o.carriedForward && o.carriedForward > 0 && o.amount === o.carriedForward && !o.paid)
+    );
+    if (kept.length !== (store.obligations[month] ?? []).length) {
+      if (kept.length) store.obligations[month] = kept;
+      else delete store.obligations[month];
+      changed = true;
+    }
+  }
   for (const m of months) {
     if (syncMonthObligationCycles(store, m)) changed = true;
   }

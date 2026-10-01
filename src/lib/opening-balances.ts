@@ -1,6 +1,7 @@
 import type { Branch, BranchCash, Transaction } from "./types";
 import { BRANCHES } from "./constants";
-import { calcBalances, emptyBranchCash, formatMoney } from "./utils";
+import { FRESH_START_DATE } from "./report-config";
+import { calcBalancesUpToDate, emptyBranchCash, formatMoney } from "./utils";
 
 export const OPENING_BALANCE_DATE = "2026-09-01";
 
@@ -21,19 +22,27 @@ export function sumOpening(branchCash: Record<Branch, BranchCash>): BranchCash {
   return out;
 }
 
+function zeroOpenings(): Record<Branch, BranchCash> {
+  return Object.fromEntries(BRANCHES.map((b) => [b, emptyBranchCash()])) as Record<Branch, BranchCash>;
+}
+
 export function buildBranchBalanceRows(
   transactions: Transaction[],
-  branchCash: Record<Branch, BranchCash>
+  branchCash: Record<Branch, BranchCash>,
+  asOf?: string,
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>
 ): BranchBalanceRow[] {
-  return BRANCHES.map((branch) => ({
-    branch,
-    opening: branchCash[branch] ?? emptyBranchCash(),
-    current: {
-      cash: calcBalances(transactions, branch, branchCash).cash,
-      card: calcBalances(transactions, branch, branchCash).card,
-      bank: calcBalances(transactions, branch, branchCash).bank,
-    },
-  }));
+  const end = (asOf ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const fresh = end >= FRESH_START_DATE;
+  const openingSource = fresh ? (openingByMonth?.[end.slice(0, 7)] ?? zeroOpenings()) : branchCash;
+  return BRANCHES.map((branch) => {
+    const current = calcBalancesUpToDate(transactions, branch, openingSource, end, openingByMonth);
+    return {
+      branch,
+      opening: openingSource[branch] ?? emptyBranchCash(),
+      current: { cash: current.cash, card: current.card, bank: current.bank },
+    };
+  });
 }
 
 export function openingBalanceLabel(cash: BranchCash) {

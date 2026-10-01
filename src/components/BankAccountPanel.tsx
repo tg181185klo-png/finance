@@ -13,9 +13,9 @@ import {
   type LedgerChannel,
 } from "@/lib/bank-ledger";
 import type { StatementLedgerHint } from "@/lib/bank-statement";
-import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
+import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import {
-  calcBalances,
+  calcBalancesUpToDate,
   currentMonth,
   emptyBranchCash,
   formatDate,
@@ -38,12 +38,14 @@ const OPENING_DATE_LABEL = "1 სექტემბერი 2026";
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>;
   bankLedgerReviewed: Record<string, string>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onToggleReview: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
   onBankLedgerReviewed?: (bankLedgerReviewed: Record<string, string>) => void;
   onRefresh: (patch?: {
     branchCash?: Record<Branch, BranchCash>;
+    openingByMonth?: Record<string, Record<Branch, BranchCash>>;
   }) => void | Promise<void>;
 };
 
@@ -76,6 +78,7 @@ function typeLabel(row: AccountLedgerRow) {
 export default function BankAccountPanel({
   transactions,
   branchCash,
+  openingByMonth,
   bankLedgerReviewed,
   onUpdatePayment,
   onToggleReview,
@@ -88,6 +91,7 @@ export default function BankAccountPanel({
   const [search, setSearch] = useState("");
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+  const freshMonth = viewMonth >= FRESH_START_MONTH;
   const [openings, setOpenings] = useState<Record<Branch, BranchCash>>(() => ({ ...branchCash }));
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
   const [msg, setMsg] = useState("");
@@ -95,20 +99,34 @@ export default function BankAccountPanel({
   const [statementHints, setStatementHints] = useState<Record<string, StatementLedgerHint>>({});
 
   useEffect(() => {
+    if (viewMonth >= FRESH_START_MONTH) {
+      const book = openingByMonth?.[viewMonth];
+      const next = Object.fromEntries(
+        BRANCHES.map((b) => [b, { ...emptyBranchCash(), ...book?.[b] }])
+      ) as Record<Branch, BranchCash>;
+      setOpenings(next);
+      return;
+    }
     setOpenings({ ...branchCash });
-  }, [branchCash]);
+  }, [branchCash, openingByMonth, viewMonth]);
 
   const { from, to } = useMemo(() => monthStartEnd(viewMonth), [viewMonth]);
 
   const opening = useMemo(
-    () => nonCashOpening(branchCash, branchFilter, BRANCHES),
-    [branchCash, branchFilter]
+    () => nonCashOpening(freshMonth ? openings : branchCash, branchFilter, BRANCHES),
+    [freshMonth, openings, branchCash, branchFilter]
   );
 
   const currentNonCash = useMemo(() => {
-    const bal = calcBalances(transactions, branchFilter, branchCash);
+    const bal = calcBalancesUpToDate(
+      transactions,
+      branchFilter,
+      freshMonth ? undefined : branchCash,
+      to,
+      openingByMonth
+    );
     return { card: bal.card, bank: bal.bank, total: bal.card + bal.bank };
-  }, [transactions, branchFilter, branchCash]);
+  }, [transactions, branchFilter, branchCash, freshMonth, to, openingByMonth]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -169,6 +187,7 @@ export default function BankAccountPanel({
           body: JSON.stringify({
             action: "setCash",
             branch,
+            month: freshMonth ? viewMonth : undefined,
             cash: o.cash,
             card: o.card,
             bank: o.bank,
@@ -177,14 +196,20 @@ export default function BankAccountPanel({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "შეცდომა");
         setMsg(`${branch} — საწყისი ნაშთი შენახულია ✓`);
-        await onRefresh(data.branchCash ? { branchCash: data.branchCash } : undefined);
+        await onRefresh(
+          data.openingByMonth
+            ? { openingByMonth: data.openingByMonth }
+            : data.branchCash
+              ? { branchCash: data.branchCash }
+              : undefined
+        );
       } catch (e) {
         setErr(e instanceof Error ? e.message : "შეცდომა");
       } finally {
         setSavingBranch(null);
       }
     },
-    [openings, onRefresh]
+    [openings, onRefresh, freshMonth, viewMonth]
   );
 
   function updateOpening(branch: Branch, field: keyof BranchCash, raw: string) {
@@ -210,9 +235,13 @@ export default function BankAccountPanel({
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h2 className="mb-1 font-semibold text-zinc-200">საწყისი ნაშთები — {OPENING_DATE_LABEL}</h2>
+        <h2 className="mb-1 font-semibold text-zinc-200">
+          საწყისი ნაშთები — {freshMonth ? `1 ${viewMonth}` : OPENING_DATE_LABEL}
+        </h2>
         <p className="mb-4 text-xs text-zinc-500">
-          ქეში, ბარათი და საბანკო ანგარიში ფილიალების მიხედვით · {OPERATIONAL_DATA_FROM}-ის მდგომარეობით
+          {freshMonth
+            ? "ოქტომბრიდან საწყისი თანხა ცალკეა. სექტემბრის ნაშთი ამ თვეში არ გადმოდის."
+            : `ქეში, ბარათი და საბანკო ანგარიში ფილიალების მიხედვით · ${FRESH_START_DATE}-მდე`}
         </p>
 
         <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">

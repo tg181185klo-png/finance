@@ -3,7 +3,7 @@ import type { Branch, PaymentMethod, Sale, Transaction } from "./types";
 
 export const DISTRIBUCIA_APP_URL = env.distribuciaApiUrl.replace(/\/$/, "");
 
-export const DISTRIBUCIA_SYNC_FROM = process.env.DISTRIBUCIA_SYNC_FROM || "2026-03-01";
+export const DISTRIBUCIA_SYNC_FROM = process.env.DISTRIBUCIA_SYNC_FROM || "2026-10-01";
 
 export type DistribuciaItem = {
   code: string;

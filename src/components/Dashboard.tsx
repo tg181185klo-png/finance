@@ -61,7 +61,7 @@ import {
   isOtherSaleProduct,
 } from "@/lib/dashboard-data";
 import {
-  calcBalances,
+  calcBalancesUpToDate,
   clearLegacyTransactions,
   currentMonth,
   emptyBranchCash,
@@ -88,7 +88,7 @@ import {
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
 import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions, txInPeriod } from "@/lib/period-filter";
 import { txMatchesBranchFilter } from "@/lib/branch-allocation";
-import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
+import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS, STORE_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 
@@ -248,7 +248,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "შენახვა ვერ მოხერხდა");
-    return data as { inventory?: Store["inventory"]; branchCash?: Store["branchCash"] };
+    return data as {
+      inventory?: Store["inventory"];
+      branchCash?: Store["branchCash"];
+      openingByMonth?: Store["openingByMonth"];
+    };
   }, []);
 
   const loadProducts = useCallback(async () => {
@@ -483,13 +487,23 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   const saleIsOther = isOtherSaleProduct(selected);
 
-  const balances = useMemo(
-    () => calcBalances(operationalTx, filter, activeStore.branchCash),
-    [operationalTx, filter, activeStore.branchCash]
-  );
+  const balances = useMemo(() => {
+    const fresh = period.to >= FRESH_START_DATE;
+    return calcBalancesUpToDate(
+      operationalTx,
+      filter,
+      fresh ? undefined : activeStore.branchCash,
+      period.to,
+      activeStore.openingByMonth
+    );
+  }, [operationalTx, filter, activeStore.branchCash, activeStore.openingByMonth, period.to]);
   const creditTx = useMemo(
-    () => operationalTx.filter((t): t is Sale => t.type === "sale" && isCreditOrder(t)),
-    [operationalTx]
+    () =>
+      operationalTx.filter((t): t is Sale => {
+        if (t.type !== "sale" || !isCreditOrder(t)) return false;
+        return txInPeriod(t.date, period.from, period.to);
+      }),
+    [operationalTx, period.from, period.to]
   );
   const openCreditOrders = useMemo(() => creditTx.filter((t) => isCreditOrderActive(t)), [creditTx]);
   const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
@@ -619,11 +633,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }, [products, invSearch]);
 
   useEffect(() => {
-    if (activeStore.branchCash) {
-      setCashForm(activeStore.branchCash[invBranch] ?? emptyBranchCash());
-      skipCashAutoSave.current = true;
-    }
-  }, [activeStore.branchCash, invBranch]);
+    const book = activeStore.openingByMonth?.[FRESH_START_MONTH]?.[invBranch] ?? emptyBranchCash();
+    setCashForm(book);
+    skipCashAutoSave.current = true;
+  }, [activeStore.openingByMonth, invBranch]);
 
   useEffect(() => {
     if (skipCashAutoSave.current) {
@@ -636,13 +649,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const data = await saveInventory({
           action: "setCash",
           branch: invBranch,
+          month: FRESH_START_MONTH,
           cash: cashForm.cash,
           card: cashForm.card,
           bank: cashForm.bank,
         });
-        if (data.branchCash) {
-          const branchCash = data.branchCash;
-          applyLocalStore((prev) => ({ ...prev, branchCash }));
+        if (data.openingByMonth) {
+          const openingByMonth = data.openingByMonth;
+          applyLocalStore((prev) => ({ ...prev, openingByMonth }));
         }
         setError("");
         setSaveMsg("შენახულია ✓");
@@ -723,13 +737,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const data = await saveInventory({
           action: "setCash",
           branch: invBranch,
+          month: FRESH_START_MONTH,
           cash: cashForm.cash,
           card: cashForm.card,
           bank: cashForm.bank,
         });
-        if (data.branchCash) {
-          const branchCash = data.branchCash;
-          applyLocalStore((prev) => ({ ...prev, branchCash }));
+        if (data.openingByMonth) {
+          const openingByMonth = data.openingByMonth;
+          applyLocalStore((prev) => ({ ...prev, openingByMonth }));
         }
         setError("");
         setSaveMsg("შენახულია ✓");
@@ -1506,6 +1521,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             <OpeningBalancesSummary
               transactions={operationalTx}
               branchCash={activeStore.branchCash}
+              openingByMonth={activeStore.openingByMonth}
               compact
               mergeCardBank
             />
@@ -2538,8 +2554,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           <div className="grid gap-4 lg:grid-cols-2">
             <p className="mt-1 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება ბაზაში (ცალკე შენახვა არ გჭირდებათ).</p>
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-              <h2 className="mb-4 text-lg font-semibold text-sky-400">ფილიალის საწყისი ნაშთები</h2>
-              <p className="mb-3 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება (0.6 წმ შემდეგ)</p>
+              <h2 className="mb-4 text-lg font-semibold text-sky-400">ოქტომბრის საწყისი ნაშთები</h2>
+              <p className="mb-3 text-xs text-zinc-500">ოქტომბერი ნულიდან იწყება. სექტემბრის ნაშთი აქ არ გადმოდის. ცვლილება ავტომატურად ინახება.</p>
               <div className="mb-3">
                 <Field label="ფილიალი">
                   <select className={inputCls} value={invBranch} onChange={(e) => setInvBranch(e.target.value as Branch)}>
@@ -2596,10 +2612,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           </div>
 
           <div>
-            <h3 className="mb-3 text-sm font-medium text-zinc-400">საწყისი ნაშთები (ფილიალის ბალანსი)</h3>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">ოქტომბრის საწყისი ნაშთები</h3>
             <div className="mb-6 grid gap-3 sm:grid-cols-3">
               {BRANCHES.map((b) => {
-                const opening = activeStore.branchCash[b] ?? emptyBranchCash();
+                const opening = activeStore.openingByMonth?.[FRESH_START_MONTH]?.[b] ?? emptyBranchCash();
                 return (
                   <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 className="mb-2 font-semibold">{b}</h3>
@@ -2612,10 +2628,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 );
               })}
             </div>
-            <h3 className="mb-3 text-sm font-medium text-zinc-400">მიმდინარე ბალანსი (საწყისი + ტრანზაქციები)</h3>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">ოქტომბრის ნაშთი (საწყისი + ოქტომბრის ჩანაწერები)</h3>
             <div className="grid gap-3 sm:grid-cols-3">
             {BRANCHES.map((b) => {
-              const cash = calcBalances(tx, b, activeStore.branchCash);
+              const cash = calcBalancesUpToDate(tx, b, undefined, period.to, activeStore.openingByMonth);
               return (
                 <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
                   <h3 className="mb-2 font-semibold">{b}</h3>
@@ -2712,6 +2728,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <BankAccountPanel
           transactions={operationalTx}
           branchCash={activeStore.branchCash}
+          openingByMonth={activeStore.openingByMonth}
           bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
           onUpdatePayment={updateTxPayment}
           onToggleReview={toggleBankLedgerReview}
