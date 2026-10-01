@@ -1483,6 +1483,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <OwnerMetricsPanel
           transactions={operationalTx}
           branchCash={activeStore.branchCash}
+          openingByMonth={activeStore.openingByMonth}
           branchReports={branchReports}
           obligations={activeStore.obligations}
           obligationPayments={activeStore.obligationPayments ?? []}

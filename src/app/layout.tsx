@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ფინანსური Dashboard",
-  description: "მარტივი ფინანსური აღრიცხვა",
+  title: "პოლიმერი",
+  description: "პოლიმერის ფინანსური აღრიცხვა",
 };
 
 export const viewport: Viewport = {

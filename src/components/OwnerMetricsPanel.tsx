@@ -9,26 +9,24 @@ import type {
   Obligation,
   ObligationPayment,
   PaymentMethod,
-  Sale,
   Transaction,
 } from "@/lib/types";
 import type { ResolvedPeriod } from "@/lib/period-filter";
-import { periodFlow } from "@/lib/period-filter";
+import { periodFlow, txInPeriod } from "@/lib/period-filter";
+import { txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { computeScopePeriodStats } from "@/lib/flow-detail";
+import { FRESH_START_DATE } from "@/lib/report-config";
+import { isZeroTradeReport, paymentShort, saleGroupLabel } from "@/lib/branch-payments";
 import {
-  groupBranchSales,
-  isZeroTradeReport,
-  paymentShort,
-  saleGroupLabel,
-} from "@/lib/branch-payments";
-import {
-  calcBalances,
+  calcBalancesUpToDate,
+  countsTowardOperatingExpenses,
   currentMonth,
   formatMoney,
   isCreditOrder,
   isCreditOrderActive,
   obligationSummary,
   paymentMethodLabel,
+  saleCreditPaid,
   saleCreditRemaining,
   txPaymentMethod,
 } from "@/lib/utils";
@@ -54,6 +52,7 @@ type MetricId =
 type Props = {
   transactions: Transaction[];
   branchCash: Record<Branch, BranchCash>;
+  openingByMonth?: Record<string, Record<Branch, BranchCash>>;
   branchReports: BranchDailyReport[];
   obligations: Record<string, Obligation[]>;
   obligationPayments?: ObligationPayment[];
@@ -180,6 +179,7 @@ function branchOk(branch: string, filter: Branch | "ყველა") {
 export default function OwnerMetricsPanel({
   transactions,
   branchCash,
+  openingByMonth,
   branchReports,
   obligations,
   obligationPayments = [],
@@ -201,40 +201,70 @@ export default function OwnerMetricsPanel({
     [transactions, branchFilter, period.from, period.to]
   );
   const balances = useMemo(
-    () => calcBalances(transactions, branchFilter, branchCash),
-    [transactions, branchFilter, branchCash]
+    () =>
+      calcBalancesUpToDate(
+        transactions,
+        branchFilter,
+        period.to >= FRESH_START_DATE ? undefined : branchCash,
+        period.to,
+        openingByMonth
+      ),
+    [transactions, branchFilter, branchCash, openingByMonth, period.to]
   );
   const ob = useMemo(
     () => obligationSummary(obligations, obMonth, branchFilter),
     [obligations, obMonth, branchFilter]
   );
 
-  const periodSales = useMemo(() => {
-    return transactions.filter((t): t is Sale => {
-      if (t.type !== "sale") return false;
-      if (!inPeriod(t.date, period.from, period.to)) return false;
-      if (!branchOk(t.branch, branchFilter)) return false;
-      if (isCreditOrder(t) && isCreditOrderActive(t)) return false;
-      return true;
-    });
+  const saleLines = useMemo(() => {
+    const rows: {
+      id: string;
+      date: string;
+      branch: string;
+      label: string;
+      method: string;
+      products: string;
+      bucket: "cash" | "card" | "bank" | "credit" | "other";
+      amount: number;
+    }[] = [];
+    for (const t of transactions) {
+      if (t.type !== "sale") continue;
+      if (!txInPeriod(t.date, period.from, period.to)) continue;
+      if (!txMatchesBranchFilter(t, branchFilter)) continue;
+      const method = txPaymentMethod(t);
+      const credit = isCreditOrder(t) || method === "კონსიგნაცია";
+      const amount = credit ? saleCreditPaid(t) : t.amount;
+      if (amount <= 0) continue;
+      const bucket = credit
+        ? "credit"
+        : method === "ქეში (ნაღდი)"
+          ? "cash"
+          : method === "ბარათი"
+            ? "card"
+            : method === "ანგარიშზე ჩარიცხვა"
+              ? "bank"
+              : "other";
+      rows.push({
+        id: t.id,
+        date: t.date.slice(0, 10),
+        branch: t.branch,
+        label: credit ? `${t.buyerName || "მყიდველი"} · ბე, გადახდილი` : saleGroupLabel(t),
+        method: credit ? "ბე" : paymentShort(method),
+        products: `${t.productName} × ${t.quantity}`,
+        bucket,
+        amount,
+      });
+    }
+    return rows;
   }, [transactions, period, branchFilter]);
-
-  const salesByMethod = useMemo(() => {
-    const all = groupBranchSales(periodSales);
-    return {
-      all,
-      cash: all.filter((g) => g.paymentMethod === "ქეში (ნაღდი)"),
-      card: all.filter((g) => g.paymentMethod === "ბარათი"),
-      bank: all.filter((g) => g.paymentMethod === "ანგარიშზე ჩარიცხვა"),
-    };
-  }, [periodSales]);
 
   const expensesByDay = useMemo(() => {
     const map = new Map<string, Expense[]>();
     for (const t of transactions) {
       if (t.type !== "expense") continue;
-      if (!inPeriod(t.date, period.from, period.to)) continue;
-      if (!branchOk(t.branch, branchFilter)) continue;
+      if (!countsTowardOperatingExpenses(t)) continue;
+      if (!txInPeriod(t.date, period.from, period.to)) continue;
+      if (!txMatchesBranchFilter(t, branchFilter)) continue;
       const d = t.date.slice(0, 10);
       const list = map.get(d) ?? [];
       list.push(t);
@@ -253,8 +283,8 @@ export default function OwnerMetricsPanel({
     const map = new Map<string, Transaction[]>();
     for (const t of transactions) {
       if (t.type !== "deposit") continue;
-      if (!inPeriod(t.date, period.from, period.to)) continue;
-      if (!branchOk(t.branch, branchFilter)) continue;
+      if (!txInPeriod(t.date, period.from, period.to)) continue;
+      if (!txMatchesBranchFilter(t, branchFilter)) continue;
       const d = t.date.slice(0, 10);
       const list = map.get(d) ?? [];
       list.push(t);
@@ -273,8 +303,8 @@ export default function OwnerMetricsPanel({
     const rows: { id: string; date: string; branch: string; label: string; method: string; amount: number }[] = [];
     for (const t of transactions) {
       if (t.type !== "sale" && t.type !== "deposit") continue;
-      if (!inPeriod(t.date, period.from, period.to)) continue;
-      if (!branchOk(t.branch, branchFilter)) continue;
+      if (!txInPeriod(t.date, period.from, period.to)) continue;
+      if (!txMatchesBranchFilter(t, branchFilter)) continue;
       const method = txPaymentMethod(t);
       if (method !== "ბარათი" && method !== "ანგარიშზე ჩარიცხვა") continue;
       if (t.type === "sale" && isCreditOrder(t) && isCreditOrderActive(t)) continue;
@@ -299,7 +329,7 @@ export default function OwnerMetricsPanel({
     for (const t of transactions) {
       if (t.type !== "sale") continue;
       if (!isCreditOrder(t) || !isCreditOrderActive(t)) continue;
-      if (!branchOk(t.branch, branchFilter)) continue;
+      if (!txMatchesBranchFilter(t, branchFilter)) continue;
       const left = saleCreditRemaining(t);
       if (left <= 0) continue;
       rows.push({
@@ -331,13 +361,19 @@ export default function OwnerMetricsPanel({
     }).length;
   }, [branchReports, period, branchFilter]);
 
-  function dayRowsFromGroups(groups: ReturnType<typeof groupBranchSales>) {
-    const byDay = new Map<string, { date: string; groups: typeof groups; total: number }>();
-    for (const g of groups) {
-      const cur = byDay.get(g.date) ?? { date: g.date, groups: [], total: 0 };
-      cur.groups.push(g);
-      cur.total += g.total;
-      byDay.set(g.date, cur);
+  function dayRows(bucket: "all" | "cash" | "card" | "bank") {
+    const picked = saleLines.filter((row) =>
+      bucket === "all" ? true : row.bucket === bucket
+    );
+    const byDay = new Map<
+      string,
+      { date: string; groups: typeof picked; total: number }
+    >();
+    for (const row of picked) {
+      const cur = byDay.get(row.date) ?? { date: row.date, groups: [], total: 0 };
+      cur.groups.push(row);
+      cur.total += row.amount;
+      byDay.set(row.date, cur);
     }
     return [...byDay.values()].sort((a, b) => b.date.localeCompare(a.date));
   }
@@ -347,7 +383,7 @@ export default function OwnerMetricsPanel({
       case "revenue":
         return formatMoney(channel.revenueTotal);
       case "expense":
-        return formatMoney(flow.expenses);
+        return formatMoney(channel.expenseOperating);
       case "net":
         return formatMoney(channel.net);
       case "rev_cash":
@@ -416,8 +452,8 @@ export default function OwnerMetricsPanel({
                 setActive(m.id);
                 setOpenDay(null);
               }}
-              className={`rounded-xl border px-4 py-3 text-left transition ${m.accent} ${
-                on ? "ring-2 ring-sky-500/60" : "hover:brightness-110"
+              className={`cursor-pointer rounded-xl border px-4 py-3 text-left transition duration-150 ease-out hover:-translate-y-0.5 hover:border-sky-400/80 hover:shadow-lg hover:shadow-black/40 hover:brightness-125 active:translate-y-0 ${m.accent} ${
+                on ? "ring-2 ring-sky-400 shadow-md shadow-sky-950/40" : ""
               }`}
             >
               <p className="text-[11px] uppercase tracking-wide text-zinc-500">{m.short}</p>
@@ -446,14 +482,14 @@ export default function OwnerMetricsPanel({
           active === "rev_card" ||
           active === "rev_bank") && (
           <SalesDayTable
-            days={dayRowsFromGroups(
+            days={dayRows(
               active === "revenue"
-                ? salesByMethod.all
+                ? "all"
                 : active === "rev_cash"
-                  ? salesByMethod.cash
+                  ? "cash"
                   : active === "rev_card"
-                    ? salesByMethod.card
-                    : salesByMethod.bank
+                    ? "card"
+                    : "bank"
             )}
             openDay={openDay}
             setOpenDay={setOpenDay}
@@ -607,7 +643,18 @@ function SalesDayTable({
   setOpenDay,
   showBranch,
 }: {
-  days: { date: string; groups: ReturnType<typeof groupBranchSales>; total: number }[];
+  days: {
+    date: string;
+    total: number;
+    groups: {
+      id: string;
+      branch: string;
+      label: string;
+      method: string;
+      products: string;
+      amount: number;
+    }[];
+  }[];
   openDay: string | null;
   setOpenDay: (d: string | null) => void;
   showBranch: boolean;
@@ -649,7 +696,7 @@ function SalesDayTable({
                     <div className="space-y-2">
                       {day.groups.map((g) => (
                         <div
-                          key={g.groupId}
+                          key={g.id}
                           className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -660,17 +707,13 @@ function SalesDayTable({
                                 </span>
                               )}
                               {g.label}
-                              <span className="ml-2 text-zinc-500">
-                                · {paymentShort(g.paymentMethod)}
-                              </span>
+                              <span className="ml-2 text-zinc-500">· {g.method}</span>
                             </p>
                             <span className="font-medium text-emerald-400">
-                              {formatMoney(g.total)}
+                              {formatMoney(g.amount)}
                             </span>
                           </div>
-                          <p className="mt-1 text-zinc-500">
-                            {g.lines.map((l) => `${l.productName} × ${l.quantity}`).join(" · ")}
-                          </p>
+                          <p className="mt-1 text-zinc-500">{g.products}</p>
                         </div>
                       ))}
                     </div>
