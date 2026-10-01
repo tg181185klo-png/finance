@@ -1812,6 +1812,17 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                           {sale.branch} · {sale.productName} · {formatMoney(sale.unitPrice)}/ც
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        className="text-xs text-red-400 hover:text-red-300"
+                        onClick={() => {
+                          const label = sale.buyerName || sale.productName;
+                          if (!confirm(`წავშალოთ ბე შეკვეთა „${label}"?`)) return;
+                          void deleteTx(sale.id);
+                        }}
+                      >
+                        წაშლა
+                      </button>
                     </div>
 
                     <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
