@@ -74,6 +74,7 @@ import {
   paymentsForObligation,
   paymentsForSale,
   deliveriesForSale,
+  isDueUrgent,
   obligationSummary,
   obligationMonthAccrued,
   saleCreditPaid,
@@ -152,7 +153,7 @@ type DashboardProps = {
 };
 
 export default function Dashboard({ onLogout }: DashboardProps = {}) {
-  const [tab, setTab] = useState<Tab>("system");
+  const [tab, setTab] = useState<Tab>("overview");
   const [menuOpen, setMenuOpen] = useState(true);
   const [hiddenTabs, setHiddenTabs] = useState<DashboardTabId[]>([]);
   const [store, setStore] = useState<Store | null>(null);
@@ -2017,6 +2018,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           transactions={operationalTx}
           branchReports={branchReports}
           branchCash={activeStore.branchCash}
+          openingByMonth={activeStore.openingByMonth}
+          obligations={activeStore.obligations}
           period={period}
           employees={activeStore.employees ?? []}
           bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
@@ -2358,10 +2361,18 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                             const left = o.amount - o.paid;
                             const open = expandedObId === o.id;
                             const payments = open ? paymentsForObligation(activeStore, o.id) : [];
+                            const dueUrgent = left > 0 && isDueUrgent(o.plannedPayDate);
+                            const dueOverdue = Boolean(o.plannedPayDate && o.plannedPayDate < new Date().toISOString().slice(0, 10));
                             return (
                               <div
                                 key={o.id}
-                                className={left <= 0 ? "bg-emerald-950/10" : "bg-zinc-950/30"}
+                                className={
+                                  dueUrgent
+                                    ? "bg-red-950/25"
+                                    : left <= 0
+                                      ? "bg-emerald-950/10"
+                                      : "bg-zinc-950/30"
+                                }
                               >
                                 <button
                                   type="button"
@@ -2397,8 +2408,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                     {formatMoney(o.paid)}/{formatMoney(o.amount)}
                                   </span>
                                   {o.plannedPayDate && (
-                                    <span className="hidden shrink-0 text-[10px] text-violet-400/90 md:inline">
+                                    <span
+                                      className={`hidden shrink-0 text-[10px] md:inline ${
+                                        dueUrgent ? "font-semibold text-red-400" : "text-violet-400/90"
+                                      }`}
+                                    >
                                       {o.plannedPayDate}
+                                      {dueUrgent ? (dueOverdue ? " · ვადაგადაცილებული" : " · ვადა ახლოვდება") : ""}
                                     </span>
                                   )}
                                   <span className="shrink-0 text-[10px] text-zinc-600">

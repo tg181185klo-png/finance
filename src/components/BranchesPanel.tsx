@@ -418,6 +418,22 @@ export default function BranchesPanel({
                       </div>
                     ))}
                   </div>
+                ) : (r.sales?.length ?? 0) > 0 ? (
+                  <div className="mb-2 space-y-1">
+                    {r.sales!.map((p, j) => (
+                      <p key={j} className="text-emerald-400">
+                        +{formatMoney(p.amount)} — {p.productName} ×{p.quantity} · {p.paymentMethod}
+                      </p>
+                    ))}
+                  </div>
+                ) : (r.incomes?.length ?? 0) > 0 ? (
+                  <div className="mb-2 space-y-1">
+                    {r.incomes!.map((income, j) => (
+                      <p key={j} className="text-emerald-400">
+                        +{formatMoney(income.amount)} — დღის შემოსავალი · {income.paymentMethod}
+                      </p>
+                    ))}
+                  </div>
                 ) : r.salesTotal > 0 ? (
                   <p className="mb-2 text-emerald-400">+{formatMoney(r.salesTotal)} — {r.salesNote}</p>
                 ) : (

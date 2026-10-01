@@ -8,6 +8,7 @@ import {
   isCreditOrderActive,
   paymentMethodLabel,
   paymentsForSale,
+  isDueUrgent,
   saleCreditPaid,
   saleCreditRemaining,
 } from "@/lib/utils";
@@ -260,6 +261,7 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                   <div className="divide-y divide-zinc-800/60">
                     {cat.items.map((g) => {
                       const overdue = Boolean(g.dueDate && g.remaining > 0 && g.dueDate < today);
+                      const dueUrgent = Boolean(g.dueDate && g.remaining > 0 && isDueUrgent(g.dueDate, today));
                       const open = expanded === g.key;
                       const method = payMethods[g.key] ?? "ქეში (ნაღდი)";
                       const payments = open ? groupPayments(g) : [];
@@ -267,8 +269,8 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                         <div
                           key={g.key}
                           className={
-                            overdue
-                              ? "bg-red-950/10"
+                            dueUrgent
+                              ? "bg-red-950/20"
                               : g.remaining <= 0
                                 ? "bg-emerald-950/10"
                                 : "bg-zinc-950/30"
@@ -296,11 +298,11 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
                             </span>
                             <span
                               className={`hidden shrink-0 text-[10px] sm:inline ${
-                                overdue ? "text-red-400" : "text-zinc-500"
+                                dueUrgent ? "font-semibold text-red-400" : "text-zinc-500"
                               }`}
                             >
                               {g.dueDate ?? "—"}
-                              {overdue ? "!" : ""}
+                              {overdue ? " · ვადაგადაცილებული" : dueUrgent ? " · ვადა ახლოვდება" : ""}
                             </span>
                             <span className="shrink-0 text-[10px] text-zinc-600">{open ? "▲" : "▼"}</span>
                           </button>

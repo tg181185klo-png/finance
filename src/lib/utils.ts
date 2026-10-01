@@ -229,6 +229,25 @@ export function obligationRemaining(ob: Pick<Obligation, "amount" | "paid">) {
   return Math.max(0, ob.amount - ob.paid);
 }
 
+/** ვადა წითელდება დღეს, უახლოეს რამდენიმე დღეში, ან ვადაგადაცილებისას. */
+export const DUE_SOON_DAYS = 3;
+
+export function addCalendarDays(iso: string, days: number): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function isDueUrgent(
+  due: string | undefined | null,
+  today = new Date().toISOString().slice(0, 10)
+): boolean {
+  if (!due) return false;
+  const day = due.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  return day <= addCalendarDays(today, DUE_SOON_DAYS);
+}
+
 /** ამ თვის დარიცხვა = სულ − გადმოტანილი ნარჩენი */
 export function obligationMonthAccrued(ob: Obligation) {
   return Math.max(0, ob.amount - (ob.carriedForward ?? 0));

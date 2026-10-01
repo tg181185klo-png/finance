@@ -44,7 +44,8 @@ export default function BranchActivityPanel({
       }
       const submittedBy = report.submittedBy ?? "—";
 
-      for (const sale of report.clientSales ?? []) {
+      const clientSales = report.clientSales ?? [];
+      for (const sale of clientSales) {
         const total = sale.products.reduce((s, p) => s + (p.amount || 0), 0);
         const driver = sale.driverEmployeeName?.trim() || submittedBy;
         out.push({
@@ -56,6 +57,33 @@ export default function BranchActivityPanel({
           employee: driver,
           submittedBy,
         });
+      }
+
+      if (!clientSales.length) {
+        for (const sale of report.sales ?? []) {
+          if ((sale.amount ?? 0) <= 0) continue;
+          out.push({
+            kind: "sale",
+            date: report.date,
+            branch: report.branch,
+            label: `${sale.productName} ×${sale.quantity} · ${sale.paymentMethod}`,
+            amount: sale.amount,
+            employee: submittedBy,
+            submittedBy,
+          });
+        }
+        for (const income of report.incomes ?? []) {
+          if ((income.amount ?? 0) <= 0) continue;
+          out.push({
+            kind: "sale",
+            date: report.date,
+            branch: report.branch,
+            label: `დღის შემოსავალი · ${income.paymentMethod}`,
+            amount: income.amount,
+            employee: submittedBy,
+            submittedBy,
+          });
+        }
       }
 
       for (const ex of report.expenses ?? []) {
@@ -70,7 +98,10 @@ export default function BranchActivityPanel({
         });
       }
 
-      const hasSales = (report.clientSales ?? []).length > 0;
+      const hasSales =
+        clientSales.length > 0 ||
+        (report.sales ?? []).some((s) => (s.amount ?? 0) > 0) ||
+        (report.incomes ?? []).some((s) => (s.amount ?? 0) > 0);
       const hasExpenses = (report.expenses ?? []).length > 0;
       if (!hasSales && !hasExpenses) {
         out.push({
