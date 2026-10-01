@@ -11,7 +11,7 @@ export type BranchBalanceRow = {
   current: BranchCash;
 };
 
-export function sumOpening(branchCash: Record<Branch, BranchCash>): BranchCash {
+export function sumOpening(branchCash: Partial<Record<Branch, BranchCash>>): BranchCash {
   const out = emptyBranchCash();
   for (const b of BRANCHES) {
     const o = branchCash[b] ?? emptyBranchCash();
