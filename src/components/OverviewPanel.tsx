@@ -16,6 +16,8 @@ import {
   isCreditOrder,
   isCreditOrderActive,
   isDueUrgent,
+  isPaidGoodsToDeliver,
+  saleQuantityRemaining,
   obligationRemaining,
 } from "@/lib/utils";
 import {
@@ -392,6 +394,13 @@ export default function OverviewPanel({
     const remaining = unpaid.reduce((sum, row) => sum + row.left, 0);
     return { months, unpaid, remaining };
   }, [obligations, from, to, today]);
+  const goodsToDeliver = useMemo(
+    () =>
+      transactions.filter(
+        (t): t is Sale => t.type === "sale" && txInPeriod(t.date, from, to) && isPaidGoodsToDeliver(t)
+      ),
+    [transactions, from, to]
+  );
   const reportWatch = useMemo(() => {
     if (from === to) {
       return { day: from, phrase: from === today ? "დღეს" : formatDate(from) };
@@ -525,6 +534,24 @@ export default function OverviewPanel({
                     );
                   })}
                 </ul>
+              )}
+              {goodsToDeliver.length > 0 && (
+                <div className="mt-3 border-t border-zinc-800 pt-2">
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-sky-400/90">
+                    გასაცემი პროდუქცია — თანხა გადახდილია
+                  </p>
+                  <ul className="space-y-1">
+                    {goodsToDeliver.map((sale) => (
+                      <li key={sale.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-zinc-200">
+                        <span>
+                          {sale.buyerName || sale.comment || "მყიდველი"}
+                          <span className="text-zinc-500"> · {sale.productName} · {sale.branch}</span>
+                        </span>
+                        <span className="tabular-nums text-sky-300">{saleQuantityRemaining(sale)} ც</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
         </div>
         )}

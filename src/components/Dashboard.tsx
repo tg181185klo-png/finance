@@ -81,6 +81,7 @@ import {
   saleCreditPaid,
   saleCreditRemaining,
   saleQuantityDelivered,
+  isPaidGoodsToDeliver,
   saleQuantityRemaining,
   isCreditOrder,
   isCreditOrderFullyComplete,
@@ -509,6 +510,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     [operationalTx, period.from, period.to]
   );
   const openCreditOrders = useMemo(() => creditTx.filter((t) => isCreditOrderActive(t)), [creditTx]);
+  const goodsToDeliver = useMemo(() => creditTx.filter((t) => isPaidGoodsToDeliver(t)), [creditTx]);
   const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
   const creditQtyRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleQuantityRemaining(t), 0), [openCreditOrders]);
   const saleById = useMemo(() => {
@@ -2171,6 +2173,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           <p className="text-xs text-zinc-500">
             მისაღები არის ის, რაც მომხმარებელს უნდა შემოიტანოს. გადასახდელი არის ის, რაც ჩვენ უნდა გავისტუმროთ — ქეშიდან, ბარათიდან ან ანგარიშიდან. ნაშთი ჩანს «საიდან გავისტუმრო»-ში.
           </p>
+          {goodsToDeliver.length > 0 && (
+            <div className="rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
+              <h2 className="text-sm font-semibold text-sky-300">გასაცემი პროდუქცია</h2>
+              <p className="mb-2 text-[11px] text-zinc-500">თანხა გადახდილია · პროდუქტი ჯერ არ გაცემულა</p>
+              <ul className="space-y-1">
+                {goodsToDeliver.map((sale) => (
+                  <li key={sale.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                    <span>
+                      {sale.buyerName || sale.comment || "მყიდველი"}
+                      <span className="text-zinc-400"> · {sale.productName}</span>
+                    </span>
+                    <span className="tabular-nums text-sky-300">
+                      {saleQuantityRemaining(sale)} ც · {sale.branch}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <ReceivablesPanel
             sales={creditTx}
             store={activeStore}

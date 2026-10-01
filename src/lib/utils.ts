@@ -579,6 +579,16 @@ export function isCreditOrderActive(sale: Sale) {
   return isCreditOrder(sale) && !isCreditOrderFullyComplete(sale);
 }
 
+/** თანხა სრულადაა, პროდუქტი ჯერ გასაცემია */
+export function isPaidGoodsToDeliver(sale: Sale) {
+  return (
+    isCreditOrder(sale) &&
+    !sale.orderCompletedAt &&
+    saleCreditRemaining(sale) <= 0 &&
+    saleQuantityRemaining(sale) > 0
+  );
+}
+
 export function txPaymentMethod(t: Transaction): PaymentMethod {
   if (t.type === "sale") return t.paymentMethod;
   if (t.type === "expense") return t.expensePaymentMethod ?? "ქეში (ნაღდი)";
