@@ -271,6 +271,12 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     setCart((items) => items.map((i) => (i.id === id ? { ...i, quantity: n } : i)));
   }
 
+  function updateCartPrice(id: string, raw: string) {
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n < 0) return;
+    setCart((items) => items.map((i) => (i.id === id ? { ...i, unitPrice: n } : i)));
+  }
+
   function finishSale() {
     if (personType === "physical") {
       if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
@@ -704,16 +710,24 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.productName}</p>
-                    <p className="text-xs text-zinc-500">
-                      {item.productCode} · {formatMoney(item.unitPrice)}/ც
-                    </p>
+                    <p className="text-xs text-zinc-500">{item.productCode}</p>
                   </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    className="w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-right text-sm"
+                    value={item.unitPrice}
+                    onChange={(e) => updateCartPrice(item.id, e.target.value)}
+                    aria-label="ფასი"
+                  />
                   <input
                     type="number"
                     min={1}
                     className="w-14 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-center text-sm"
                     value={item.quantity}
                     onChange={(e) => updateCartQty(item.id, e.target.value)}
+                    aria-label="რაოდენობა"
                   />
                   <span className="w-16 text-right text-sm text-emerald-400">
                     {formatMoney(item.quantity * item.unitPrice)}

@@ -269,13 +269,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     setProducts(list);
     setSelected((prev) => {
       if (!prev) return prev;
-      const fresh = list.find((p) => p.code === prev.code);
-      if (fresh) {
-        setPrice(fresh.price);
-        setSearch(`${fresh.code} — ${fresh.name}`);
-        return fresh;
-      }
-      return prev;
+      return list.find((p) => p.code === prev.code) ?? prev;
     });
     return list;
   }, []);
