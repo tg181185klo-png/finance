@@ -65,6 +65,7 @@ function priceCol(headers: string[]) {
 
 function looksLikeProductCode(code: string) {
   if (!code || code.length > 24) return false;
+  if (/^\d+$/.test(code)) return true;
   if (/^[\d]+\/[\dA-Za-z\-\/]+$/.test(code)) return true;
   if (/^[\d]+\/[\dA-Za-z]+$/.test(code)) return true;
   return /^[\d\/A-Za-z\-]+$/.test(code) && code.includes("/");
