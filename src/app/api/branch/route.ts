@@ -13,6 +13,7 @@ import {
 } from "@/lib/utils";
 import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
+import { DEFAULT_BRANCH_TOKENS } from "@/lib/store-merge";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
@@ -448,6 +449,17 @@ async function submitBranchReport(body: SubmitBody) {
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
+  if (url.searchParams.get("catalog") === "1") {
+    if (!token || !Object.values(DEFAULT_BRANCH_TOKENS).includes(token)) {
+      return NextResponse.json({ error: "არასწორი ლინკი" }, { status: 404 });
+    }
+    const { products, error: productsError } = await fetchProductsFromGoogleSheets();
+    return NextResponse.json(
+      { products, productsWarning: productsError, productsCount: products.length },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  }
+
   const dayParam = url.searchParams.get("date");
   const day =
     dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam)

@@ -13,6 +13,7 @@ import type {
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatReportDay } from "@/lib/branch-tx-date";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
+import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { formatMoney, formatDate, uid, branchExpenseOperatingAmount } from "@/lib/utils";
 
 const inputCls =
@@ -156,6 +157,31 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
       .catch(() => setErr("კავშირის შეცდომა"))
       .finally(() => setLoading(false));
   }, [token, date]);
+
+  useEffect(() => {
+    if (loading) return;
+    let stop = false;
+    const pull = () => {
+      fetch(`/api/branch?token=${encodeURIComponent(token)}&catalog=1`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (stop || !Array.isArray(d.products) || d.products.length === 0) return;
+          setProducts(d.products as Product[]);
+          setProductWarning(d.productsWarning ? String(d.productsWarning) : "");
+        })
+        .catch(() => {});
+    };
+    const id = setInterval(pull, PRODUCTS_REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") pull();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stop = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [token, loading]);
 
   function changeAdminDate(next: string) {
     if (!isAdmin) return;
