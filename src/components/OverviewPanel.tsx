@@ -643,7 +643,7 @@ export default function OverviewPanel({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
         <h2 className="mb-3 text-lg font-semibold">
-          {readOnly ? "მიმოხილვა" : "მიმოხილვა — ფილიალი ან კომპანია"}
+          {readOnly ? "მიმოხილვა" : "მთავარი გვერდი"}
         </h2>
 
         <div className="mb-4 flex flex-wrap items-end gap-3">

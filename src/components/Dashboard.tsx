@@ -32,6 +32,7 @@ import BankAccountPanel from "@/components/BankAccountPanel";
 import CostingPanel from "@/components/CostingPanel";
 import {
   DASHBOARD_MENU_GROUPS,
+  MAIN_PAGE_TAB,
   hiddenDashboardTabs,
   readHiddenTabIds,
   visibleDashboardTabs,
@@ -1303,6 +1304,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         {menuOpen && (
         <>
         <nav className="space-y-3">
+          {menuTabs.some((v) => v.id === MAIN_PAGE_TAB.id) && (
+            <button
+              type="button"
+              className={`block w-full rounded px-2 py-1 text-left text-[12px] font-medium leading-snug ${
+                tab === MAIN_PAGE_TAB.id
+                  ? "bg-emerald-950 text-emerald-300"
+                  : "text-zinc-100 hover:bg-zinc-900"
+              }`}
+              onClick={() => setTab(MAIN_PAGE_TAB.id)}
+            >
+              {MAIN_PAGE_TAB.label}
+            </button>
+          )}
           {DASHBOARD_MENU_GROUPS.map((group) => {
             const pages = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
             if (!pages.length) return null;

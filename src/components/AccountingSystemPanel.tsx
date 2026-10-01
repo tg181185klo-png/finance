@@ -71,7 +71,7 @@ const MODULES: Module[] = [
     status: "ready",
     links: [
       { label: "რეპორტების ამოღება", tab: "reports" },
-      { label: "მიმოხილვა", tab: "overview" },
+      { label: "მთავარი გვერდი", tab: "overview" },
     ],
     points: [
       "პერიოდი და ფილიალი",
@@ -227,7 +227,7 @@ export default function AccountingSystemPanel({ onOpen }: Props) {
               className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
               onClick={() => onOpen("overview")}
             >
-              გახსენი მიმოხილვა
+              გახსენი მთავარი გვერდი
             </button>
             <button
               type="button"

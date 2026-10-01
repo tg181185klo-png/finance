@@ -20,6 +20,9 @@ export type DashboardTabId =
 
 export type DashboardTab = { id: DashboardTabId; label: string };
 
+/** მთავარი ეკრანი — ოთხი წიგნის ზემოთ, იგივე overview პანელი. */
+export const MAIN_PAGE_TAB: DashboardTab = { id: "overview", label: "მთავარი გვერდი" };
+
 /** ზედა რიგი ოთხი წიგნია. დანარჩენი გვერდი იმ წიგნშია, სადაც ეძებ. */
 export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = [
   {
@@ -53,14 +56,16 @@ export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = 
     label: "რეპორტები",
     tabs: [
       { id: "reports", label: "რეპორტების ამოღება" },
-      { id: "overview", label: "მიმოხილვა" },
       { id: "owner", label: "მფლობელის მაჩვენებლები" },
       { id: "system", label: "აღრიცხვის რუკა" },
     ],
   },
 ];
 
-export const ALL_DASHBOARD_TABS: DashboardTab[] = DASHBOARD_MENU_GROUPS.flatMap((g) => g.tabs);
+export const ALL_DASHBOARD_TABS: DashboardTab[] = [
+  MAIN_PAGE_TAB,
+  ...DASHBOARD_MENU_GROUPS.flatMap((g) => g.tabs),
+];
 
 export function menuGroupForTab(id: DashboardTabId) {
   return DASHBOARD_MENU_GROUPS.find((g) => g.tabs.some((t) => t.id === id)) ?? DASHBOARD_MENU_GROUPS[0];
