@@ -153,6 +153,7 @@ type DashboardProps = {
 
 export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [tab, setTab] = useState<Tab>("system");
+  const [menuOpen, setMenuOpen] = useState(true);
   const [hiddenTabs, setHiddenTabs] = useState<DashboardTabId[]>([]);
   const [store, setStore] = useState<Store | null>(null);
   const [storeWarning, setStoreWarning] = useState("");
@@ -276,6 +277,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   useEffect(() => {
     setHiddenTabs(readHiddenTabIds());
   }, []);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("finance-sidebar-open") === "0") setMenuOpen(false);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleMenu() {
+    setMenuOpen((open) => {
+      const next = !open;
+      try {
+        localStorage.setItem("finance-sidebar-open", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const menuTabs = useMemo(() => visibleDashboardTabs(hiddenTabs), [hiddenTabs]);
   const hiddenMenuTabs = useMemo(() => hiddenDashboardTabs(hiddenTabs), [hiddenTabs]);
@@ -1246,8 +1267,25 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   return (
     <div className="flex min-h-screen w-full">
-      <aside className="sticky top-0 flex h-screen w-44 shrink-0 flex-col overflow-y-auto border-r border-zinc-800 bg-zinc-950 px-2 py-3">
-        <p className="mb-3 px-2 text-[11px] font-semibold text-zinc-200">ფინანსები</p>
+      <aside
+        className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 ${
+          menuOpen ? "w-44 overflow-y-auto px-2 py-2" : "w-7 items-center py-2"
+        }`}
+      >
+        <div className={`mb-2 flex items-center ${menuOpen ? "justify-between px-1" : "justify-center"}`}>
+          {menuOpen && <p className="text-[11px] font-semibold text-zinc-200">ფინანსები</p>}
+          <button
+            type="button"
+            aria-label={menuOpen ? "მენიუს დახურვა" : "მენიუს გახსნა"}
+            title={menuOpen ? "მენიუს დახურვა" : "მენიუს გახსნა"}
+            className="rounded px-1.5 py-0.5 text-sm leading-none text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+            onClick={toggleMenu}
+          >
+            {menuOpen ? "‹" : "›"}
+          </button>
+        </div>
+        {menuOpen && (
+        <>
         <nav className="space-y-3">
           {DASHBOARD_MENU_GROUPS.map((group) => {
             const pages = group.tabs.filter((t) => menuTabs.some((v) => v.id === t.id));
@@ -1290,41 +1328,28 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             ))}
           </div>
         )}
+        </>
+        )}
       </aside>
 
       <div className="min-w-0 flex-1">
       <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80">
-        <div className="flex w-full flex-col gap-3 px-3 py-3 sm:px-4 lg:px-6 xl:px-8">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-bold tracking-tight sm:text-2xl">ფინანსური Dashboard</h1>
-              <p className="mt-0.5 text-xs text-zinc-500 sm:text-sm">
-                {loading
-                  ? "იტვირთება..."
-                  : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
-                {distribuciaNote && <span className="ml-2 text-violet-300">{distribuciaNote}</span>}
-                {saveMsg && <span className="ml-2 text-emerald-400">{saveMsg}</span>}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <ThemeToggle />
-              {onLogout && (
-                <button
-                  type="button"
-                  className="min-h-10 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                  onClick={() => void onLogout()}
-                >
-                  გასვლა
-                </button>
-              )}
-            </div>
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+          <div className="min-w-0">
+            <h1 className="text-sm font-semibold leading-tight">ფინანსური Dashboard</h1>
+            <p className="text-[11px] leading-tight text-zinc-500">
+              {loading
+                ? "იტვირთება..."
+                : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
+              {distribuciaNote && <span className="ml-1.5 text-violet-300">{distribuciaNote}</span>}
+              {saveMsg && <span className="ml-1.5 text-emerald-400">{saveMsg}</span>}
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            <div>
-              <label className={labelCls}>ფილიალი</label>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+              ფილიალი
               <select
-                className={`${inputCls} min-h-11 sm:text-sm`}
+                className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value as Branch | "ყველა")}
               >
@@ -1335,11 +1360,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className={labelCls}>პერიოდი</label>
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+              პერიოდი
               <select
-                className={`${inputCls} min-h-11 sm:text-sm`}
+                className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
                 value={periodMode}
                 onChange={(e) => setPeriodMode(e.target.value as PeriodMode)}
               >
@@ -1347,32 +1372,36 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 <option value="today">დღეს</option>
                 <option value="custom">პერიოდი...</option>
               </select>
-            </div>
+            </label>
             {periodMode === "custom" ? (
-              <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-1 xl:col-span-2">
-                <div className="min-w-[9rem] flex-1">
-                  <label className={labelCls}>დან</label>
-                  <input
-                    type="date"
-                    className={`${inputCls} min-h-11`}
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                  />
-                </div>
-                <div className="min-w-[9rem] flex-1">
-                  <label className={labelCls}>მდე</label>
-                  <input
-                    type="date"
-                    className={`${inputCls} min-h-11`}
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                  />
-                </div>
-              </div>
+              <>
+                <input
+                  type="date"
+                  aria-label="დან"
+                  className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+                <input
+                  type="date"
+                  aria-label="მდე"
+                  className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+              </>
             ) : (
-              <div className="flex items-end">
-                <p className="pb-2.5 text-xs text-zinc-500">{period.label}</p>
-              </div>
+              <span className="text-[11px] text-zinc-500">{period.label}</span>
+            )}
+            <ThemeToggle compact />
+            {onLogout && (
+              <button
+                type="button"
+                className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                onClick={() => void onLogout()}
+              >
+                გასვლა
+              </button>
             )}
           </div>
         </div>

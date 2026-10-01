@@ -8,14 +8,19 @@ import {
   type AppTheme,
 } from "@/lib/theme";
 
-const btn = (on: boolean) =>
-  `rounded-lg px-2.5 py-1.5 text-xs sm:px-3 sm:text-sm transition min-h-9 ${
-    on
-      ? "bg-emerald-700 text-white"
-      : "border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-200"
-  }`;
+function btn(on: boolean, compact: boolean) {
+  return compact
+    ? `rounded px-1.5 py-0.5 text-[11px] leading-none ${
+        on ? "bg-emerald-700 text-white" : "border border-zinc-700 text-zinc-500 hover:text-zinc-200"
+      }`
+    : `rounded-lg px-2.5 py-1.5 text-xs sm:px-3 sm:text-sm transition min-h-9 ${
+        on
+          ? "bg-emerald-700 text-white"
+          : "border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-200"
+      }`;
+}
 
-export default function ThemeToggle({ className }: { className?: string }) {
+export default function ThemeToggle({ className, compact = false }: { className?: string; compact?: boolean }) {
   const [theme, setTheme] = useState<AppTheme>("dark");
 
   useEffect(() => {
@@ -32,10 +37,10 @@ export default function ThemeToggle({ className }: { className?: string }) {
 
   return (
     <div className={`inline-flex items-center gap-1 ${className ?? ""}`} role="group" aria-label="ინტერფეისის ფერი">
-      <button type="button" className={btn(theme === "dark")} onClick={() => select("dark")}>
+      <button type="button" className={btn(theme === "dark", compact)} onClick={() => select("dark")}>
         შავი
       </button>
-      <button type="button" className={btn(theme === "light")} onClick={() => select("light")}>
+      <button type="button" className={btn(theme === "light", compact)} onClick={() => select("light")}>
         თეთრი
       </button>
     </div>
