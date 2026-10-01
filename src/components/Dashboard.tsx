@@ -234,7 +234,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [invSearch, setInvSearch] = useState("");
   const [invSelected, setInvSelected] = useState<Product | null>(null);
   const [invQty, setInvQty] = useState("");
-  const [cashForm, setCashForm] = useState<BranchCash>({ cash: 0, card: 0, bank: 0 });
+  const [cashForm, setCashForm] = useState({ cash: "", card: "", bank: "" });
   const [invFilter, setInvFilter] = useState<Branch | "ყველა">("ყველა");
 
   function runWithPin(action: () => void | Promise<void>) {
@@ -638,11 +638,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     return products.filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [products, invSearch]);
 
+  const cashHydratedBranch = useRef<string | null>(null);
   useEffect(() => {
-    const book = activeStore.openingByMonth?.[FRESH_START_MONTH]?.[invBranch] ?? emptyBranchCash();
-    setCashForm(book);
+    if (!store) return;
+    if (cashHydratedBranch.current === invBranch) return;
+    cashHydratedBranch.current = invBranch;
+    const book = store.openingByMonth?.[FRESH_START_MONTH]?.[invBranch] ?? emptyBranchCash();
+    setCashForm({
+      cash: book.cash ? String(book.cash) : "",
+      card: book.card ? String(book.card) : "",
+      bank: book.bank ? String(book.bank) : "",
+    });
     skipCashAutoSave.current = true;
-  }, [activeStore.openingByMonth, invBranch]);
+  }, [store, invBranch]);
 
   useEffect(() => {
     if (skipCashAutoSave.current) {
@@ -656,9 +664,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           action: "setCash",
           branch: invBranch,
           month: FRESH_START_MONTH,
-          cash: cashForm.cash,
-          card: cashForm.card,
-          bank: cashForm.bank,
+          cash: parseNum(cashForm.cash),
+          card: parseNum(cashForm.card),
+          bank: parseNum(cashForm.bank),
         });
         if (data.openingByMonth) {
           const openingByMonth = data.openingByMonth;
@@ -744,9 +752,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           action: "setCash",
           branch: invBranch,
           month: FRESH_START_MONTH,
-          cash: cashForm.cash,
-          card: cashForm.card,
-          bank: cashForm.bank,
+          cash: parseNum(cashForm.cash),
+          card: parseNum(cashForm.card),
+          bank: parseNum(cashForm.bank),
         });
         if (data.openingByMonth) {
           const openingByMonth = data.openingByMonth;
@@ -2598,8 +2606,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
       {tab === "inventory" && !loading && (
         <section className="space-y-6">
+          <p className="text-xs text-zinc-500">ცვლილება ავტომატურად ინახება ბაზაში (ცალკე შენახვა არ გჭირდებათ).</p>
           <div className="grid gap-4 lg:grid-cols-2">
-            <p className="mt-1 text-xs text-zinc-500">ცვლილება ავტომატურად ინახება ბაზაში (ცალკე შენახვა არ გჭირდებათ).</p>
             <form onSubmit={saveBranchCash} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
               <h2 className="mb-4 text-lg font-semibold text-sky-400">ოქტომბრის საწყისი ნაშთები</h2>
               <p className="mb-3 text-xs text-zinc-500">ოქტომბერი ნულიდან იწყება. სექტემბრის ნაშთი აქ არ გადმოდის. ცვლილება ავტომატურად ინახება.</p>
@@ -2612,13 +2620,13 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="ქეში">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.cash} onChange={(e) => setCashForm((c) => ({ ...c, cash: parseNum(e.target.value) }))} />
+                  <input className={inputCls} inputMode="decimal" value={cashForm.cash} onChange={(e) => setCashForm((c) => ({ ...c, cash: e.target.value }))} />
                 </Field>
                 <Field label="ბარათი">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.card} onChange={(e) => setCashForm((c) => ({ ...c, card: parseNum(e.target.value) }))} />
+                  <input className={inputCls} inputMode="decimal" value={cashForm.card} onChange={(e) => setCashForm((c) => ({ ...c, card: e.target.value }))} />
                 </Field>
                 <Field label="ანგარიში">
-                  <input className={inputCls} type="number" step={0.01} value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: parseNum(e.target.value) }))} />
+                  <input className={inputCls} inputMode="decimal" value={cashForm.bank} onChange={(e) => setCashForm((c) => ({ ...c, bank: e.target.value }))} />
                 </Field>
               </div>
               <button type="submit" className={`${btnCls} mt-4`}>ახლავე შენახვა</button>

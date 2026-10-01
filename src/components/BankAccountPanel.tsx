@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Branch, BranchCash, PaymentMethod, Transaction } from "@/lib/types";
 import { BRANCHES, PAYMENT_METHODS } from "@/lib/dashboard-data";
 import {
@@ -92,23 +92,47 @@ export default function BankAccountPanel({
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const freshMonth = viewMonth >= FRESH_START_MONTH;
-  const [openings, setOpenings] = useState<Record<Branch, BranchCash>>(() => ({ ...branchCash }));
+  const [draft, setDraft] = useState<Record<Branch, { cash: string; card: string; bank: string }>>(() =>
+    Object.fromEntries(BRANCHES.map((b) => [b, { cash: "", card: "", bank: "" }])) as Record<
+      Branch,
+      { cash: string; card: string; bank: string }
+    >
+  );
+  const editLock = useRef(false);
+  const prevMonth = useRef(viewMonth);
   const [savingBranch, setSavingBranch] = useState<Branch | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [statementHints, setStatementHints] = useState<Record<string, StatementLedgerHint>>({});
 
   useEffect(() => {
-    if (viewMonth >= FRESH_START_MONTH) {
-      const book = openingByMonth?.[viewMonth];
-      const next = Object.fromEntries(
-        BRANCHES.map((b) => [b, { ...emptyBranchCash(), ...book?.[b] }])
-      ) as Record<Branch, BranchCash>;
-      setOpenings(next);
-      return;
-    }
-    setOpenings({ ...branchCash });
+    const monthChanged = prevMonth.current !== viewMonth;
+    prevMonth.current = viewMonth;
+    if (!monthChanged && editLock.current) return;
+    editLock.current = false;
+    const source = viewMonth >= FRESH_START_MONTH ? openingByMonth?.[viewMonth] : branchCash;
+    setDraft(
+      Object.fromEntries(
+        BRANCHES.map((b) => {
+          const row = source?.[b] ?? emptyBranchCash();
+          return [b, { cash: row.cash ? String(row.cash) : "", card: row.card ? String(row.card) : "", bank: row.bank ? String(row.bank) : "" }];
+        })
+      ) as Record<Branch, { cash: string; card: string; bank: string }>
+    );
   }, [branchCash, openingByMonth, viewMonth]);
+
+  const openings = useMemo(() => {
+    return Object.fromEntries(
+      BRANCHES.map((b) => [
+        b,
+        {
+          cash: parseNum(draft[b]?.cash ?? ""),
+          card: parseNum(draft[b]?.card ?? ""),
+          bank: parseNum(draft[b]?.bank ?? ""),
+        },
+      ])
+    ) as Record<Branch, BranchCash>;
+  }, [draft]);
 
   const { from, to } = useMemo(() => monthStartEnd(viewMonth), [viewMonth]);
 
@@ -212,12 +236,13 @@ export default function BankAccountPanel({
     [openings, onRefresh, freshMonth, viewMonth]
   );
 
-  function updateOpening(branch: Branch, field: keyof BranchCash, raw: string) {
-    setOpenings((prev) => ({
+  function updateOpening(branch: Branch, field: "cash" | "card" | "bank", raw: string) {
+    editLock.current = true;
+    setDraft((prev) => ({
       ...prev,
       [branch]: {
-        ...(prev[branch] ?? emptyBranchCash()),
-        [field]: parseNum(raw),
+        ...(prev[branch] ?? { cash: "", card: "", bank: "" }),
+        [field]: raw,
       },
     }));
   }
@@ -257,34 +282,31 @@ export default function BankAccountPanel({
             </thead>
             <tbody>
               {BRANCHES.map((branch) => {
-                const o = openings[branch] ?? emptyBranchCash();
+                const text = draft[branch] ?? { cash: "", card: "", bank: "" };
                 return (
                   <tr key={branch} className="border-b border-zinc-800/50">
                     <td className="py-2 pl-3 pr-3 font-medium">{branch}</td>
                     <td className="py-2 pr-3">
                       <input
                         className={smallInputCls}
-                        type="number"
-                        step={0.01}
-                        value={o.cash}
+                        inputMode="decimal"
+                        value={text.cash}
                         onChange={(e) => updateOpening(branch, "cash", e.target.value)}
                       />
                     </td>
                     <td className="py-2 pr-3">
                       <input
                         className={smallInputCls}
-                        type="number"
-                        step={0.01}
-                        value={o.card}
+                        inputMode="decimal"
+                        value={text.card}
                         onChange={(e) => updateOpening(branch, "card", e.target.value)}
                       />
                     </td>
                     <td className="py-2 pr-3">
                       <input
                         className={smallInputCls}
-                        type="number"
-                        step={0.01}
-                        value={o.bank}
+                        inputMode="decimal"
+                        value={text.bank}
                         onChange={(e) => updateOpening(branch, "bank", e.target.value)}
                       />
                     </td>

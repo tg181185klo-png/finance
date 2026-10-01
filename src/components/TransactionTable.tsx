@@ -247,25 +247,44 @@ export default function TransactionTable({
   const showDriver = Boolean(onUpdateDriver) || rows.some((t) => t.type === "sale" && t.employeeName);
   const showReviewed = Boolean(onToggleReview) || bankLedgerReviewed !== undefined;
 
+  const colCount =
+    5 +
+    (showBranch ? 1 : 0) +
+    (showDriver ? 1 : 0) +
+    (showReviewed ? 1 : 0) +
+    (onDelete ? 1 : 0);
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[720px] table-fixed text-sm">
+        <colgroup>
+          <col className="w-[12%]" />
+          <col className="w-[9%]" />
+          {showBranch && <col className="w-[10%]" />}
+          <col className="w-[24%]" />
+          <col className="w-[16%]" />
+          <col className="w-[12%]" />
+          {showDriver && <col className="w-[11%]" />}
+          <col className="w-[10%]" />
+          {showReviewed && <col className="w-[6%]" />}
+          {onDelete && <col className="w-[8%]" />}
+        </colgroup>
         <thead>
           <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-            <th className="pb-2 pr-3">დრო</th>
-            <th className="pb-2 pr-3">ტიპი</th>
-            {showBranch && <th className="pb-2 pr-3">ფილიალი</th>}
-            <th className="pb-2 pr-3">აღწერა</th>
-            <th className="pb-2 pr-3">კომენტარი</th>
-            <th className="pb-2 pr-3">გადახდა</th>
-            {showDriver && <th className="pb-2 pr-3">მომზიდავი</th>}
-            <th className="pb-2 pr-3 text-right">თანხა</th>
+            <th className="px-2 py-2 font-medium">დრო</th>
+            <th className="px-2 py-2 font-medium">ტიპი</th>
+            {showBranch && <th className="px-2 py-2 font-medium">ფილიალი</th>}
+            <th className="px-2 py-2 font-medium">აღწერა</th>
+            <th className="px-2 py-2 font-medium">კომენტარი</th>
+            <th className="px-2 py-2 font-medium">გადახდა</th>
+            {showDriver && <th className="px-2 py-2 font-medium">მომზიდავი</th>}
+            <th className="px-2 py-2 text-right font-medium">თანხა</th>
             {showReviewed && (
-              <th className="pb-2 pr-3 text-center" title="აისახა ანგარიშზე / ბარათზე">
+              <th className="px-2 py-2 text-center font-medium" title="აისახა ანგარიშზე / ბარათზე">
                 აისახა
               </th>
             )}
-            {onDelete && <th className="pb-2 w-24">წაშლა</th>}
+            {onDelete && <th className="px-2 py-2 font-medium">წაშლა</th>}
           </tr>
         </thead>
         <tbody>
@@ -291,9 +310,9 @@ export default function TransactionTable({
                     if (isSaleGroup) setOpenKey((prev) => (prev === g.key ? null : g.key));
                   }}
                 >
-                  <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
+                  <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
                   <td
-                    className={`py-2 pr-3 ${
+                    className={`px-2 py-2.5 ${
                       t.type === "sale"
                         ? "text-emerald-400"
                         : t.type === "deposit"
@@ -319,24 +338,26 @@ export default function TransactionTable({
                       <span className="ml-1 text-[10px] text-zinc-500">{open ? "▲" : "▼"}</span>
                     )}
                   </td>
-                  {showBranch && <td className="py-2 pr-3">{t.branch}</td>}
-                  <td className="py-2 pr-3">
+                  {showBranch && <td className="truncate px-2 py-2.5">{t.branch}</td>}
+                  <td className="truncate px-2 py-2.5" title={description}>
                     {description}
                     {isSaleGroup && (
                       <span className="ml-2 text-[10px] text-zinc-500">{g.productCount} ხაზი</span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-zinc-500">{t.comment || txDetail(t)}</td>
-                  <td className="py-2 pr-3">
+                  <td className="truncate px-2 py-2.5 text-zinc-500" title={t.comment || txDetail(t)}>
+                    {t.comment || txDetail(t)}
+                  </td>
+                  <td className="px-2 py-2.5">
                     <PaymentMethodCell transaction={t} onUpdatePayment={onUpdatePayment} />
                   </td>
                   {showDriver && (
-                    <td className="py-2 pr-3">
+                    <td className="truncate px-2 py-2.5">
                       <DriverCell transaction={t} employees={employees} onUpdateDriver={onUpdateDriver} />
                     </td>
                   )}
                   <td
-                    className={`py-2 pr-3 text-right font-medium ${
+                    className={`px-2 py-2.5 text-right font-medium tabular-nums ${
                       t.type === "sale"
                         ? "text-emerald-400"
                         : t.type === "deposit"
@@ -348,44 +369,38 @@ export default function TransactionTable({
                     {formatMoney(g.amount)}
                   </td>
                   {showReviewed && (
-                    <td className="py-2 pr-3 text-center">
+                    <td className="px-2 py-2.5 text-center">
                       <ReviewedCell ids={ids} reviewed={reviewed} onToggleReview={onToggleReview} />
                     </td>
                   )}
                   {onDelete && (
-                    <td className="py-2">
+                    <td className="px-2 py-2.5">
                       <DeleteRow id={t.id} onDelete={onDelete} />
                     </td>
                   )}
                 </tr>
                 {open && isSaleGroup && (
                   <tr className="border-b border-sky-900/30 bg-zinc-950/40">
-                    <td colSpan={showBranch ? (showDriver ? 10 : 9) : showDriver ? 9 : 8} className="px-4 py-3">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-sky-300/80">
-                        პროდუქტები
-                      </p>
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-zinc-500">
-                            <th className="pb-1 pr-3">პროდუქტი</th>
-                            <th className="pb-1 pr-3 text-right">რაოდენობა</th>
-                            <th className="pb-1 text-right">თანხა</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {g.items.map((item) =>
-                            item.type === "sale" ? (
-                              <tr key={item.id} className="border-t border-zinc-800/60">
-                                <td className="py-1.5 pr-3">{item.productName}</td>
-                                <td className="py-1.5 pr-3 text-right">{item.quantity}</td>
-                                <td className="py-1.5 text-right text-emerald-400">
-                                  {formatMoney(item.amount)}
-                                </td>
-                              </tr>
-                            ) : null
-                          )}
-                        </tbody>
-                      </table>
+                    <td colSpan={colCount} className="px-3 py-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem] gap-x-3 border-b border-zinc-800 pb-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                        <span>პროდუქტი</span>
+                        <span className="text-right">რაოდენობა</span>
+                        <span className="text-right">ფასი</span>
+                        <span className="text-right">თანხა</span>
+                      </div>
+                      {g.items.map((item) =>
+                        item.type === "sale" ? (
+                          <div
+                            key={item.id}
+                            className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem] gap-x-3 border-t border-zinc-800/60 py-1.5 text-sm"
+                          >
+                            <span className="truncate">{item.productName}</span>
+                            <span className="text-right tabular-nums">{item.quantity}</span>
+                            <span className="text-right tabular-nums text-zinc-400">{formatMoney(item.unitPrice)}</span>
+                            <span className="text-right tabular-nums text-emerald-400">{formatMoney(item.amount)}</span>
+                          </div>
+                        ) : null
+                      )}
                     </td>
                   </tr>
                 )}
