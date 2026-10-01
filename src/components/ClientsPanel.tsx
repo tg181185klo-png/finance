@@ -361,7 +361,6 @@ export default function ClientsPanel({
                     <th className="pb-2 pr-3">მომზიდავი</th>
                     <th className="pb-2 pr-3">ფილიალი</th>
                     <th className="pb-2 pr-3">რეგისტრაცია</th>
-                    <th className="pb-2">მოქმედება</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -373,7 +372,13 @@ export default function ClientsPanel({
                         </span>
                       </td>
                       <td className="py-2 pr-3 text-xs">{c.personType === "legal" ? "იურიდიული" : "ფიზიკური"}</td>
-                      <td className="py-2 pr-3 font-medium">{customerDisplayName(c)}</td>
+                      <td className="py-2 pr-3 font-medium">
+                        {customerDisplayName(c)}
+                        <span className="ml-2 whitespace-nowrap">
+                          <button type="button" className="mr-2 text-xs text-sky-400 hover:text-sky-300" onClick={() => openEditCustomer(c)}>შეცვლა</button>
+                          <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteCustomer(c)} disabled={busy}>წაშლა</button>
+                        </span>
+                      </td>
                       <td className="py-2 pr-3 text-zinc-400">{c.personType === "legal" ? c.companyId ?? "—" : c.personalId ?? "—"}</td>
                       <td className="py-2 pr-3 text-zinc-400">{c.phone || c.contactPhone || "—"}</td>
                       <td className="py-2 pr-3 text-zinc-500">
@@ -395,10 +400,6 @@ export default function ClientsPanel({
                       </td>
                       <td className="py-2 pr-3">{c.branch ?? "—"}</td>
                       <td className="py-2 pr-3 whitespace-nowrap text-xs text-zinc-500">{formatDate(c.registeredAt)}</td>
-                      <td className="py-2 whitespace-nowrap">
-                        <button type="button" className="mr-2 text-xs text-sky-400 hover:text-sky-300" onClick={() => openEditCustomer(c)}>რედაქტირება</button>
-                        <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={() => void deleteCustomer(c)} disabled={busy}>წაშლა</button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

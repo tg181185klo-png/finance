@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchDailyReport, Employee } from "@/lib/types";
+import type { Branch, BranchDailyReport, Employee, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { branchSaleBuyerName } from "@/lib/customers";
+import { ClientSaleActions } from "@/components/ClientSaleActions";
 import { formatReportDay, isReportSuspicious, reportSubmissionWarnings } from "@/lib/branch-tx-date";
 import { formatDate, formatMoney } from "@/lib/utils";
 
@@ -37,7 +38,10 @@ type Props = {
   employees: Employee[];
   branchTokens: Record<Branch, string>;
   overviewReportToken: string;
-  onRefresh: () => Promise<unknown>;
+  onRefresh: (patch?: {
+    branchReports?: BranchDailyReport[];
+    transactions?: Transaction[];
+  }) => Promise<unknown>;
   onDeleteReport: (reportId: string) => void;
 };
 
@@ -409,6 +413,7 @@ export default function BranchesPanel({
                           {c.driverEmployeeName ? (
                             <span className="text-violet-400"> · მომზიდავი: {c.driverEmployeeName}</span>
                           ) : null}
+                          <ClientSaleActions reportId={r.id} sale={c} index={i} onRefresh={onRefresh} />
                         </p>
                         {c.products.map((p, j) => (
                           <p key={j} className="text-emerald-400">

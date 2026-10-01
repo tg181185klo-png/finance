@@ -28,6 +28,7 @@ import {
 } from "@/lib/flow-detail";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
+import { ClientSaleActions } from "@/components/ClientSaleActions";
 import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
 import { branchSalesForPayments, branchesSalesForPayments, groupBranchSales } from "@/lib/branch-payments";
 
@@ -247,7 +248,10 @@ type Props = {
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
   onToggleReview?: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
-  onRefresh?: () => void | Promise<unknown>;
+  onRefresh?: (patch?: {
+    branchReports?: BranchDailyReport[];
+    transactions?: Transaction[];
+  }) => void | Promise<unknown>;
 };
 
 export default function OverviewPanel({
@@ -597,6 +601,9 @@ export default function OverviewPanel({
                           </span>
                           {c.driverEmployeeName ? (
                             <span className="text-violet-400"> · მომზიდავი: {c.driverEmployeeName}</span>
+                          ) : null}
+                          {!readOnly && onRefresh ? (
+                            <ClientSaleActions reportId={r.id} sale={c} index={i} onRefresh={onRefresh} />
                           ) : null}
                         </p>
                         {c.products.map((p, j) => (
