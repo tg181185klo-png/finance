@@ -6,6 +6,7 @@ import { BRANCHES } from "@/lib/dashboard-data";
 import { branchSaleBuyerName } from "@/lib/customers";
 import { ClientSaleActions } from "@/components/ClientSaleActions";
 import { formatReportDay, isReportSuspicious, reportSubmissionWarnings } from "@/lib/branch-tx-date";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -73,7 +74,8 @@ export default function BranchesPanel({
       const d = new Date();
       const start = new Date(d);
       start.setDate(d.getDate() - 6);
-      return { from: start.toISOString().slice(0, 10), to: today };
+      const startIso = start.toISOString().slice(0, 10);
+      return { from: startIso < OPERATIONAL_DATA_FROM ? OPERATIONAL_DATA_FROM : startIso, to: today };
     }
     if (quickDay === "month") {
       const m = today.slice(0, 7);
@@ -302,10 +304,10 @@ export default function BranchesPanel({
           {quickDay === "custom" && (
             <>
               <Field label="დან">
-                <input type="date" className={inputCls} value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
+                <input type="date" className={inputCls} value={filterFrom} min={OPERATIONAL_DATA_FROM} onChange={(e) => setFilterFrom(e.target.value)} />
               </Field>
               <Field label="მდე">
-                <input type="date" className={inputCls} value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+                <input type="date" className={inputCls} value={filterTo} min={OPERATIONAL_DATA_FROM} onChange={(e) => setFilterTo(e.target.value)} />
               </Field>
             </>
           )}

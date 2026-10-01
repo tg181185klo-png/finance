@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { buildPeriodReport, currentMonth, lastMonths, monthStartEnd } from "@/lib/utils";
 import { readStore } from "@/lib/server-store";
-import { REPORT_HISTORY_MAX_MONTHS, REPORT_HISTORY_MONTHS } from "@/lib/report-config";
+import { OPERATIONAL_DATA_FROM_MONTH, REPORT_HISTORY_MAX_MONTHS, REPORT_HISTORY_MONTHS } from "@/lib/report-config";
 import type { Branch } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       REPORT_HISTORY_MAX_MONTHS,
       Math.max(1, parseInt(p.get("count") ?? String(REPORT_HISTORY_MONTHS), 10))
     );
-    const months = lastMonths(count);
+    const months = lastMonths(count).filter((m) => m >= OPERATIONAL_DATA_FROM_MONTH);
     const items = months.map((m) => {
       const { from, to } = monthStartEnd(m);
       const company = buildPeriodReport(

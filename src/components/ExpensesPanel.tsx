@@ -105,7 +105,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
       <div className="rounded-xl border border-red-900/40 bg-red-950/15 p-5">
         <h2 className="mb-1 font-semibold text-red-200">ხარჯების ფილტრი</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          ხარჯები ჩანს {OPERATIONAL_DATA_FROM_MONTH}-დან (სექტემბერი 2026). წინა თვეების Excel იმპორტი ამ ტაბში არ ჩანს.
+          ხარჯები ჩანს {OPERATIONAL_DATA_FROM_MONTH}-დან. წინა თვეები ამ ცხრილში არ ჩანს.
         </p>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -116,7 +116,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
             პერიოდი
           </button>
           <button type="button" className={tabBtn(periodMode === "all")} onClick={() => setPeriodMode("all")}>
-            სექტემბრიდან
+            ოქტომბრიდან
           </button>
         </div>
 

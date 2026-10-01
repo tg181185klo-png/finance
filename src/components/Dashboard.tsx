@@ -609,7 +609,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     if (tab === "obligations") refresh();
   }, [obMonth, tab]);
 
-  const branchReports = activeStore.branchReports;
+  const branchReports = useMemo(
+    () => (activeStore.branchReports ?? []).filter((r) => r.date >= OPERATIONAL_DATA_FROM),
+    [activeStore.branchReports]
+  );
   const inventory = activeStore.inventory;
 
   const inventoryRows = useMemo(() => {
@@ -1411,6 +1414,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   aria-label="დან"
                   className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
                   value={customFrom}
+                  min={OPERATIONAL_DATA_FROM}
                   onChange={(e) => setCustomFrom(e.target.value)}
                 />
                 <input
@@ -1418,6 +1422,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   aria-label="მდე"
                   className="h-7 rounded border border-zinc-700 bg-zinc-900 px-1.5 text-xs text-zinc-100"
                   value={customTo}
+                  min={OPERATIONAL_DATA_FROM}
                   onChange={(e) => setCustomTo(e.target.value)}
                 />
               </>
