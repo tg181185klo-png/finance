@@ -50,6 +50,7 @@ export default function PublicReport({
   to: string;
 }) {
   const [open, setOpen] = useState<{ scope: Scope; card: Card } | null>(null);
+  const [openBranch, setOpenBranch] = useState<Branch | null>(null);
 
   const blocks = useMemo(() => {
     return SCOPES.map((scope) => {
@@ -88,35 +89,112 @@ export default function PublicReport({
     setOpen((cur) => (cur?.scope === scope && cur.card === card ? null : { scope, card }));
   }
 
+  const company = blocks[0];
+  const branches = blocks.slice(1);
+
   return (
     <div className="space-y-4">
-      {blocks.map((b) => {
-        const showBranch = b.id === "ყველა";
-        const active = open?.scope === b.id ? open.card : null;
-        return (
-          <section key={b.id} className="space-y-2">
-            <h2 className="text-sm font-semibold text-zinc-200">{b.label}</h2>
+      {company && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-zinc-200">{company.label}</h2>
+          <ScopeCards
+            block={company}
+            active={open?.scope === company.id ? open.card : null}
+            showBranch
+            onToggle={(card) => toggle(company.id, card)}
+          />
+        </section>
+      )}
+
+      <div className="space-y-2">
+        {branches.map((b) => {
+          const opened = openBranch === b.id;
+          return (
+            <section key={b.id} className="rounded-xl border border-zinc-800 bg-zinc-950/40">
+              <button
+                type="button"
+                onClick={() => setOpenBranch(opened ? null : (b.id as Branch))}
+                className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-zinc-900/60"
+              >
+                <span className={`text-xs text-zinc-500 ${opened ? "rotate-90" : ""}`}>▶</span>
+                <span className="w-28 shrink-0 text-sm font-semibold text-zinc-100">{b.label}</span>
+                <span className="grid flex-1 grid-cols-3 gap-2 text-xs">
+                  <span>
+                    <span className="block text-[10px] text-zinc-500">შემოსავალი</span>
+                    <span className="text-emerald-400">{formatMoney(b.incomeSum)}</span>
+                  </span>
+                  <span>
+                    <span className="block text-[10px] text-zinc-500">ხარჯი</span>
+                    <span className="text-red-400">{formatMoney(b.expenseSum)}</span>
+                  </span>
+                  <span>
+                    <span className="block text-[10px] text-zinc-500">ვალდებულება</span>
+                    <span className="text-amber-300">{formatMoney(b.payableSum)}</span>
+                  </span>
+                </span>
+              </button>
+              {opened && (
+                <div className="border-t border-zinc-800 p-2">
+                  <ScopeCards
+                    block={b}
+                    active={open?.scope === b.id ? open.card : null}
+                    showBranch={false}
+                    onToggle={(card) => toggle(b.id, card)}
+                  />
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScopeCards({
+  block: b,
+  active,
+  showBranch,
+  onToggle,
+}: {
+  block: {
+    id: Scope;
+    income: Sale[];
+    expenses: Transaction[];
+    payables: Obligation[];
+    receivables: Sale[];
+    goods: Sale[];
+    incomeSum: number;
+    expenseSum: number;
+    payableSum: number;
+  };
+  active: Card | null;
+  showBranch: boolean;
+  onToggle: (card: Card) => void;
+}) {
+  return (
+    <div className="space-y-2">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <CardButton
                 label="შემოსავალი"
                 value={formatMoney(b.incomeSum)}
                 tone="text-emerald-400 border-emerald-900/50"
                 on={active === "income"}
-                onClick={() => toggle(b.id, "income")}
+                onClick={() => onToggle("income")}
               />
               <CardButton
                 label="ხარჯი"
                 value={formatMoney(b.expenseSum)}
                 tone="text-red-400 border-red-900/50"
                 on={active === "expense"}
-                onClick={() => toggle(b.id, "expense")}
+                onClick={() => onToggle("expense")}
               />
               <CardButton
                 label="მიმდინარე ვალდებულება"
                 value={formatMoney(b.payableSum)}
                 tone="text-amber-300 border-amber-900/50"
                 on={active === "obligation"}
-                onClick={() => toggle(b.id, "obligation")}
+                onClick={() => onToggle("obligation")}
               />
             </div>
 
@@ -193,9 +271,6 @@ export default function PublicReport({
                 )}
               </List>
             )}
-          </section>
-        );
-      })}
     </div>
   );
 }
