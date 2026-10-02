@@ -70,32 +70,19 @@ export default function OverviewPortal({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="w-full px-3 py-4 sm:px-4 sm:py-6 lg:px-6 xl:px-8">
-        <header className="mb-6 border-b border-zinc-800 pb-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-emerald-400">მიმოხილვა — საჯარო რეპორტი</h1>
-              <p className="mt-1 text-sm text-zinc-500">
-                მხოლოდ საინფორმაციო · მონაცემები {OPERATIONAL_DATA_FROM}-დან · ცვლილება შეუძლებელია
-              </p>
-            </div>
-            <ThemeToggle />
-          </div>
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div>
-              <p className="mb-1 text-xs text-zinc-500">თვე</p>
-              <input
-                type="month"
-                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500"
-                value={viewMonth}
-                min={OPERATIONAL_DATA_FROM_MONTH}
-                onChange={(e) => setViewMonth(e.target.value)}
-              />
-            </div>
-            <p className="text-xs text-zinc-600">
-              პერიოდი: {period.from} — {period.to}
-            </p>
-          </div>
+      <div className="w-full px-3 py-2 sm:px-4 lg:px-6">
+        <header className="mb-3 flex items-center gap-2">
+          <h1 className="text-sm font-medium text-zinc-300">რეპორტი</h1>
+          <input
+            type="month"
+            aria-label="თვე"
+            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs focus:border-emerald-500"
+            value={viewMonth}
+            min={OPERATIONAL_DATA_FROM_MONTH}
+            onChange={(e) => setViewMonth(e.target.value)}
+          />
+          <span className="hidden text-[11px] text-zinc-600 sm:inline">{OPERATIONAL_DATA_FROM}-დან</span>
+          <ThemeToggle compact className="ml-auto" />
         </header>
 
         <PublicReport
