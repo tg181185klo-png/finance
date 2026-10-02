@@ -510,7 +510,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       }),
     [operationalTx, period.from, period.to]
   );
-  const openCreditOrders = useMemo(() => creditTx.filter((t) => isCreditOrderActive(t)), [creditTx]);
+  const openCreditOrders = useMemo(
+    () => creditTx.filter((t) => isCreditOrderActive(t) && !isPaidGoodsToDeliver(t)),
+    [creditTx]
+  );
   const goodsToDeliver = useMemo(() => creditTx.filter((t) => isPaidGoodsToDeliver(t)), [creditTx]);
   const creditRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleCreditRemaining(t), 0), [openCreditOrders]);
   const creditQtyRemainingTotal = useMemo(() => openCreditOrders.reduce((s, t) => s + saleQuantityRemaining(t), 0), [openCreditOrders]);
@@ -2183,19 +2186,45 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           {goodsToDeliver.length > 0 && (
             <div className="rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
               <h2 className="text-sm font-semibold text-sky-300">გასაცემი პროდუქცია</h2>
-              <p className="mb-2 text-[11px] text-zinc-500">თანხა გადახდილია · პროდუქტი ჯერ არ გაცემულა</p>
-              <ul className="space-y-1">
-                {goodsToDeliver.map((sale) => (
-                  <li key={sale.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                    <span>
-                      {sale.buyerName || sale.comment || "მყიდველი"}
-                      <span className="text-zinc-400"> · {sale.productName}</span>
-                    </span>
-                    <span className="tabular-nums text-sky-300">
-                      {saleQuantityRemaining(sale)} ც · {sale.branch}
-                    </span>
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {goodsToDeliver.map((sale) => {
+                  const left = saleQuantityRemaining(sale);
+                  return (
+                    <li key={sale.id} className="text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span>
+                          {sale.buyerName || sale.comment || "მყიდველი"}
+                          <span className="text-zinc-400"> · {sale.productName}</span>
+                        </span>
+                        <span className="tabular-nums text-sky-300">
+                          {left} ც · {sale.branch}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">თანხა სრულად გადახდილია</p>
+                      <div className="mt-1 flex flex-wrap items-end gap-1.5">
+                        <input
+                          className={`${inputCls} w-20`}
+                          type="number"
+                          min={1}
+                          step={1}
+                          max={left}
+                          value={creditDeliverInputs[sale.id] ?? ""}
+                          onChange={(e) =>
+                            setCreditDeliverInputs((m) => ({ ...m, [sale.id]: e.target.value }))
+                          }
+                          placeholder={String(left)}
+                        />
+                        <button
+                          type="button"
+                          className={`${btnCls} bg-sky-700 hover:bg-sky-600`}
+                          onClick={() => addCreditDelivery(sale.id)}
+                        >
+                          გაცემა
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

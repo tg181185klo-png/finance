@@ -541,16 +541,19 @@ export default function OverviewPanel({
               {goodsToDeliver.length > 0 && (
                 <div className="mt-3 border-t border-zinc-800 pt-2">
                   <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-sky-400/90">
-                    გასაცემი პროდუქცია — თანხა გადახდილია
+                    გასაცემი პროდუქცია
                   </p>
                   <ul className="space-y-1">
                     {goodsToDeliver.map((sale) => (
-                      <li key={sale.id} className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-zinc-200">
-                        <span>
-                          {sale.buyerName || sale.comment || "მყიდველი"}
-                          <span className="text-zinc-500"> · {sale.productName} · {sale.branch}</span>
-                        </span>
-                        <span className="tabular-nums text-sky-300">{saleQuantityRemaining(sale)} ც</span>
+                      <li key={sale.id} className="text-sm text-zinc-200">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span>
+                            {sale.buyerName || sale.comment || "მყიდველი"}
+                            <span className="text-zinc-500"> · {sale.productName} · {sale.branch}</span>
+                          </span>
+                          <span className="tabular-nums text-sky-300">{saleQuantityRemaining(sale)} ც</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500">თანხა სრულად გადახდილია</p>
                       </li>
                     ))}
                   </ul>

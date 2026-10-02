@@ -6,6 +6,7 @@ import { BRANCHES, SETTLEMENT_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import {
   formatMoney,
   isCreditOrderActive,
+  isPaidGoodsToDeliver,
   paymentMethodLabel,
   paymentsForSale,
   isDueUrgent,
@@ -82,6 +83,7 @@ export default function ReceivablesPanel({ sales, store, onPay, onSetDueDate }: 
   const groups = useMemo(() => {
     const map = new Map<string, ReceivableGroup>();
     for (const sale of sales) {
+      if (isPaidGoodsToDeliver(sale)) continue;
       if (filter === "open" && !isCreditOrderActive(sale)) continue;
       if (
         filter === "all" &&
