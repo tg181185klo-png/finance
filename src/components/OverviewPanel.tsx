@@ -518,6 +518,9 @@ export default function OverviewPanel({
                       >
                         <span>
                           {item.name}
+                          {item.responsible ? (
+                            <span className="text-zinc-400"> · {item.responsible}</span>
+                          ) : null}
                           <span className="text-zinc-500"> · {item.branch}</span>
                           {item.plannedPayDate ? (
                             <span className={urgent ? "font-semibold text-red-400" : "text-zinc-500"}>

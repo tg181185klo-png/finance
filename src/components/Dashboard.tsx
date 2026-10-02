@@ -219,6 +219,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obRecurring, setObRecurring] = useState(true);
   const [obEmployeeId, setObEmployeeId] = useState("");
   const [obPlannedPayDate, setObPlannedPayDate] = useState("");
+  const [obResponsible, setObResponsible] = useState("");
   const [obPlannedPayMethod, setObPlannedPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
 
   // Obligation payment
@@ -226,7 +227,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
   const [expandedObId, setExpandedObId] = useState<string | null>(null);
-  const [showAddOb, setShowAddOb] = useState(false);
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
 
@@ -1175,7 +1175,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   async function addObligation(e: React.FormEvent) {
     e.preventDefault();
     const amount = parseFloat(obAmount);
-    if (!obName.trim() || !amount) return;
+    if (!obName.trim() || !amount || !obResponsible.trim() || !obPlannedPayDate) {
+      setError("სახელი, თანხა, პასუხისმგებელი და საბოლოო თარიღი სავალდებულოა");
+      return;
+    }
     try {
       const res = await fetch("/api/obligations", {
         method: "POST",
@@ -1188,8 +1191,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             category: obCategory,
             month: obMonth,
             comment: obComment.trim() || undefined,
-            plannedPayDate: obPlannedPayDate || undefined,
+            plannedPayDate: obPlannedPayDate,
             plannedPaymentMethod: obPlannedPayMethod,
+            responsible: obResponsible.trim(),
           },
           recurring: obRecurring,
         }),
@@ -1201,12 +1205,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         recurringObligations: d.recurringObligations,
       });
       setSaveMsg(obRecurring ? "ყოველთვიური ვალდებულება დაემატა ✓" : "ვალდებულება დაემატა ✓");
-      setShowAddOb(false);
       setObName("");
       setObAmount("");
       setObComment("");
       setObEmployeeId("");
       setObPlannedPayDate("");
+      setObResponsible("");
       setObPlannedPayMethod("ქეში (ნაღდი)");
       if (d.item?.category) {
         setCollapsedObCat((m) => ({ ...m, [d.item.category]: false }));
@@ -2222,19 +2226,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   value={obMonth}
                   onChange={(e) => setObMonth(e.target.value)}
                 />
-                <button
-                  type="button"
-                  className="rounded border border-violet-800/60 bg-violet-950/30 px-2.5 py-1.5 text-xs text-violet-200"
-                  onClick={() => setShowAddOb((v) => !v)}
-                >
-                  {showAddOb ? "დახურვა" : "+ დამატება"}
-                </button>
               </div>
             </div>
 
-            {showAddOb && (
-              <form onSubmit={addObligation} className="mb-3 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <form onSubmit={addObligation} className="mb-3 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
+              <p className="mb-2 text-xs font-medium text-violet-200">
+                თვიური აღრიცხვა · {obMonth}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <Field label="კატეგორია">
                     <select
                       className={inputCls}
@@ -2325,12 +2324,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                       onChange={(e) => setObComment(e.target.value)}
                     />
                   </Field>
-                  <Field label="დაგეგმილი თარიღი">
+                  <Field label="პასუხისმგებელი">
+                    <input
+                      className={inputCls}
+                      value={obResponsible}
+                      onChange={(e) => setObResponsible(e.target.value)}
+                      placeholder="ვინ ასრულებს"
+                      required
+                    />
+                  </Field>
+                  <Field label="შესრულების საბოლოო თარიღი">
                     <input
                       type="date"
                       className={inputCls}
                       value={obPlannedPayDate}
                       onChange={(e) => setObPlannedPayDate(e.target.value)}
+                      required
                     />
                   </Field>
                   <Field label="დაგეგმილი საშუალება">
@@ -2359,7 +2368,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   შენახვა
                 </button>
               </form>
-            )}
 
             {recurringList.length > 0 && (
               <div className="mb-2">
@@ -2394,11 +2402,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               </div>
             )}
 
-            {obByCategory.length === 0 ? (
-              <p className="py-2 text-xs text-zinc-500">ვალდებულებები არ არის</p>
+            {obByCategory.every((cat) => cat.items.every((o) => o.amount - o.paid <= 0)) ? (
+              <p className="py-2 text-xs text-zinc-500">ამ თვეში შეუსრულებელი ვალდებულება არ დარჩა</p>
             ) : (
               <div className="space-y-2">
-                {obByCategory.map((cat) => {
+                {obByCategory.filter((cat) => cat.items.some((o) => o.amount - o.paid > 0)).map((cat) => {
                   const closed = collapsedObCat[cat.name];
                   return (
                     <div key={cat.name} className="overflow-hidden rounded-lg border border-zinc-800/80">
@@ -2419,7 +2427,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                       </button>
                       {!closed && (
                         <div className="divide-y divide-zinc-800/60">
-                          {cat.items.map((o: Obligation) => {
+                          {cat.items.filter((o) => o.amount - o.paid > 0).map((o: Obligation) => {
                             const left = o.amount - o.paid;
                             const open = expandedObId === o.id;
                             const payments = open ? paymentsForObligation(activeStore, o.id) : [];
@@ -2450,6 +2458,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                   </span>
                                   <span className="min-w-0 flex-1 truncate text-xs text-zinc-200">
                                     {o.name}
+                                    {o.responsible ? (
+                                      <span className="text-zinc-400"> · {o.responsible}</span>
+                                    ) : null}
                                     {o.recurringId && (
                                       <span className="ml-1 text-[10px] text-violet-400">↻</span>
                                     )}

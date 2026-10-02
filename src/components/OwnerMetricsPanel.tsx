@@ -875,6 +875,10 @@ function ObligationsDetail({
   if (items.length === 0) {
     return <p className="text-sm text-zinc-500">ვალდებულებები არ არის ({month})</p>;
   }
+  const open = items.filter((o) => o.amount - o.paid > 0);
+  if (open.length === 0) {
+    return <p className="text-sm text-zinc-500">ამ თვის ვალდებულებები შესრულებულია ({month})</p>;
+  }
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-400">
@@ -882,7 +886,7 @@ function ObligationsDetail({
         დარჩენილი <span className="text-amber-300">{formatMoney(summary.remaining)}</span>
       </p>
       <div className="space-y-3">
-        {items.map((o) => {
+        {open.map((o) => {
           const pays = payments.filter((p) => p.obligationId === o.id);
           const left = o.amount - o.paid;
           return (
@@ -890,6 +894,9 @@ function ObligationsDetail({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-zinc-100">{o.name}</p>
+                  {o.responsible ? (
+                    <p className="text-xs text-zinc-300">პასუხისმგებელი: {o.responsible}</p>
+                  ) : null}
                   <p className="text-xs text-zinc-500">
                     {o.branch} · {o.category}
                     {o.comment ? ` · ${o.comment}` : ""}

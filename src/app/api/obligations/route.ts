@@ -132,6 +132,7 @@ export async function POST(req: NextRequest) {
             comment: body.obligation!.comment?.trim() || undefined,
             plannedPayDate: body.obligation!.plannedPayDate || undefined,
             plannedPaymentMethod: body.obligation!.plannedPaymentMethod || undefined,
+            responsible: body.obligation!.responsible?.trim() || undefined,
           },
           month
         );

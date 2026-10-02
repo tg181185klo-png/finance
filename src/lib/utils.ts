@@ -272,11 +272,24 @@ export function carriedFromPreviousMonth(
   return prevObligationRemaining(store, month, match);
 }
 
+/** შაბლონის დღე იმ თვის თარიღად. 31 იანვარს თებერვალში თვის ბოლო დღე ხდება. */
+export function obligationDueInMonth(planned: string | undefined, month: string): string | undefined {
+  if (!planned) return undefined;
+  const dayNum = Number(planned.slice(8, 10));
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m || !Number.isFinite(dayNum) || dayNum < 1) return planned;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${month}-${String(Math.min(dayNum, last)).padStart(2, "0")}`;
+}
+
 /**
  * ყოველთვიური შაბლონები — ახალ თვეში: წინა თვის ნარჩენი + ამ თვის ფიქსირებული თანხა.
  */
 export function ensureMonthObligations(store: Store, month: string) {
-  const recurring = store.recurringObligations ?? [];
+  const recurring = (store.recurringObligations ?? []).filter((rec) => {
+    if (month < FRESH_START_MONTH) return true;
+    return (rec.createdAt || "").slice(0, 10) >= FRESH_START_DATE;
+  });
   if (!recurring.length) return false;
   if (!store.obligations[month]) store.obligations[month] = [];
   let changed = false;
@@ -295,8 +308,9 @@ export function ensureMonthObligations(store: Store, month: string) {
         recurringId: rec.id,
         comment: rec.comment,
         carriedForward: carried > 0 ? carried : undefined,
-        plannedPayDate: rec.plannedPayDate,
+        plannedPayDate: obligationDueInMonth(rec.plannedPayDate, month),
         plannedPaymentMethod: rec.plannedPaymentMethod,
+        responsible: rec.responsible,
       });
       changed = true;
     }
@@ -351,7 +365,10 @@ export function ensureSalaryCarryForwards(store: Store, month: string) {
 
 /** ყველა ყოველთვიური ციკლის სინქი მოცემულ თვეზე */
 export function syncMonthObligationCycles(store: Store, month: string) {
-  if (month >= FRESH_START_MONTH) return false;
+  if (month >= FRESH_START_MONTH) {
+    // ოქტომბრიდან ახალი თვიური შაბლონი ჩნდება, სექტემბრის ნარჩენი აღარ გადმოდის.
+    return ensureMonthObligations(store, month);
+  }
   const a = ensureMonthObligations(store, month);
   const b = ensureSalaryCarryForwards(store, month);
   return a || b;
@@ -858,8 +875,9 @@ export function addRecurringObligation(
     recurringId: rec.id,
     comment: rec.comment,
     carriedForward: carried > 0 ? carried : undefined,
-    plannedPayDate: rec.plannedPayDate,
+    plannedPayDate: obligationDueInMonth(rec.plannedPayDate, month),
     plannedPaymentMethod: rec.plannedPaymentMethod,
+    responsible: rec.responsible,
   });
   return rec;
 }

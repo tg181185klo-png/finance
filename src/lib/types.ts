@@ -159,6 +159,8 @@ export interface Obligation {
   plannedPayDate?: string;
   /** დაგეგმილი გადახდის საშუალება */
   plannedPaymentMethod?: PaymentMethod;
+  /** ვისი პასუხისმგებლობაა შესრულება */
+  responsible?: string;
 }
 
 /** ყოველთვიური ფიქსირებული ვალდებულების შაბლონი */
@@ -172,6 +174,7 @@ export interface RecurringObligation {
   createdAt: string;
   plannedPayDate?: string;
   plannedPaymentMethod?: PaymentMethod;
+  responsible?: string;
 }
 
 /** ვალდებულების გადახდის ისტორია */
