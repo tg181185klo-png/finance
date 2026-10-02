@@ -231,8 +231,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
   const [showGoodsOb, setShowGoodsOb] = useState(false);
-  const [showRecvOb, setShowRecvOb] = useState(false);
-  const [showPayOb, setShowPayOb] = useState(false);
+  const [showRecvOb, setShowRecvOb] = useState(true);
+  const [showPayOb, setShowPayOb] = useState(true);
 
   // Inventory
   const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
@@ -2189,64 +2189,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           <div>
             <button
               type="button"
-              className="text-[11px] text-sky-300 hover:text-sky-200"
-              onClick={() => setShowGoodsOb((v) => !v)}
-            >
-              {showGoodsOb ? "▼" : "▶"} გასაცემი პროდუქცია ({goodsToDeliver.length})
-            </button>
-          {showGoodsOb && (
-            <div className="mt-1 rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
-              {goodsToDeliver.length === 0 ? (
-                <p className="text-xs text-zinc-500">გასაცემი პროდუქცია არ არის</p>
-              ) : (
-              <ul className="space-y-2">
-                {goodsToDeliver.map((sale) => {
-                  const left = saleQuantityRemaining(sale);
-                  return (
-                    <li key={sale.id} className="text-sm">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <span>
-                          {sale.buyerName || sale.comment || "მყიდველი"}
-                          <span className="text-zinc-400"> · {sale.productName}</span>
-                        </span>
-                        <span className="tabular-nums text-sky-300">
-                          {left} ც · {sale.branch}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500">თანხა სრულად გადახდილია</p>
-                      <div className="mt-1 flex flex-wrap items-end gap-1.5">
-                        <input
-                          className={`${inputCls} w-20`}
-                          type="number"
-                          min={1}
-                          step={1}
-                          max={left}
-                          value={creditDeliverInputs[sale.id] ?? ""}
-                          onChange={(e) =>
-                            setCreditDeliverInputs((m) => ({ ...m, [sale.id]: e.target.value }))
-                          }
-                          placeholder={String(left)}
-                        />
-                        <button
-                          type="button"
-                          className={`${btnCls} bg-sky-700 hover:bg-sky-600`}
-                          onClick={() => addCreditDelivery(sale.id)}
-                        >
-                          გაცემა
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              )}
-            </div>
-          )}
-          </div>
-
-          <div>
-            <button
-              type="button"
               className="text-[11px] text-teal-300 hover:text-teal-200"
               onClick={() => setShowRecvOb((v) => !v)}
             >
@@ -2699,6 +2641,58 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             )}
           </div>
           )}
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="text-[11px] text-sky-400/90 hover:text-sky-200"
+              onClick={() => setShowGoodsOb((v) => !v)}
+            >
+              {showGoodsOb ? "▼" : "▶"} გასაცემი პროდუქცია ({goodsToDeliver.length})
+            </button>
+            {showGoodsOb && (
+              <div className="mt-1 rounded border border-sky-900/40 px-2 py-1">
+                {goodsToDeliver.length === 0 ? (
+                  <p className="py-1 text-[11px] text-zinc-500">გასაცემი პროდუქცია არ არის</p>
+                ) : (
+                  <ul>
+                    {goodsToDeliver.map((sale) => {
+                      const left = saleQuantityRemaining(sale);
+                      return (
+                        <li key={sale.id} className="flex flex-wrap items-center gap-2 border-t border-zinc-800/60 py-1 text-[11px] first:border-t-0">
+                          <span className="min-w-0 flex-1 truncate text-zinc-300">
+                            {sale.buyerName || sale.comment || "მყიდველი"}
+                            <span className="text-zinc-500"> · {sale.productName} · {sale.branch}</span>
+                          </span>
+                          <span className="tabular-nums text-sky-300">{left} ც</span>
+                          <span className="text-zinc-500">თანხა სრულად გადახდილია</span>
+                          <input
+                            className={`${inputCls} w-14 py-0.5 text-[11px]`}
+                            type="number"
+                            min={1}
+                            step={1}
+                            max={left}
+                            value={creditDeliverInputs[sale.id] ?? ""}
+                            onChange={(e) =>
+                              setCreditDeliverInputs((m) => ({ ...m, [sale.id]: e.target.value }))
+                            }
+                            placeholder={String(left)}
+                          />
+                          <button
+                            type="button"
+                            className="rounded bg-sky-800 px-1.5 py-0.5 text-[10px] text-sky-100 hover:bg-sky-700"
+                            onClick={() => addCreditDelivery(sale.id)}
+                          >
+                            გაცემა
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </section>
       )}
