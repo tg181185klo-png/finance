@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     transactions,
     branchCash: store.branchCash,
     branchReports,
+    obligations: store.obligations ?? {},
     operationalFrom: OPERATIONAL_DATA_FROM,
   });
 }

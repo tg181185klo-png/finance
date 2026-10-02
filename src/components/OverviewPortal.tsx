@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Branch, BranchCash, BranchDailyReport, Transaction } from "@/lib/types";
-import OverviewPanel from "@/components/OverviewPanel";
+import type { Obligation, Transaction } from "@/lib/types";
+import PublicReport from "@/components/PublicReport";
 import ThemeToggle from "@/components/ThemeToggle";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { clampPeriodFrom, resolvePeriod } from "@/lib/period-filter";
@@ -16,8 +16,7 @@ export default function OverviewPortal({ token }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [branchCash, setBranchCash] = useState<Record<string, BranchCash>>({});
-  const [branchReports, setBranchReports] = useState<BranchDailyReport[]>([]);
+  const [obligations, setObligations] = useState<Record<string, Obligation[]>>({});
   const [viewMonth, setViewMonth] = useState(() => {
     const m = currentMonth();
     return m < OPERATIONAL_DATA_FROM_MONTH ? OPERATIONAL_DATA_FROM_MONTH : m;
@@ -33,8 +32,7 @@ export default function OverviewPortal({ token }: Props) {
         if (!res.ok) throw new Error(data.error || "შეცდომა");
         if (cancelled) return;
         setTransactions(data.transactions ?? []);
-        setBranchCash(data.branchCash ?? {});
-        setBranchReports(data.branchReports ?? []);
+        setObligations(data.obligations ?? {});
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "შეცდომა");
@@ -100,12 +98,12 @@ export default function OverviewPortal({ token }: Props) {
           </div>
         </header>
 
-        <OverviewPanel
-          readOnly
+        <PublicReport
           transactions={transactions}
-          branchReports={branchReports}
-          branchCash={branchCash as Record<Branch, BranchCash>}
-          period={period}
+          obligations={obligations}
+          month={viewMonth}
+          from={period.from}
+          to={period.to}
         />
       </div>
     </div>
