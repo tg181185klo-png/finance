@@ -2,43 +2,41 @@ import excelLabels from "./excel-labels.json";
 
 /**
  * Excel ხარჯების „სახელი“ სვეტის მნიშვნელობები (xarjebi — ქუთაისი, ლილო, დიღომი).
- * იმპორტისას label ზუსტად ასე იწერება category-ში.
+ * ახალი ჩანაწერი ამ სახელს საკვანძო კატეგორიაზე გადაჰყავს.
  */
 export const EXCEL_EXPENSE_LABELS = excelLabels as readonly string[];
 
-/** ხელით ჩაწერის დამატებითი კატეგორიები */
+/** არჩევის სია — მხოლოდ ძირითადი საკვანძო სიტყვები, პირადი სახელების გარეშე */
 export const STANDARD_EXPENSE_CATEGORIES = [
+  "ხელფასი",
+  "საბიუჯეტო",
+  "საწარმო",
   "ნედლეული",
-  "წარმოება",
   "კომუნალური",
   "საკვები",
   "ლოგისტიკა",
   "დისტრიბუცია",
   "საყოფაცხოვრებო",
-  "სხვა",
   "საწვავი",
-  "ხელფასი",
-  "კომუნალურები",
-  "დღგ",
   "სესხი",
+  "სხვა",
 ] as const;
 
-export const ALL_EXPENSE_CATEGORIES: string[] = [
-  ...new Set([...STANDARD_EXPENSE_CATEGORIES, ...EXCEL_EXPENSE_LABELS]),
-].sort((a, b) => a.localeCompare(b, "ka"));
+export const ALL_EXPENSE_CATEGORIES: string[] = [...STANDARD_EXPENSE_CATEGORIES];
 
 const BRANCH_CATEGORY_HINTS: Record<string, string> = {
+  "ხელფასი": "ხელფასი",
+  "საბიუჯეტო": "საბიუჯეტო — გადასახადი, დღგ",
+  "საწარმო": "საწარმო — წარმოება, პროდუქცია",
   "ნედლეული": "ნედლეული — პლასტმასი, საღებავი",
-  "წარმოება": "წარმოება — დაზგარის ნაწილები, რემონტი",
-  "საწარმო": "საწარმო — საწარმოს ხარჯი",
-  "კომუნალური": "კომუნალური — დენი, წყალი (ზოგადი)",
+  "კომუნალური": "კომუნალური — დენი, წყალი",
   "საკვები": "საკვები — კვება",
-  "ლოგისტიკა": "ლოგისტიკა — საწვავი, მიწოდება",
-  "საყოფაცხოვრებო": "საყოფაცხოვრებო — ჰიგიენა, საკანცელარიო",
-  "ხელფასი": "ხელფასი (ზოგადი)",
-  "სხვა": "სხვა — წვრილმანი",
+  "ლოგისტიკა": "ლოგისტიკა — ტრანსპორტი, ტაქსი",
+  "დისტრიბუცია": "დისტრიბუცია",
+  "საყოფაცხოვრებო": "საყოფაცხოვრებო — ჰიგიენა, დასუფთავება",
   "საწვავი": "საწვავი",
-  "კომუნალურები": "კომუნალურები",
+  "სესხი": "სესხი — ვალი",
+  "სხვა": "სხვა — წვრილმანი",
 };
 
 export const BRANCH_EXPENSE_CATEGORY_OPTIONS: { value: string; label: string }[] =
@@ -59,35 +57,33 @@ export function isWageCategory(category: string) {
   return /ხელფას/i.test(category);
 }
 
-/** Excel label → category: ზუსტად როგორც ფაილშია; ცარიელი label → კომენტარიდან */
+const KEYWORD_SET = new Set<string>(STANDARD_EXPENSE_CATEGORIES);
+
+/** ძველი დეტალური სახელი → საკვანძო კატეგორია */
+export function keywordCategory(label: string): string {
+  const text = label.trim();
+  if (!text) return "სხვა";
+  if (KEYWORD_SET.has(text)) return text;
+  if (/ხელფას/i.test(text) || /^(ნინო|ციცი)$/i.test(text)) return "ხელფასი";
+  if (/საბიუჯეტ|დღგ|დივიდენდ|ქველმოქმედ/i.test(text)) return "საბიუჯეტო";
+  if (/სესხ|ვალი/i.test(text)) return "სესხი";
+  if (/საწარმო|წარმოებ|პროდუქც/i.test(text)) return "საწარმო";
+  if (/ნედლეულ/i.test(text)) return "ნედლეული";
+  if (/კომუნალ|ელ\.?\s*ენერგ|წყალ/i.test(text)) return "კომუნალური";
+  if (/საკვებ|კვებ|მზევინარ/i.test(text)) return "საკვები";
+  if (/საყოფაცხოვრებ|დასუფთავ/i.test(text)) return "საყოფაცხოვრებო";
+  if (/საწვავ/i.test(text)) return "საწვავი";
+  if (/დისტრიბუც/i.test(text)) return "დისტრიბუცია";
+  if (/ლოგისტიკ|ტრანსპორტ|ტაქს/i.test(text)) return "ლოგისტიკა";
+  return "სხვა";
+}
+
+/** Excel label → საკვანძო კატეგორია; ცარიელი label → კომენტარიდან */
 export function mapExpenseCategory(label: string, comment: string): string {
   const trimmed = label.trim();
   if (trimmed) {
     const known = EXCEL_LABEL_LOOKUP.get(normalizeCategoryKey(trimmed));
-    if (known) return known;
-    return trimmed;
+    return keywordCategory(known ?? trimmed);
   }
-
-  const text = comment.toLowerCase();
-  if (/ხელფას/i.test(text)) return "ხელფასი";
-  if (/დღგ/i.test(text)) return "დღგ";
-  if (/სესხ/i.test(text)) return "სესხი";
-  if (/დივიდენდ/i.test(text)) return "დივიდენდი";
-  if (/ნედლეულ/i.test(text)) return "ნედლეული";
-  if (/საწარმო/i.test(text)) return "საწარმო";
-  if (/წარმოებ/i.test(text)) return "წარმოება";
-  if (/საკვები|კვებ/i.test(text)) return "საკვები";
-  if (/საყოფაცხოვრებ/i.test(text)) return "საყოფაცხოვრებო";
-  if (/დასუფთავ/i.test(text)) return "დასუფთავება";
-  if (/ელ\.?\s*ენერგ/i.test(text)) return "ელ. ენერგია";
-  if (/წყალი/i.test(text)) return "წყალი";
-  if (/კომუნალ/i.test(text)) return "კომუნალური";
-  if (/საწვავ/i.test(text)) return "ლოგისტიკა";
-  if (/ტრანსპორტ/i.test(text)) return "ტრანსპორტირება";
-  if (/ტაქს/i.test(text)) return "ტაქსი";
-  if (/დისტრიბუც/i.test(text)) return "დისტრიბუცია";
-  if (/ვალი/i.test(text)) return "ვალი";
-  if (/პროდუქც/i.test(text)) return "პროდუქცია";
-
-  return "სხვა";
+  return keywordCategory(comment);
 }
