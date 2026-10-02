@@ -227,6 +227,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
   const [expandedObId, setExpandedObId] = useState<string | null>(null);
+  const [showAddOb, setShowAddOb] = useState(false);
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
 
@@ -1205,6 +1206,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         recurringObligations: d.recurringObligations,
       });
       setSaveMsg(obRecurring ? "ყოველთვიური ვალდებულება დაემატა ✓" : "ვალდებულება დაემატა ✓");
+      setShowAddOb(false);
       setObName("");
       setObAmount("");
       setObComment("");
@@ -2226,9 +2228,17 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   value={obMonth}
                   onChange={(e) => setObMonth(e.target.value)}
                 />
+                <button
+                  type="button"
+                  className="rounded border border-violet-800/60 bg-violet-950/30 px-2.5 py-1.5 text-xs text-violet-200 hover:bg-violet-900/50"
+                  onClick={() => setShowAddOb((v) => !v)}
+                >
+                  {showAddOb ? "დახურვა" : "+ დამატება"}
+                </button>
               </div>
             </div>
 
+            {showAddOb && (
             <form onSubmit={addObligation} className="mb-3 rounded-lg border border-violet-900/40 bg-violet-950/10 p-3">
               <p className="mb-2 text-xs font-medium text-violet-200">
                 თვიური აღრიცხვა · {obMonth}
@@ -2368,6 +2378,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   შენახვა
                 </button>
               </form>
+            )}
 
             {recurringList.length > 0 && (
               <div className="mb-2">
