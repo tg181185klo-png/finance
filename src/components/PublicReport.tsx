@@ -30,10 +30,14 @@ function saleIncome(sale: Sale) {
   return sale.amount;
 }
 
-function txLabel(t: Transaction) {
-  if (t.type === "sale") return `${t.buyerName || t.comment || "გაყიდვა"} · ${t.productName} × ${t.quantity}`;
-  if (t.type === "expense") return `${t.category}${t.comment ? ` · ${t.comment}` : ""}`;
-  return t.comment || "შენატანი";
+const MONTHS = ["იან", "თებ", "მარ", "აპრ", "მაი", "ივნ", "ივლ", "აგვ", "სექ", "ოქტ", "ნოე", "დეკ"];
+
+function dayMonth(iso?: string) {
+  if (!iso) return "—";
+  const day = iso.slice(8, 10);
+  const month = MONTHS[Number(iso.slice(5, 7)) - 1];
+  if (!day || !month) return "—";
+  return `${Number(day)} ${month}`;
 }
 
 export default function PublicReport({
@@ -199,77 +203,113 @@ function ScopeCards({
             </div>
 
             {active === "income" && (
-              <List>
+              <Lines
+                cols={showBranch ? "grid-cols-[3.2rem_4.2rem_minmax(0,1fr)_4.4rem]" : "grid-cols-[3.2rem_minmax(0,1fr)_4.4rem]"}
+                heads={showBranch ? ["თარიღი", "ობიექტი", "კლიენტი", "თანხა"] : ["თარიღი", "კლიენტი", "თანხა"]}
+              >
                 {b.income.length === 0 ? (
                   <Empty text="შემოსავალი არ არის" />
                 ) : (
                   b.income.map((sale) => (
-                    <Row
+                    <Line
                       key={sale.id}
-                      left={`${sale.date.slice(0, 10)}${showBranch ? ` · ${sale.branch}` : ""} · ${txLabel(sale)}`}
-                      right={formatMoney(saleIncome(sale))}
-                      tone="text-emerald-400"
+                      cols={showBranch ? "grid-cols-[3.2rem_4.2rem_minmax(0,1fr)_4.4rem]" : "grid-cols-[3.2rem_minmax(0,1fr)_4.4rem]"}
+                      cells={[
+                        dayMonth(sale.date),
+                        ...(showBranch ? [sale.branch] : []),
+                        sale.buyerName || sale.comment || "—",
+                        formatMoney(saleIncome(sale)),
+                      ]}
+                      amountClass="text-emerald-400"
                     />
                   ))
                 )}
-              </List>
+              </Lines>
             )}
 
             {active === "expense" && (
-              <List>
+              <Lines
+                cols={
+                  showBranch
+                    ? "grid-cols-[3.2rem_4.2rem_4.6rem_minmax(0,1fr)_4.4rem]"
+                    : "grid-cols-[3.2rem_4.6rem_minmax(0,1fr)_4.4rem]"
+                }
+                heads={showBranch ? ["თარიღი", "ობიექტი", "კატეგორია", "რისთვის", "თანხა"] : ["თარიღი", "კატეგორია", "რისთვის", "თანხა"]}
+              >
                 {b.expenses.length === 0 ? (
                   <Empty text="ხარჯი არ არის" />
                 ) : (
                   b.expenses.map((ex) =>
                     ex.type === "expense" ? (
-                      <Row
+                      <Line
                         key={ex.id}
-                        left={`${ex.date.slice(0, 10)}${showBranch ? ` · ${ex.branch}` : ""} · ${ex.category}${ex.comment ? ` · ${ex.comment}` : ""}`}
-                        right={formatMoney(ex.amount)}
-                        tone="text-red-400"
+                        cols={
+                          showBranch
+                            ? "grid-cols-[3.2rem_4.2rem_4.6rem_minmax(0,1fr)_4.4rem]"
+                            : "grid-cols-[3.2rem_4.6rem_minmax(0,1fr)_4.4rem]"
+                        }
+                        cells={[
+                          dayMonth(ex.date),
+                          ...(showBranch ? [ex.branch] : []),
+                          ex.category,
+                          ex.comment || "—",
+                          formatMoney(ex.amount),
+                        ]}
+                        amountClass="text-red-400"
                       />
                     ) : null
                   )
                 )}
-              </List>
+              </Lines>
             )}
 
             {active === "obligation" && (
-              <List>
+              <Lines
+                cols="grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_3.2rem_4.4rem]"
+                heads={["ვალდებულება", "ვისი", "ვადა", "თანხა"]}
+              >
                 {b.payables.length === 0 && b.receivables.length === 0 && b.goods.length === 0 ? (
                   <Empty text="მიმდინარე ვალდებულება არ დარჩა" />
                 ) : (
                   <>
-                    {b.payables.map((o) => {
-                      const urgent = isDueUrgent(o.plannedPayDate);
-                      return (
-                        <Row
-                          key={o.id}
-                          left={`${o.name}${o.responsible ? ` · ${o.responsible}` : ""} · ${o.branch}${o.plannedPayDate ? ` · ${o.plannedPayDate}` : ""}`}
-                          right={formatMoney(o.amount - o.paid)}
-                          tone={urgent ? "text-red-400" : "text-amber-300"}
-                        />
-                      );
-                    })}
+                    {b.payables.map((o) => (
+                      <Line
+                        key={o.id}
+                        cols="grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_3.2rem_4.4rem]"
+                        cells={[o.name, o.responsible || "—", dayMonth(o.plannedPayDate), formatMoney(o.amount - o.paid)]}
+                        amountClass={isDueUrgent(o.plannedPayDate) ? "text-red-400" : "text-amber-300"}
+                        dueUrgent={isDueUrgent(o.plannedPayDate)}
+                      />
+                    ))}
                     {b.receivables.map((sale) => (
-                      <Row
+                      <Line
                         key={sale.id}
-                        left={`მისაღები · ${sale.buyerName || sale.comment || "მყიდველი"} · ${sale.productName} · ${sale.branch}`}
-                        right={formatMoney(saleCreditRemaining(sale))}
-                        tone="text-amber-300"
+                        cols="grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_3.2rem_4.4rem]"
+                        cells={[
+                          `მისაღები · ${sale.productName}`,
+                          sale.buyerName || sale.comment || "—",
+                          dayMonth(sale.creditDueDate),
+                          formatMoney(saleCreditRemaining(sale)),
+                        ]}
+                        amountClass="text-amber-300"
                       />
                     ))}
                     {b.goods.map((sale) => (
-                      <Row
+                      <Line
                         key={sale.id}
-                        left={`გასაცემი · ${sale.buyerName || sale.comment || "მყიდველი"} · ${sale.productName} · ${sale.branch} · თანხა სრულად გადახდილია`}
-                        right={`${saleQuantityRemaining(sale)} ც`}
-                        tone="text-sky-300"
+                        cols="grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_3.2rem_4.4rem]"
+                        cells={[
+                          `გასაცემი · ${sale.productName}`,
+                          sale.buyerName || sale.comment || "—",
+                          dayMonth(sale.creditDueDate),
+                          `${saleQuantityRemaining(sale)} ც`,
+                        ]}
+                        amountClass="text-sky-300"
                       />
                     ))}
                   </>
                 )}
-              </List>
+              </Lines>
             )}
     </div>
   );
@@ -302,15 +342,48 @@ function CardButton({
   );
 }
 
-function List({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800">{children}</div>;
+function Lines({ cols, heads, children }: { cols: string; heads: string[]; children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+      <div className="min-w-[22rem]">
+      <div className={`grid ${cols} gap-x-2 px-2 py-1 text-[10px] text-zinc-500`}>
+        {heads.map((head) => (
+          <span key={head} className="truncate">
+            {head}
+          </span>
+        ))}
+      </div>
+      {children}
+      </div>
+    </div>
+  );
 }
 
-function Row({ left, right, tone }: { left: string; right: string; tone: string }) {
+function Line({
+  cols,
+  cells,
+  amountClass,
+  dueUrgent,
+}: {
+  cols: string;
+  cells: string[];
+  amountClass: string;
+  dueUrgent?: boolean;
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm">
-      <span className="min-w-0 truncate text-zinc-200">{left}</span>
-      <span className={`shrink-0 tabular-nums ${tone}`}>{right}</span>
+    <div className={`grid ${cols} items-baseline gap-x-2 border-t border-zinc-800/70 px-2 py-1.5 text-[11px] leading-tight`}>
+      {cells.map((cell, i) => {
+        const last = i === cells.length - 1;
+        const due = dueUrgent && i === cells.length - 2;
+        return (
+          <span
+            key={`${i}-${cell}`}
+            className={`truncate ${last ? `text-right tabular-nums ${amountClass}` : due ? "font-medium text-red-400" : i === 0 ? "text-zinc-300" : "text-zinc-400"}`}
+          >
+            {cell}
+          </span>
+        );
+      })}
     </div>
   );
 }
