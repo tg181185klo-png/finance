@@ -230,6 +230,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [showAddOb, setShowAddOb] = useState(false);
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
+  const [showGoodsOb, setShowGoodsOb] = useState(false);
+  const [showRecvOb, setShowRecvOb] = useState(false);
+  const [showPayOb, setShowPayOb] = useState(false);
 
   // Inventory
   const [invBranch, setInvBranch] = useState<Branch>("ქუთაისი");
@@ -2183,9 +2186,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           <p className="text-xs text-zinc-500">
             მისაღები არის ის, რაც მომხმარებელს უნდა შემოიტანოს. გადასახდელი არის ის, რაც ჩვენ უნდა გავისტუმროთ — ქეშიდან, ბარათიდან ან ანგარიშიდან. ნაშთი ჩანს «საიდან გავისტუმრო»-ში.
           </p>
-          {goodsToDeliver.length > 0 && (
-            <div className="rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
-              <h2 className="text-sm font-semibold text-sky-300">გასაცემი პროდუქცია</h2>
+          <div>
+            <button
+              type="button"
+              className="text-[11px] text-sky-300 hover:text-sky-200"
+              onClick={() => setShowGoodsOb((v) => !v)}
+            >
+              {showGoodsOb ? "▼" : "▶"} გასაცემი პროდუქცია ({goodsToDeliver.length})
+            </button>
+          {showGoodsOb && (
+            <div className="mt-1 rounded-lg border border-sky-900/50 bg-sky-950/20 p-3">
+              {goodsToDeliver.length === 0 ? (
+                <p className="text-xs text-zinc-500">გასაცემი პროდუქცია არ არის</p>
+              ) : (
               <ul className="space-y-2">
                 {goodsToDeliver.map((sale) => {
                   const left = saleQuantityRemaining(sale);
@@ -2226,9 +2239,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   );
                 })}
               </ul>
+              )}
             </div>
           )}
+          </div>
 
+          <div>
+            <button
+              type="button"
+              className="text-[11px] text-teal-300 hover:text-teal-200"
+              onClick={() => setShowRecvOb((v) => !v)}
+            >
+              {showRecvOb ? "▼" : "▶"} მისაღები (
+              {creditTx.filter((t) => isCreditOrderActive(t) && !isPaidGoodsToDeliver(t)).length})
+            </button>
+          {showRecvOb && (
+          <div className="mt-1">
           <ReceivablesPanel
             sales={creditTx}
             store={activeStore}
@@ -2236,8 +2262,22 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             onSetDueDate={setCreditSaleDueDate}
             onRefresh={refresh}
           />
+          </div>
+          )}
+          </div>
 
-          <div className="border-t border-zinc-800 pt-4">
+          <div>
+            <button
+              type="button"
+              className="text-[11px] text-violet-300 hover:text-violet-200"
+              onClick={() => setShowPayOb((v) => !v)}
+            >
+              {showPayOb ? "▼" : "▶"} გასაცემი ვალდებულება (
+              {obSummary.items.filter((o) => o.amount - o.paid > 0).length}) ·{" "}
+              {formatMoney(obSummary.remaining)}
+            </button>
+          {showPayOb && (
+          <div className="mt-1 border-t border-zinc-800 pt-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-base font-semibold text-violet-300">გადასახდელი</h2>
@@ -2657,6 +2697,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 })}
               </div>
             )}
+          </div>
+          )}
           </div>
         </section>
       )}
