@@ -1,0 +1,36 @@
+# Dependencies and package manager caches
+node_modules/
+.pnp/
+.yarn/
+.npm/
+
+# Build, test, and deploy output
+.next/
+out/
+dist/
+build/
+coverage/
+.vercel/
+.turbo/
+.cache/
+
+# Version control objects
+.git/
+
+# Logs and TypeScript build info
+*.log
+npm-debug.log*
+*.tsbuildinfo
+
+# Local secrets and business data
+.env
+.env.*
+!.env.example
+data/store.json
+
+# Extracted spreadsheet dump (not source)
+tmp-xlsx/
+tmp-xlsx.zip
+
+# Lockfile is large and not application source
+package-lock.json
