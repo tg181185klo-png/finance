@@ -32,7 +32,7 @@ export function uid() {
 
 export function formatDate(iso: string) {
   return new Date(iso).toLocaleString("ka-GE", {
-    year: "numeric",
+    year: "2-digit",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

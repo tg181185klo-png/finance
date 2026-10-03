@@ -1,9 +1,9 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import type { Employee, PaymentMethod, Sale, Transaction } from "@/lib/types";
+import type { Employee, PaymentMethod, Transaction } from "@/lib/types";
 import { PAYMENT_METHODS } from "@/lib/dashboard-data";
-import { groupTransactionsForDisplay, saleGroupDescription } from "@/lib/tx-display-groups";
+import { groupTransactionsForDisplay } from "@/lib/tx-display-groups";
 import {
   formatDate,
   formatMoney,
@@ -258,11 +258,11 @@ export default function TransactionTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] table-fixed text-sm">
         <colgroup>
-          <col className="w-[12%]" />
-          <col className="w-[9%]" />
-          {showBranch && <col className="w-[10%]" />}
-          <col className="w-[24%]" />
-          <col className="w-[16%]" />
+          <col className="w-[9.5rem]" />
+          <col className="w-[8%]" />
+          {showBranch && <col className="w-[6.5rem]" />}
+          <col className="w-[22%]" />
+          <col className="w-[14%]" />
           <col className="w-[12%]" />
           {showDriver && <col className="w-[11%]" />}
           <col className="w-[10%]" />
@@ -274,7 +274,7 @@ export default function TransactionTable({
             <th className="px-2 py-2 font-medium">დრო</th>
             <th className="px-2 py-2 font-medium">ტიპი</th>
             {showBranch && <th className="px-2 py-2 font-medium">ფილიალი</th>}
-            <th className="px-2 py-2 font-medium">აღწერა</th>
+            <th className="px-2 py-2 font-medium">მომხმარებელი</th>
             <th className="px-2 py-2 font-medium">კომენტარი</th>
             <th className="px-2 py-2 font-medium">გადახდა</th>
             {showDriver && <th className="px-2 py-2 font-medium">მომზიდავი</th>}
@@ -294,20 +294,20 @@ export default function TransactionTable({
             const reviewed =
               ids.length > 0 && ids.every((id) => Boolean(bankLedgerReviewed?.[id]));
             const open = openKey === g.key;
-            const isSaleGroup = t.type === "sale" && g.productCount > 1;
-            const description =
-              t.type === "sale" ? saleGroupDescription(g.items as Sale[]) : txLabel(t);
+            const isSale = t.type === "sale";
+            const customer =
+              isSale ? (t.buyerName || t.comment || "—").trim() : "—";
 
             return (
               <Fragment key={g.key}>
                 <tr
                   className={`border-b border-zinc-800/50 ${
                     showReviewed && !reviewed ? "bg-amber-950/10" : ""
-                  } ${isSaleGroup ? "cursor-pointer hover:bg-zinc-800/30" : ""} ${
+                  } ${isSale ? "cursor-pointer hover:bg-zinc-800/30" : ""} ${
                     open ? "bg-sky-950/20" : ""
                   }`}
                   onClick={() => {
-                    if (isSaleGroup) setOpenKey((prev) => (prev === g.key ? null : g.key));
+                    if (isSale) setOpenKey((prev) => (prev === g.key ? null : g.key));
                   }}
                 >
                   <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
@@ -334,16 +334,13 @@ export default function TransactionTable({
                         🚐
                       </span>
                     )}
-                    {isSaleGroup && (
+                    {isSale && (
                       <span className="ml-1 text-[10px] text-zinc-500">{open ? "▲" : "▼"}</span>
                     )}
                   </td>
                   {showBranch && <td className="truncate px-2 py-2.5">{t.branch}</td>}
-                  <td className="truncate px-2 py-2.5" title={description}>
-                    {description}
-                    {isSaleGroup && (
-                      <span className="ml-2 text-[10px] text-zinc-500">{g.productCount} ხაზი</span>
-                    )}
+                  <td className="truncate px-2 py-2.5" title={customer}>
+                    {customer}
                   </td>
                   <td className="truncate px-2 py-2.5 text-zinc-500" title={t.comment || txDetail(t)}>
                     {t.comment || txDetail(t)}
@@ -379,7 +376,7 @@ export default function TransactionTable({
                     </td>
                   )}
                 </tr>
-                {open && isSaleGroup && (
+                {open && isSale && (
                   <tr className="border-b border-sky-900/30 bg-zinc-950/40">
                     <td colSpan={colCount} className="px-3 py-3">
                       <div className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem] gap-x-3 border-b border-zinc-800 pb-1 text-[11px] uppercase tracking-wide text-zinc-500">

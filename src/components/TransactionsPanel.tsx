@@ -41,7 +41,7 @@ export default function TransactionsPanel({
       </p>
       <TransactionTable
         rows={rows}
-        showBranch={filter === "ყველა"}
+        showBranch
         employees={employees}
         bankLedgerReviewed={bankLedgerReviewed}
         onDelete={onDelete}

@@ -1794,11 +1794,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               </span>
             </h3>
             <p className="mb-3 text-xs text-zinc-500">
-              ერთი გატარება = ერთი ხაზი · პროდუქტები დაჭერისას · „აისახა“ — ანგარიშზე/ბარათზე ჩარიცხვა
+              ერთი გატარება = ერთი ხაზი · სახელზე დაჭერისას იხსნება გაყიდვა · „აისახა“ — ანგარიშზე/ბარათზე ჩარიცხვა
             </p>
             <TransactionTable
               rows={mainTabRows}
-              showBranch={filter === "ყველა"}
+              showBranch
               employees={activeStore.employees ?? []}
               bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
               onDelete={deleteTx}
