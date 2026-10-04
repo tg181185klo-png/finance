@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Branch, BranchCash, BranchDailyReport, Employee, Obligation, PaymentMethod, Sale, Transaction } from "@/lib/types";
+import type { Branch, BranchCash, BranchDailyReport, Employee, Expense, Obligation, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { branchSaleBuyerName } from "@/lib/customers";
 import type { ResolvedPeriod } from "@/lib/period-filter";
@@ -371,6 +371,13 @@ export default function OverviewPanel({
     () => calcBalancesUpToDate(transactions, "ყველა", branchCash, balanceAsOf, openingByMonth),
     [transactions, branchCash, openingByMonth, balanceAsOf]
   );
+  const cardSpends = useMemo(
+    () =>
+      transactions
+        .filter((t): t is Expense => t.type === "expense" && t.expensePaymentMethod === "ბარათი")
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [transactions]
+  );
   const incomeByBranch = useMemo(
     () =>
       BRANCHES.map((branch) => ({
@@ -590,7 +597,32 @@ export default function OverviewPanel({
             <p className="text-xs text-zinc-500">ანგარიშზე სულ (ბარათი + გადარიცხვა)</p>
             <p className="text-xl font-semibold text-violet-300">{formatMoney(accountTotal)}</p>
             <p className="text-[11px] text-zinc-500">
-              ბარათი {formatMoney(accountNow.card)} · ანგარიში {formatMoney(accountNow.bank)}
+              <span className="group relative inline-flex">
+                <span className="cursor-help text-sky-300 underline decoration-dotted underline-offset-2">
+                  ბარათი {formatMoney(accountNow.card)}
+                </span>
+                <span className="invisible absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left shadow-xl group-hover:visible">
+                  <span className="block text-xs text-zinc-400">დარჩა ბარათზე</span>
+                  <span className="mb-2 block text-sm font-semibold text-sky-300">{formatMoney(accountNow.card)}</span>
+                  <span className="mb-1 block text-xs text-zinc-400">რაში დაიხარჯა</span>
+                  {cardSpends.length === 0 ? (
+                    <span className="block text-xs text-zinc-500">ბარათიდან ხარჯი ჯერ არ არის</span>
+                  ) : (
+                    <span className="block max-h-52 space-y-1 overflow-y-auto">
+                      {cardSpends.map((row) => (
+                        <span key={row.id} className="flex justify-between gap-2 text-xs text-zinc-200">
+                          <span>
+                            {formatDate(row.date)} · {row.comment || row.category}
+                          </span>
+                          <span className="shrink-0 text-red-300">{formatMoney(row.amount)}</span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </span>
+              </span>
+              {" · ანგარიში "}
+              {formatMoney(accountNow.bank)}
             </p>
           </div>
         </div>

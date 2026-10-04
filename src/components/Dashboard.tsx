@@ -23,6 +23,7 @@ import type {
 import ReportsPanel from "@/components/ReportsPanel";
 import OverviewPanel from "@/components/OverviewPanel";
 import ExpensesPanel from "@/components/ExpensesPanel";
+import CardSpendPanel from "@/components/CardSpendPanel";
 import EmployeesPanel from "@/components/EmployeesPanel";
 import EmployeeBonusPanel from "@/components/EmployeeBonusPanel";
 import ClientsPanel from "@/components/ClientsPanel";
@@ -918,6 +919,40 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setESpentBy("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "ხარჯი ვერ შეინახა");
+    }
+  }
+
+  async function addCardSpend(input: { date: string; what: string; amount: number }) {
+    const expense: Expense = {
+      id: uid(),
+      type: "expense",
+      date: `${input.date}T12:00:00.000Z`,
+      branch: "საერთო",
+      category: "სხვა",
+      amount: input.amount,
+      comment: input.what.trim(),
+      recurrence: "ერთჯერადი",
+      source: "admin",
+      expensePaymentMethod: "ბარათი",
+      spentBy: "მფლობელი",
+    };
+    try {
+      const data = await apiTx("POST", { transaction: expense });
+      storeLoadGen.current += 1;
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: data.transactions ?? [expense, ...prev.transactions],
+              obligations: data.obligations ?? prev.obligations,
+            }
+          : prev
+      );
+      setSaveMsg("ბარათიდან ხარჯი შენახულია ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ბარათიდან ხარჯი ვერ შეინახა");
+      return false;
     }
   }
 
@@ -2155,6 +2190,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           onUpdatePayment={updateTxPayment}
         />
         </div>
+      )}
+
+      {tab === "card-spend" && !loading && (
+        <CardSpendPanel
+          expenses={operationalTx.filter(
+            (t): t is Expense => t.type === "expense" && t.expensePaymentMethod === "ბარათი"
+          )}
+          onAdd={addCardSpend}
+        />
       )}
 
       {tab === "clients" && !loading && (
