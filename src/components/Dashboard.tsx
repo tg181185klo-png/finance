@@ -1115,6 +1115,33 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
+  async function updateCardExpense(
+    id: string,
+    patch: { date: string; amount: number; comment: string }
+  ): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateCardExpense", id, ...patch }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      applyLocalStore((prev) => ({
+        ...prev,
+        transactions: d.transactions ?? prev.transactions,
+        obligations: d.obligations ?? prev.obligations,
+      }));
+      setSaveMsg("ბარათის ხარჯი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   async function updateTxDriver(
     id: string,
     driverEmployeeId: string,
@@ -2188,12 +2215,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           expenses={operationalTx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
           onUpdatePayment={updateTxPayment}
+          onUpdateCard={updateCardExpense}
         />
         </div>
       )}
 
       {tab === "card-spend" && !loading && (
         <CardSpendPanel
+          shareToken={activeStore.cardSpendToken}
           expenses={operationalTx.filter(
             (t): t is Expense => t.type === "expense" && t.expensePaymentMethod === "ბარათი"
           )}

@@ -300,6 +300,8 @@ export interface Store {
   branchTokens: Record<Branch, string>;
   /** საჯარო მიმოხილვის ლინკი (/o/{token}) */
   overviewReportToken: string;
+  /** საჯარო ბარათის ხარჯის ლინკი (/c/{token}) */
+  cardSpendToken: string;
   branchReports: BranchDailyReport[];
   inventory: Record<Branch, BranchInventory>;
   branchCash: Record<Branch, BranchCash>;

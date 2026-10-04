@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Expense } from "@/lib/types";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { formatDate, formatMoney } from "@/lib/utils";
@@ -9,11 +9,17 @@ const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2
 const labelCls = "mb-1 block text-xs text-zinc-400";
 
 type Props = {
+  shareToken: string;
   expenses: Expense[];
   onAdd: (input: { date: string; what: string; amount: number }) => Promise<boolean>;
 };
 
-export default function CardSpendPanel({ expenses, onAdd }: Props) {
+export default function CardSpendPanel({ shareToken, expenses, onAdd }: Props) {
+  const [origin, setOrigin] = useState("");
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+  const link = `${origin}/c/${shareToken}`;
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [what, setWhat] = useState("");
   const [amount, setAmount] = useState("");
@@ -40,6 +46,23 @@ export default function CardSpendPanel({ expenses, onAdd }: Props) {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-5">
+        <h2 className="mb-1 font-semibold text-sky-200">ტელეფონის ლინკი</h2>
+        <p className="mb-3 text-sm text-zinc-500">გაუგზავნე ეს ლინკი. ტელეფონზე ივსება მხოლოდ თარიღი, თანხა და კომენტარი.</p>
+        <div className="mb-2 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            className="text-xs text-zinc-400 hover:text-white"
+            onClick={() => navigator.clipboard.writeText(link)}
+          >
+            კოპირება
+          </button>
+          <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-400 hover:text-sky-300">
+            გახსნა
+          </a>
+        </div>
+        <code className="block break-all text-sm text-sky-300">{link}</code>
+      </div>
       <form onSubmit={submit} className="rounded-xl border border-sky-900/50 bg-zinc-900/40 p-5">
         <h2 className="mb-1 text-lg font-semibold text-sky-300">ბარათიდან ხარჯი</h2>
         <p className="mb-4 text-xs text-zinc-500">

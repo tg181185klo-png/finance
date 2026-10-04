@@ -19,6 +19,7 @@ type Props = {
   expenses: Expense[];
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  onUpdateCard: (id: string, patch: { date: string; amount: number; comment: string }) => Promise<boolean>;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -42,7 +43,7 @@ function inDateRange(date: string, from: string, to: string) {
   return day >= from && day <= to;
 }
 
-export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: Props) {
+export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onUpdateCard }: Props) {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -57,6 +58,11 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
   const [category, setCategory] = useState<ExpenseCategory | "ყველა">("ყველა");
   const [source, setSource] = useState<TxSource | "ყველა">("ყველა");
   const [search, setSearch] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editComment, setEditComment] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   const { rangeFrom, rangeTo } = useMemo(() => {
     if (periodMode === "month") {
@@ -239,13 +245,28 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((e) => (
+                {filtered.map((e) => {
+                  const cardSpend = e.expensePaymentMethod === "ბარათი";
+                  const editing = editId === e.id;
+                  return (
                   <tr key={e.id} className="border-b border-zinc-800/50">
-                    <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(e.date)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">
+                      {editing ? (
+                        <input type="date" className={inputCls} min={OPERATIONAL_DATA_FROM} value={editDate} onChange={(ev) => setEditDate(ev.target.value)} />
+                      ) : (
+                        formatDate(e.date)
+                      )}
+                    </td>
                     <td className="py-2 pr-3">{effectiveExpenseBranch(e)}</td>
                     <td className="py-2 pr-3">{e.spentBy || "—"}</td>
                     <td className="py-2 pr-3">{e.category}</td>
-                    <td className="py-2 pr-3 text-zinc-500">{e.comment || "—"}</td>
+                    <td className="py-2 pr-3 text-zinc-500">
+                      {editing ? (
+                        <input className={inputCls} value={editComment} onChange={(ev) => setEditComment(ev.target.value)} />
+                      ) : (
+                        e.comment || "—"
+                      )}
+                    </td>
                     <td className="py-2 pr-3 text-xs text-zinc-500">{sourceLabel(e.source)}</td>
                     <td className="py-2 pr-3">
                       <select
@@ -264,8 +285,45 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 pr-3 text-right font-medium text-red-400">-{formatMoney(e.amount)}</td>
-                    <td className="py-2">
+                    <td className="py-2 pr-3 text-right font-medium text-red-400">
+                      {editing ? (
+                        <input className={inputCls} type="number" min={0} step={0.01} value={editAmount} onChange={(ev) => setEditAmount(ev.target.value)} />
+                      ) : (
+                        <>-{formatMoney(e.amount)}</>
+                      )}
+                    </td>
+                    <td className="py-2 whitespace-nowrap">
+                      {cardSpend && !editing && (
+                        <button
+                          type="button"
+                          className="mr-2 text-xs text-sky-400 hover:text-sky-300"
+                          onClick={() => {
+                            setEditId(e.id);
+                            setEditDate(e.date.slice(0, 10));
+                            setEditAmount(String(e.amount));
+                            setEditComment(e.comment || "");
+                          }}
+                        >
+                          შეცვლა
+                        </button>
+                      )}
+                      {editing && (
+                        <button
+                          type="button"
+                          disabled={editBusy}
+                          className="mr-2 text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
+                          onClick={async () => {
+                            const amount = parseFloat(editAmount);
+                            if (!editComment.trim() || !amount || amount <= 0) return;
+                            setEditBusy(true);
+                            const ok = await onUpdateCard(e.id, { date: editDate, amount, comment: editComment.trim() });
+                            setEditBusy(false);
+                            if (ok) setEditId(null);
+                          }}
+                        >
+                          შენახვა
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="text-xs text-red-400 hover:text-red-300"
@@ -278,7 +336,8 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment }: P
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t border-zinc-700 font-semibold">

@@ -4,6 +4,7 @@ import { emptyCostSettings } from "./product-cost";
 import { emptyBranchCash, emptyInventory } from "./utils";
 
 export const DEFAULT_OVERVIEW_REPORT_TOKEN = "ovw-mr9k2";
+export const DEFAULT_CARD_SPEND_TOKEN = "crd-m4p8";
 
 export const DEFAULT_BRANCH_TOKENS: Record<Branch, string> = {
   ქუთაისი: "kut-a8f3",
@@ -48,6 +49,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     obligations: data.obligations ?? {},
     branchTokens: { ...DEFAULT_BRANCH_TOKENS, ...data.branchTokens },
     overviewReportToken: data.overviewReportToken ?? DEFAULT_OVERVIEW_REPORT_TOKEN,
+    cardSpendToken: data.cardSpendToken ?? DEFAULT_CARD_SPEND_TOKEN,
     branchReports: data.branchReports ?? [],
     inventory: mergeInventory(data.inventory),
     branchCash: mergeBranchCash(data.branchCash),

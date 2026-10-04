@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod } from "@/lib/utils";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
 
@@ -39,9 +40,13 @@ export async function POST(req: NextRequest) {
         | "delete"
         | "updateRecurrence"
         | "updatePaymentMethod"
+        | "updateCardExpense"
         | "toggleBankLedgerReview"
         | "updateDriver";
       id?: string;
+      date?: string;
+      amount?: number;
+      comment?: string;
       ids?: string[];
       clientSaleId?: string;
       recurrence?: string;
@@ -130,6 +135,32 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ ok: true, updated, transactions: store.transactions });
+    }
+
+    if (body.action === "updateCardExpense") {
+      const date = (body.date ?? "").slice(0, 10);
+      const comment = (body.comment ?? "").trim();
+      const amount = Number(body.amount);
+      if (!body.id) return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < OPERATIONAL_DATA_FROM) {
+        return NextResponse.json({ error: "თარიღი არასწორია" }, { status: 400 });
+      }
+      if (!comment) return NextResponse.json({ error: "კომენტარი საჭიროა" }, { status: 400 });
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: "თანხა არასწორია" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        const t = s.transactions.find((x) => x.id === body.id);
+        if (!t || t.type !== "expense" || t.expensePaymentMethod !== "ბარათი") {
+          throw new Error("ჩანაწერი ვერ მოიძებნა");
+        }
+        reverseExpenseObligation(s, t);
+        t.date = `${date}T12:00:00.000Z`;
+        t.amount = amount;
+        t.comment = comment;
+        applyExpenseToStore(s, t);
+      });
+      return NextResponse.json({ ok: true, transactions: store.transactions, obligations: store.obligations });
     }
 
     if (body.action === "toggleBankLedgerReview") {
