@@ -84,9 +84,7 @@ function MiniReport({
       <p className="mt-2 text-xs text-zinc-500">
         ქეში: <span className="text-emerald-400">{formatMoney(report.cashAtEnd)}</span>
         {" · "}
-        ბარათი: <span className="text-sky-400">{formatMoney(report.cardAtEnd)}</span>
-        {" · "}
-        ანგარიში: <span className="text-violet-400">{formatMoney(report.bankAtEnd)}</span>
+        ანგარიში: <span className="text-violet-400">{formatMoney(report.cardAtEnd + report.bankAtEnd)}</span>
       </p>
     </div>
   );
@@ -716,10 +714,9 @@ export default function ReportsPanel({
                 accent={report.net >= 0 ? "text-emerald-400" : "text-red-400"}
               />
             </div>
-            <div className="mb-6 grid gap-3 sm:grid-cols-3">
+            <div className="mb-6 grid gap-3 sm:grid-cols-2">
               <Stat label="💵 ქეში (ბოლოს)" value={formatMoney(report.cashAtEnd)} accent="text-emerald-300" />
-              <Stat label="💳 ბარათი (ბოლოს)" value={formatMoney(report.cardAtEnd)} accent="text-sky-400" />
-              <Stat label="🏦 ანგარიში (ბოლოს)" value={formatMoney(report.bankAtEnd)} accent="text-violet-400" />
+              <Stat label="🏦 ანგარიში (ბოლოს)" value={formatMoney(report.cardAtEnd + report.bankAtEnd)} accent="text-violet-400" />
             </div>
 
             <div className="mb-6 grid gap-3 sm:grid-cols-2">
@@ -795,7 +792,6 @@ export default function ReportsPanel({
                     <th className="pb-2 pr-4 text-right">ხარჯი</th>
                     <th className="pb-2 pr-4 text-right">მოგება/ზარალი</th>
                     <th className="pb-2 pr-4 text-right">ქეში</th>
-                    <th className="pb-2 pr-4 text-right">ბარათი</th>
                     <th className="pb-2 text-right">ანგარიში</th>
                   </tr>
                 </thead>
@@ -825,8 +821,7 @@ export default function ReportsPanel({
                         {formatMoney(b.net)}
                       </td>
                       <td className="py-2 pr-4 text-right text-emerald-300">{formatMoney(b.cashAtEnd)}</td>
-                      <td className="py-2 pr-4 text-right text-sky-400">{formatMoney(b.cardAtEnd)}</td>
-                      <td className="py-2 text-right text-violet-400">{formatMoney(b.bankAtEnd)}</td>
+                      <td className="py-2 text-right text-violet-400">{formatMoney(b.cardAtEnd + b.bankAtEnd)}</td>
                     </tr>
                   ))}
                   <tr className="font-semibold">
@@ -855,11 +850,8 @@ export default function ReportsPanel({
                     <td className="py-2 pr-4 text-right text-emerald-300">
                       {formatMoney(report.byBranch.reduce((s, b) => s + b.cashAtEnd, 0))}
                     </td>
-                    <td className="py-2 pr-4 text-right text-sky-400">
-                      {formatMoney(report.byBranch.reduce((s, b) => s + b.cardAtEnd, 0))}
-                    </td>
                     <td className="py-2 text-right text-violet-400">
-                      {formatMoney(report.byBranch.reduce((s, b) => s + b.bankAtEnd, 0))}
+                      {formatMoney(report.byBranch.reduce((s, b) => s + b.cardAtEnd + b.bankAtEnd, 0))}
                     </td>
                   </tr>
                 </tbody>

@@ -108,7 +108,7 @@ const METRICS: MetricDef[] = [
   {
     id: "bal_total",
     title: "ჯამური ნაშთი",
-    short: "ქეში + ბარათი + ანგარიში",
+    short: "ქეში + ანგარიში",
     accent: "text-zinc-100 border-emerald-900/40 bg-emerald-950/15",
   },
   {
@@ -118,15 +118,9 @@ const METRICS: MetricDef[] = [
     accent: "text-emerald-300 border-zinc-800 bg-zinc-900/40",
   },
   {
-    id: "bal_card",
-    title: "ნაშთი ბარათი",
-    short: "ბარათის ნაშთი",
-    accent: "text-violet-300 border-zinc-800 bg-zinc-900/40",
-  },
-  {
     id: "bal_bank",
     title: "ნაშთი ანგარიში",
-    short: "საბანკო ნაშთი",
+    short: "ბარათი და გადმორიცხვა ერთი ანგარიშია",
     accent: "text-sky-300 border-zinc-800 bg-zinc-900/40",
   },
   {
@@ -395,9 +389,8 @@ export default function OwnerMetricsPanel({
       case "bal_cash":
         return formatMoney(balances.cash);
       case "bal_card":
-        return formatMoney(balances.card);
       case "bal_bank":
-        return formatMoney(balances.bank);
+        return formatMoney(balances.card + balances.bank);
       case "bal_total":
         return formatMoney(balances.cash + balances.card + balances.bank);
       case "obligations":
@@ -517,8 +510,7 @@ export default function OwnerMetricsPanel({
           active === "bal_total") && (
           <ul className="space-y-1 text-sm text-zinc-300">
             <li>ქეში: {formatMoney(balances.cash)}</li>
-            <li>ბარათი: {formatMoney(balances.card)}</li>
-            <li>ანგარიში: {formatMoney(balances.bank)}</li>
+            <li>ანგარიში: {formatMoney(balances.card + balances.bank)}</li>
             <li className="pt-1 font-medium text-zinc-100">
               ჯამი: {formatMoney(balances.cash + balances.card + balances.bank)}
             </li>

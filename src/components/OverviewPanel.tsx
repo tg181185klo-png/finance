@@ -95,7 +95,6 @@ function OverviewBreakdown({
 }) {
   const isCompanySummary = scope === "company";
   const sectioned = !compact;
-  const accountRevenue = stats.revenueCard + stats.revenueBank;
   const accountExpense = stats.expenseCard + stats.expenseBank;
   const cell = (
     kind: FlowDetailKind,
@@ -125,7 +124,8 @@ function OverviewBreakdown({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400", undefined, true)}
             {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
-            {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
+            {cell("revenue_card", "ბარათით შემოვიდა", stats.revenueCard, "text-sky-300")}
+            {cell("revenue_bank", "გადმორიცხვით შემოვიდა", stats.revenueBank, "text-violet-300")}
           </div>
         </div>
         <div>
@@ -147,7 +147,7 @@ function OverviewBreakdown({
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
             {isCompanySummary &&
-              cell("balance_bank", "ნაშთი ჯამური ანგარიში", bankBalance, "text-violet-400", balanceHint)}
+              cell("balance_account", "ნაშთი ანგარიში", bankBalance, "text-violet-400", balanceHint)}
           </div>
         </div>
       </div>
@@ -158,7 +158,8 @@ function OverviewBreakdown({
     <div className="grid gap-3 sm:grid-cols-2">
       {cell("revenue", "მთლიანი შემოსავალი", stats.revenueTotal, "text-emerald-400")}
       {cell("revenue_cash", "შემოსავალი ქეში", stats.revenueCash, "text-emerald-300")}
-      {cell("revenue_account", "შემოსავალი ანგარიში", accountRevenue, "text-violet-400")}
+      {cell("revenue_card", "ბარათით შემოვიდა", stats.revenueCard, "text-sky-300")}
+      {cell("revenue_bank", "გადმორიცხვით შემოვიდა", stats.revenueBank, "text-violet-300")}
       {cell("expense_cash", "ხარჯი ქეში", stats.expenseCash, "text-red-400")}
       {cell("balance_cash", "ნაშთი ქეში", cashBalance, "text-emerald-300", balanceHint)}
     </div>
@@ -629,35 +630,33 @@ export default function OverviewPanel({
             </div>
           </div>
           <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2">
-            <p className="text-xs text-zinc-500">ანგარიშზე სულ (ბარათი + გადარიცხვა)</p>
-            <p className="text-xl font-semibold text-violet-300">{formatMoney(accountTotal)}</p>
-            <p className="text-[11px] text-zinc-500">
-              <span className="group relative inline-flex">
-                <span className="cursor-help text-sky-300 underline decoration-dotted underline-offset-2">
-                  ბარათი {formatMoney(accountNow.card)}
-                </span>
-                <span className="invisible absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left shadow-xl group-hover:visible">
-                  <span className="block text-xs text-zinc-400">დარჩა ბარათზე</span>
-                  <span className="mb-2 block text-sm font-semibold text-sky-300">{formatMoney(accountNow.card)}</span>
-                  <span className="mb-1 block text-xs text-zinc-400">რაში დაიხარჯა</span>
-                  {cardSpends.length === 0 ? (
-                    <span className="block text-xs text-zinc-500">ბარათიდან ხარჯი ჯერ არ არის</span>
-                  ) : (
-                    <span className="block max-h-52 space-y-1 overflow-y-auto">
-                      {cardSpends.map((row) => (
-                        <span key={row.id} className="flex justify-between gap-2 text-xs text-zinc-200">
-                          <span>
-                            {formatDate(row.date)} · {row.comment || row.category}
-                          </span>
-                          <span className="shrink-0 text-red-300">{formatMoney(row.amount)}</span>
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                </span>
+            <p className="text-xs text-zinc-500">ანგარიში</p>
+            <p className="group relative inline-flex text-xl font-semibold text-violet-300">
+              <span className="cursor-help underline decoration-dotted underline-offset-2">
+                {formatMoney(accountTotal)}
               </span>
-              {" · ანგარიში "}
-              {formatMoney(accountNow.bank)}
+              <span className="invisible absolute left-0 top-full z-30 mt-1 w-80 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left text-sm font-normal shadow-xl group-hover:visible">
+                <span className="block text-xs text-zinc-400">დარჩა ანგარიშზე</span>
+                <span className="mb-2 block text-sm font-semibold text-violet-300">{formatMoney(accountTotal)}</span>
+                <span className="mb-1 block text-xs text-zinc-400">რაში დაიხარჯა</span>
+                {cardSpends.length === 0 ? (
+                  <span className="block text-xs text-zinc-500">ანგარიშიდან ხარჯი ჯერ არ არის</span>
+                ) : (
+                  <span className="block max-h-52 space-y-1 overflow-y-auto">
+                    {cardSpends.map((row) => (
+                      <span key={row.id} className="flex justify-between gap-2 text-xs text-zinc-200">
+                        <span>
+                          {formatDate(row.date)} · {row.comment || row.category}
+                        </span>
+                        <span className="shrink-0 text-red-300">{formatMoney(row.amount)}</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              ბარათით შემოვიდა და გადმორიცხვა ერთ ანგარიშზე ჯდება
             </p>
           </div>
         </div>
@@ -839,7 +838,7 @@ export default function OverviewPanel({
                 <OverviewBreakdown
                   stats={companyChannelStats}
                   cashBalance={companyBal.cash}
-                  bankBalance={companyBal.bank}
+                  bankBalance={companyBal.card + companyBal.bank}
                   scope="company"
                   balanceHint={balanceHint}
                   drill={breakdownDrill}
@@ -881,7 +880,7 @@ export default function OverviewPanel({
                     <OverviewBreakdown
                       stats={b.channel}
                       cashBalance={b.cash}
-                      bankBalance={b.bank}
+                      bankBalance={b.card + b.bank}
                       scope={b.branch}
                       balanceHint={balanceHint}
                       compact
@@ -903,7 +902,7 @@ export default function OverviewPanel({
                   <OverviewBreakdown
                     stats={kutaisiDistribChannelStats}
                     cashBalance={kutaisiDistribStats.cash}
-                    bankBalance={kutaisiDistribStats.bank}
+                    bankBalance={kutaisiDistribStats.card + kutaisiDistribStats.bank}
                     scope={KUTAISI_DISTRIB_LABEL}
                     balanceHint={balanceHint}
                     compact
@@ -925,7 +924,7 @@ export default function OverviewPanel({
           <OverviewBreakdown
             stats={activeBranch.channel}
             cashBalance={activeBranch.cash}
-            bankBalance={activeBranch.bank}
+            bankBalance={activeBranch.card + activeBranch.bank}
             scope={activeBranch.branch}
             balanceHint={balanceHint}
             drill={breakdownDrill}
@@ -942,7 +941,7 @@ export default function OverviewPanel({
           <OverviewBreakdown
             stats={kutaisiDistribChannelStats}
             cashBalance={activeGroup.cash}
-            bankBalance={activeGroup.bank}
+            bankBalance={activeGroup.card + activeGroup.bank}
             scope={KUTAISI_DISTRIB_LABEL}
             balanceHint={balanceHint}
             drill={breakdownDrill}

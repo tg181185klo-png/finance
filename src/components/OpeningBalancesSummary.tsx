@@ -115,14 +115,12 @@ export default function OpeningBalancesSummary({
             <div className="mb-3 space-y-1 border-b border-zinc-800 pb-3">
               <p className="text-[10px] uppercase tracking-wide text-zinc-500">საწყისი</p>
               <MoneyRow label="💵 ქეში" value={formatMoney(r.opening.cash)} accent="text-emerald-400" />
-              <MoneyRow label="💳 ბარათი" value={formatMoney(r.opening.card)} accent="text-sky-400" />
-              <MoneyRow label="🏦 ანგარიში" value={formatMoney(r.opening.bank)} accent="text-violet-400" />
+              <MoneyRow label="🏦 ანგარიში" value={formatMoney(r.opening.card + r.opening.bank)} accent="text-violet-400" />
             </div>
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-wide text-zinc-500">მიმდინარე</p>
               <MoneyRow label="💵 ქეში" value={formatMoney(r.current.cash)} accent="text-emerald-300" />
-              <MoneyRow label="💳 ბარათი" value={formatMoney(r.current.card)} accent="text-sky-300" />
-              <MoneyRow label="🏦 ანგარიში" value={formatMoney(r.current.bank)} accent="text-violet-300" />
+              <MoneyRow label="🏦 ანგარიში" value={formatMoney(r.current.card + r.current.bank)} accent="text-violet-300" />
             </div>
           </div>
         ))}
@@ -132,14 +130,12 @@ export default function OpeningBalancesSummary({
           <div className="mb-3 space-y-1 border-b border-emerald-900/40 pb-3">
             <p className="text-[10px] uppercase tracking-wide text-emerald-600/80">საწყისი</p>
             <MoneyRow label="💵 ქეში" value={formatMoney(companyOpening.cash)} accent="text-emerald-400" />
-            <MoneyRow label="💳 ბარათი" value={formatMoney(companyOpening.card)} accent="text-sky-400" />
-            <MoneyRow label="🏦 ანგარიში" value={formatMoney(companyOpening.bank)} accent="text-violet-400" />
+            <MoneyRow label="🏦 ანგარიში" value={formatMoney(companyOpening.card + companyOpening.bank)} accent="text-violet-400" />
           </div>
           <div className="space-y-1">
             <p className="text-[10px] uppercase tracking-wide text-emerald-600/80">მიმდინარე</p>
             <MoneyRow label="💵 ქეში" value={formatMoney(companyCurrent.cash)} accent="text-emerald-300" />
-            <MoneyRow label="💳 ბარათი" value={formatMoney(companyCurrent.card)} accent="text-sky-300" />
-            <MoneyRow label="🏦 ანგარიში" value={formatMoney(companyCurrent.bank)} accent="text-violet-300" />
+            <MoneyRow label="🏦 ანგარიში" value={formatMoney(companyCurrent.card + companyCurrent.bank)} accent="text-violet-300" />
           </div>
         </div>
       </div>
@@ -164,8 +160,7 @@ export function CurrentBalanceStrip({
     <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-emerald-900/30 bg-emerald-950/10 px-3 py-2 text-xs text-zinc-400">
       <span className="text-emerald-300/90">{title} — მიმდინარე:</span>
       <span className="text-emerald-400">ქეში {formatMoney(bal.cash)}</span>
-      <span className="text-sky-400">ბარათი {formatMoney(bal.card)}</span>
-      <span className="text-violet-400">ანგარიში {formatMoney(bal.bank)}</span>
+      <span className="text-violet-400">ანგარიში {formatMoney(bal.card + bal.bank)}</span>
     </div>
   );
 }
@@ -185,8 +180,7 @@ export function OpeningBalanceStrip({
         {title} — საწყისი ({new Date().toISOString().slice(0, 10) >= FRESH_START_DATE ? FRESH_START_DATE : OPENING_BALANCE_DATE}):
       </span>
       <span className="text-emerald-400">ქეში {formatMoney(opening.cash)}</span>
-      <span className="text-sky-400">ბარათი {formatMoney(opening.card)}</span>
-      <span className="text-violet-400">ანგარიში {formatMoney(opening.bank)}</span>
+      <span className="text-violet-400">ანგარიში {formatMoney(opening.card + opening.bank)}</span>
     </div>
   );
 }

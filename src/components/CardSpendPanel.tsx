@@ -41,7 +41,7 @@ export default function CardSpendPanel({ shareToken, expenses, onAdd }: Props) {
     if (!ok) return;
     setWhat("");
     setAmount("");
-    setMsg("ბარათიდან ჩამოიჭრა");
+    setMsg("ანგარიშიდან ჩამოიჭრა");
   }
 
   return (
@@ -64,9 +64,9 @@ export default function CardSpendPanel({ shareToken, expenses, onAdd }: Props) {
         <code className="block break-all text-sm text-sky-300">{link}</code>
       </div>
       <form onSubmit={submit} className="rounded-xl border border-sky-900/50 bg-zinc-900/40 p-5">
-        <h2 className="mb-1 text-lg font-semibold text-sky-300">ბარათიდან ხარჯი</h2>
+        <h2 className="mb-1 text-lg font-semibold text-sky-300">ანგარიშიდან ხარჯი</h2>
         <p className="mb-4 text-xs text-zinc-500">
-          ჩაწერე რაში დაიხარჯა და რამდენი. თანხა ბარათს გამოაკლდება.
+          ჩაწერე რაში დაიხარჯა და რამდენი. თანხა ანგარიშს გამოაკლდება.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -108,13 +108,13 @@ export default function CardSpendPanel({ shareToken, expenses, onAdd }: Props) {
           disabled={busy}
           className="mt-4 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium hover:bg-sky-600 disabled:opacity-40"
         >
-          ჩამოჭრა ბარათიდან
+          ჩამოჭრა ანგარიშიდან
         </button>
         {msg && <p className="mt-3 text-sm text-emerald-400">{msg}</p>}
       </form>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h3 className="mb-1 font-semibold text-zinc-100">ბარათიდან გახარჯული</h3>
+        <h3 className="mb-1 font-semibold text-zinc-100">ანგარიშიდან გახარჯული</h3>
         <p className="mb-4 text-xs text-zinc-500">სულ ჩამოჭრილი {formatMoney(spent)}</p>
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-500">ჯერ ჩანაწერი არ არის</p>

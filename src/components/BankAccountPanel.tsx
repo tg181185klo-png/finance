@@ -399,23 +399,20 @@ export default function BankAccountPanel({
 
         <div className="mb-4 flex flex-wrap gap-2">
           <button type="button" className={tabBtn(channelFilter === "all")} onClick={() => setChannelFilter("all")}>
-            ბარათი + ანგარიში
+            ანგარიში
           </button>
           <button type="button" className={tabBtn(channelFilter === "card")} onClick={() => setChannelFilter("card")}>
-            მხოლოდ ბარათი
+            ბარათით შემოსული
           </button>
           <button type="button" className={tabBtn(channelFilter === "bank")} onClick={() => setChannelFilter("bank")}>
-            მხოლოდ ანგარიში
+            გადმორიცხვა
           </button>
         </div>
 
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-lg border border-violet-900/50 bg-violet-950/30 p-3">
-            <p className="text-xs text-zinc-500">საწყისი (ბარათი+ანგარიში)</p>
+            <p className="text-xs text-zinc-500">საწყისი ანგარიში</p>
             <p className="mt-1 text-lg font-semibold text-violet-300">{formatMoney(opening.total)}</p>
-            <p className="mt-1 text-[10px] text-zinc-600">
-              ბარათი {formatMoney(opening.card)} · ანგარიში {formatMoney(opening.bank)}
-            </p>
           </div>
           <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-3">
             <p className="text-xs text-zinc-500">შემოსული (თვე)</p>
@@ -433,11 +430,8 @@ export default function BankAccountPanel({
             </p>
           </div>
           <div className="rounded-lg border border-indigo-900/40 bg-indigo-950/20 p-3">
-            <p className="text-xs text-zinc-500">მიმდინარე ნაშთი</p>
+            <p className="text-xs text-zinc-500">მიმდინარე ანგარიში</p>
             <p className="mt-1 text-lg font-semibold text-indigo-200">{formatMoney(currentNonCash.total)}</p>
-            <p className="mt-1 text-[10px] text-zinc-600">
-              ბარათი {formatMoney(currentNonCash.card)} · ანგარიში {formatMoney(currentNonCash.bank)}
-            </p>
           </div>
         </div>
 

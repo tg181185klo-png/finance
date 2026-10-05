@@ -37,7 +37,7 @@ export default function CardSpendLink({ token }: { token: string }) {
       if (!res.ok) throw new Error(data.error || "ვერ შეინახა");
       setAmount("");
       setComment("");
-      setMsg("ჩაიწერა. ბარათს გამოაკლდა.");
+      setMsg("ჩაიწერა. ანგარიშს გამოაკლდა.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "ვერ შეინახა");
     } finally {
@@ -77,7 +77,7 @@ export default function CardSpendLink({ token }: { token: string }) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 py-6">
-      <h1 className="text-2xl font-semibold text-sky-300">ბარათიდან ხარჯი</h1>
+      <h1 className="text-2xl font-semibold text-sky-300">ანგარიშიდან ხარჯი</h1>
       <p className="mt-1 mb-6 text-sm text-zinc-400">თარიღი, თანხა და კომენტარი.</p>
       <form onSubmit={submit} className="flex flex-1 flex-col gap-4">
         <label className="block">

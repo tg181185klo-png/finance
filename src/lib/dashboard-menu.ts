@@ -41,7 +41,7 @@ export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = 
     label: "ხარჯი",
     tabs: [
       { id: "expenses", label: "ხარჯის ჩაწერა" },
-      { id: "card-spend", label: "ბარათიდან ხარჯი" },
+      { id: "card-spend", label: "ანგარიშიდან ხარჯი" },
       { id: "costing", label: "თვითღირებულება" },
     ],
   },

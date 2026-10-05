@@ -1675,7 +1675,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             />
             <Stat label="ნეტო" value={formatMoney(periodStats.net)} accent={periodStats.net >= 0 ? "text-emerald-400" : "text-red-400"} />
             <Stat label="ქეში (სულ)" value={formatMoney(balances.cash)} />
-            <Stat label="ბარათი/ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
+            <Stat label="ანგარიში" value={formatMoney(balances.card + balances.bank)} accent="text-sky-400" />
             <Stat label="ბე" value={formatMoney(creditRemainingTotal || balances.credit)} accent="text-amber-400" />
           </section>
 

@@ -46,5 +46,5 @@ export function buildBranchBalanceRows(
 }
 
 export function openingBalanceLabel(cash: BranchCash) {
-  return `ქეში ${formatMoney(cash.cash)} · ბარათი ${formatMoney(cash.card)} · ანგარიში ${formatMoney(cash.bank)}`;
+  return `ქეში ${formatMoney(cash.cash)} · ანგარიში ${formatMoney(cash.card + cash.bank)}`;
 }

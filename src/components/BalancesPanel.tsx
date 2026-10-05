@@ -191,19 +191,15 @@ export default function BalancesPanel({
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">საწყისი ნაშთი</p>
               <p className="text-xs text-zinc-500">💵 ქეში</p>
               <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.cash)}</p>
-              <p className="text-xs text-zinc-500">💳 ბარათი</p>
-              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.card)}</p>
               <p className="text-xs text-zinc-500">🏦 ანგარიში</p>
-              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.bank)}</p>
+              <p className="text-base font-semibold text-zinc-400">{formatMoney(r.opening.card + r.opening.bank)}</p>
             </div>
             <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
               <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">ფული ახლა</p>
               <p className="text-xs text-zinc-500">💵 ქეში</p>
               <p className="text-base font-semibold text-emerald-300">{formatMoney(r.cash)}</p>
-              <p className="text-xs text-zinc-500">💳 ბარათი</p>
-              <p className="text-base font-semibold text-sky-400">{formatMoney(r.card)}</p>
               <p className="text-xs text-zinc-500">🏦 ანგარიში</p>
-              <p className="text-base font-semibold text-violet-400">{formatMoney(r.bank)}</p>
+              <p className="text-base font-semibold text-violet-400">{formatMoney(r.card + r.bank)}</p>
             </div>
           </div>
         ))}
@@ -241,21 +237,17 @@ export default function BalancesPanel({
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">საწყისი ნაშთი</p>
             <p className="text-xs text-zinc-500">💵 ქეში (ყველა)</p>
             <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.cash)}</p>
-            <p className="text-xs text-zinc-500">💳 ბარათი (ყველა)</p>
-            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.card)}</p>
             <p className="text-xs text-zinc-500">🏦 ანგარიში (ყველა)</p>
-            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.bank)}</p>
+            <p className="text-base font-semibold text-zinc-400">{formatMoney(rows.company.opening.card + rows.company.opening.bank)}</p>
           </div>
           <div className="mt-3 space-y-2 border-t border-emerald-900/40 pt-3">
             <p className="text-xs font-medium uppercase tracking-wide text-emerald-600/80">ჯამური ფული</p>
             <p className="text-xs text-zinc-500">💵 ქეში (ყველა)</p>
             <p className="text-base font-semibold text-emerald-300">{formatMoney(rows.company.cash)}</p>
-            <p className="text-xs text-zinc-500">💳 ბარათი (ყველა)</p>
-            <p className="text-base font-semibold text-sky-400">{formatMoney(rows.company.card)}</p>
             <p className="text-xs text-zinc-500">🏦 ანგარიში (ყველა)</p>
-            <p className="text-base font-semibold text-violet-400">{formatMoney(rows.company.bank)}</p>
+            <p className="text-base font-semibold text-violet-400">{formatMoney(rows.company.card + rows.company.bank)}</p>
             <div className="mt-2 rounded-lg bg-emerald-950/40 px-3 py-2">
-              <p className="text-xs text-zinc-500">სულ (ქეში+ბარათი+ანგარიში)</p>
+              <p className="text-xs text-zinc-500">სულ (ქეში+ანგარიში)</p>
               <p className="text-base font-semibold text-emerald-200">
                 {formatMoney(rows.company.cash + rows.company.card + rows.company.bank)}
               </p>
