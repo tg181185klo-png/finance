@@ -13,6 +13,7 @@ export default function CardSpendLink({ token }: { token: string }) {
   const [obName, setObName] = useState("");
   const [obDue, setObDue] = useState("");
   const [obAmount, setObAmount] = useState("");
+  const [obMonthly, setObMonthly] = useState(false);
   const [obBusy, setObBusy] = useState(false);
   const [obMsg, setObMsg] = useState("");
   const [obErr, setObErr] = useState("");
@@ -60,6 +61,7 @@ export default function CardSpendLink({ token }: { token: string }) {
           name: obName.trim(),
           due: obDue,
           amount: parseFloat(obAmount),
+          recurring: obMonthly,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -67,7 +69,8 @@ export default function CardSpendLink({ token }: { token: string }) {
       setObName("");
       setObDue("");
       setObAmount("");
-      setObMsg("ვალდებულება ჩაიწერა.");
+      setObMonthly(false);
+      setObMsg(obMonthly ? "ვალდებულება ჩაიწერა. ყოველ თვე გამოვა." : "ვალდებულება ჩაიწერა.");
     } catch (e) {
       setObErr(e instanceof Error ? e.message : "ვერ შეინახა");
     } finally {
@@ -163,6 +166,15 @@ export default function CardSpendLink({ token }: { token: string }) {
             placeholder="0.00"
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-4 text-lg"
           />
+        </label>
+        <label className="flex items-center gap-3 rounded-2xl border border-zinc-700 px-4 py-4 text-lg">
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={obMonthly}
+            onChange={(e) => setObMonthly(e.target.checked)}
+          />
+          ყოველთვიური
         </label>
         <button
           type="submit"

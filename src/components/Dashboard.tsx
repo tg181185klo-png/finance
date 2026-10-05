@@ -217,7 +217,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obBranch, setObBranch] = useState<ExpenseBranch | "ყველა">("ყველა");
   const [obCategory, setObCategory] = useState<ExpenseCategory>("ხელფასი");
   const [obComment, setObComment] = useState("");
-  const [obRecurring, setObRecurring] = useState(true);
+  const [obRecurring, setObRecurring] = useState(false);
   const [obEmployeeId, setObEmployeeId] = useState("");
   const [obPlannedPayDate, setObPlannedPayDate] = useState("");
   const [obResponsible, setObResponsible] = useState("");
@@ -1354,6 +1354,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         recurringObligations: d.recurringObligations,
       });
       setSaveMsg("ვალდებულება განახლდა ✓");
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "შეცდომა");
+    }
+  }
+
+  async function setObligationRecurring(id: string, month: string, recurring: boolean) {
+    try {
+      const res = await fetch("/api/obligations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setRecurring", obligationId: id, month, recurring }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      await refresh({
+        obligations: d.obligations,
+        recurringObligations: d.recurringObligations,
+      });
+      setSaveMsg(recurring ? "ყოველთვიური გახდა — მომდევნო თვეშიც გამოვა ✓" : "ყოველთვიური მოხსნილია");
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
@@ -2526,7 +2546,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                     checked={obRecurring}
                     onChange={(e) => setObRecurring(e.target.checked)}
                   />
-                  ყოველთვიური
+                  ყოველთვიური — მომდევნო თვეშიც გამოვა
                 </label>
                 <button type="submit" className={`${btnCls} mt-2 bg-violet-600 hover:bg-violet-500`}>
                   შენახვა
@@ -2603,15 +2623,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 key={o.id}
                                 className={
                                   dueUrgent
-                                    ? "bg-red-950/25"
+                                    ? "flex flex-wrap items-center bg-red-950/25"
                                     : left <= 0
-                                      ? "bg-emerald-950/10"
-                                      : "bg-zinc-950/30"
+                                      ? "flex flex-wrap items-center bg-emerald-950/10"
+                                      : "flex flex-wrap items-center bg-zinc-950/30"
                                 }
                               >
+                                <label
+                                  className="flex shrink-0 items-center gap-1 px-2 text-[10px] text-violet-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(o.recurringId)}
+                                    onChange={(e) => setObligationRecurring(o.id, o.month, e.target.checked)}
+                                  />
+                                  ყოველთვიური
+                                </label>
                                 <button
                                   type="button"
-                                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-zinc-900/40"
+                                  className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left hover:bg-zinc-900/40"
                                   onClick={() => {
                                     if (open) setExpandedObId(null);
                                     else {
@@ -2668,7 +2699,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                   </span>
                                 </button>
                                 {open && (
-                                  <div className="space-y-2 border-t border-zinc-800/50 px-2.5 py-2">
+                                  <div className="w-full space-y-2 border-t border-zinc-800/50 px-2.5 py-2">
                                     <div className="grid gap-1.5 sm:grid-cols-3">
                                       <input
                                         className={inputCls}

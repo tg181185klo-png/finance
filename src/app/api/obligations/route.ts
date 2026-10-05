@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       obligation?: Omit<Obligation, "id" | "paid">;
       recurring?: boolean;
-      action?: "pay" | "update";
+      action?: "pay" | "update" | "setRecurring";
       name?: string;
       plannedPayDate?: string;
       obligationId?: string;
@@ -84,6 +84,50 @@ export async function POST(req: NextRequest) {
             rec.plannedPayDate = plannedPayDate;
           }
         }
+      });
+      return NextResponse.json({ ok: true, obligations: store.obligations, recurringObligations: store.recurringObligations });
+    }
+
+    if (body.action === "setRecurring") {
+      if (!body.obligationId) return NextResponse.json({ error: "ID საჭიროა" }, { status: 400 });
+      const store = await updateStore((s) => {
+        let found: Obligation | undefined;
+        for (const list of Object.values(s.obligations)) {
+          const ob = list.find((o) => o.id === body.obligationId);
+          if (ob) {
+            found = ob;
+            break;
+          }
+        }
+        if (!found) throw new Error("ვალდებულება ვერ მოიძებნა");
+        if (!s.recurringObligations) s.recurringObligations = [];
+        if (body.recurring) {
+          if (found.recurringId && s.recurringObligations.some((r) => r.id === found!.recurringId)) return;
+          const monthlyAmount = Math.max(0, found.amount - (found.carriedForward ?? 0)) || found.amount;
+          const rec = {
+            id: uid(),
+            name: found.name,
+            amount: monthlyAmount,
+            branch: found.branch,
+            category: found.category,
+            comment: found.comment,
+            createdAt: new Date().toISOString(),
+            plannedPayDate: found.plannedPayDate,
+            plannedPaymentMethod: found.plannedPaymentMethod,
+            responsible: found.responsible,
+          };
+          s.recurringObligations.push(rec);
+          found.recurringId = rec.id;
+          return;
+        }
+        const recurringId = found.recurringId;
+        if (!recurringId) return;
+        s.recurringObligations = s.recurringObligations.filter((r) => r.id !== recurringId);
+        for (const [month, list] of Object.entries(s.obligations)) {
+          if (month <= found.month) continue;
+          s.obligations[month] = list.filter((o) => !(o.recurringId === recurringId && o.paid <= 0));
+        }
+        found.recurringId = undefined;
       });
       return NextResponse.json({ ok: true, obligations: store.obligations, recurringObligations: store.recurringObligations });
     }

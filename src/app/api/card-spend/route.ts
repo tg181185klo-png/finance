@@ -3,7 +3,7 @@ import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { DEFAULT_CARD_SPEND_TOKEN } from "@/lib/store-merge";
 import { updateStore } from "@/lib/server-store";
 import type { Expense, Obligation } from "@/lib/types";
-import { applyExpenseToStore, uid } from "@/lib/utils";
+import { addRecurringObligation, applyExpenseToStore, uid } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
       comment?: string;
       name?: string;
       due?: string;
+      recurring?: boolean;
     };
     const token = (body.token ?? "").trim();
     const kind = body.kind === "obligation" ? "obligation" : "expense";
@@ -38,6 +39,21 @@ export async function POST(req: NextRequest) {
       await updateStore((s) => {
         const expected = s.cardSpendToken || DEFAULT_CARD_SPEND_TOKEN;
         if (token !== expected) throw new Error("ლინკი არასწორია");
+        if (body.recurring) {
+          addRecurringObligation(
+            s,
+            {
+              name,
+              amount,
+              branch: "საერთო",
+              category: "სხვა",
+              plannedPayDate: due,
+              responsible: "მფლობელი",
+            },
+            month
+          );
+          return;
+        }
         const item: Obligation = {
           id: uid(),
           name,
