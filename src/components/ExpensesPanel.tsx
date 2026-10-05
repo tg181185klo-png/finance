@@ -106,6 +106,31 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
 
   const total = filtered.reduce((s, e) => s + e.amount, 0);
 
+  const visibleRows = useMemo(() => {
+    const grouped = new Map<string, { expense: Expense; amount: number; ids: string[] }>();
+    const rows: { expense: Expense; amount: number; ids: string[]; account: boolean }[] = [];
+    for (const expense of filtered) {
+      const account =
+        (expense.expensePaymentMethod === "ბარათი" || expense.expensePaymentMethod === "ანგარიშზე ჩარიცხვა") &&
+        Boolean(expense.obligationId);
+      if (!account) {
+        rows.push({ expense, amount: expense.amount, ids: [expense.id], account: false });
+        continue;
+      }
+      const key = `${expense.obligationId}|${expense.date.slice(0, 16)}|${expense.expensePaymentMethod}|${expense.comment}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.amount += expense.amount;
+        existing.ids.push(expense.id);
+        continue;
+      }
+      const row = { expense, amount: expense.amount, ids: [expense.id], account: true };
+      grouped.set(key, row);
+      rows.push(row);
+    }
+    return rows;
+  }, [filtered]);
+
   return (
     <section className="space-y-6">
       <div className="rounded-xl border border-red-900/40 bg-red-950/15 p-5">
@@ -245,8 +270,9 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((e) => {
-                  const cardSpend = e.expensePaymentMethod === "ბარათი";
+                {visibleRows.map((row) => {
+                  const e = row.expense;
+                  const cardSpend = e.expensePaymentMethod === "ბარათი" && row.ids.length === 1;
                   const editing = editId === e.id;
                   return (
                   <tr key={e.id} className="border-b border-zinc-800/50">
@@ -257,7 +283,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                         formatDate(e.date)
                       )}
                     </td>
-                    <td className="py-2 pr-3">{effectiveExpenseBranch(e)}</td>
+                    <td className="py-2 pr-3">{row.account ? "ანგარიში" : effectiveExpenseBranch(e)}</td>
                     <td className="py-2 pr-3">{e.spentBy || "—"}</td>
                     <td className="py-2 pr-3">{e.category}</td>
                     <td className="py-2 pr-3 text-zinc-500">
@@ -289,7 +315,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                       {editing ? (
                         <input className={inputCls} type="number" min={0} step={0.01} value={editAmount} onChange={(ev) => setEditAmount(ev.target.value)} />
                       ) : (
-                        <>-{formatMoney(e.amount)}</>
+                        <>-{formatMoney(row.amount)}</>
                       )}
                     </td>
                     <td className="py-2 whitespace-nowrap">
@@ -329,7 +355,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                         className="text-xs text-red-400 hover:text-red-300"
                         onClick={async () => {
                           if (!confirm("წავშალოთ ეს ხარჯი?")) return;
-                          await onDelete(e.id);
+                          for (const id of row.ids) await onDelete(id);
                         }}
                       >
                         წაშლა

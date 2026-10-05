@@ -109,8 +109,9 @@ export async function POST(req: NextRequest) {
           throw new Error("გადახდის მეთოდი: ქეში, ბარათი ან გადმორიცხვა");
         }
         const paymentMethod: SettlementPaymentMethod = paymentMethodRaw;
+        const accountPay = paymentMethod === "ბარათი" || paymentMethod === "ანგარიშზე ჩარიცხვა";
         const source = body.branch ?? "საერთო";
-        const paymentBranches = source === "საერთო" ? BRANCHES : [source];
+        const paymentBranches = accountPay ? (["საერთო"] as const) : source === "საერთო" ? BRANCHES : [source];
         const totalCents = Math.round(pay * 100);
         const baseCents = Math.floor(totalCents / paymentBranches.length);
         let allocatedCents = 0;
