@@ -20,6 +20,7 @@ import {
   StoreConflictError,
 } from "./supabase-rest-store";
 import { mergeStore } from "./store-merge";
+import { ensureDailyStoreBackup } from "./store-backup";
 
 export { mergeStore } from "./store-merge";
 export { StoreConflictError } from "./supabase-rest-store";
@@ -341,6 +342,11 @@ export async function readStore(): Promise<Store> {
     } catch {
       // Obligation sync failed to persist — return in-memory store anyway
     }
+  }
+  try {
+    await ensureDailyStoreBackup(store);
+  } catch {
+    // ავტომატურმა ბექაპმა გვერდის გახსნა არ უნდა გააჩეროს
   }
   return store;
 }

@@ -58,6 +58,53 @@ export function canBackupStore() {
   return hasSupabaseRestStore();
 }
 
+function tbilisiDateKey(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tbilisi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+function tbilisiDayStartIso(now = new Date()) {
+  return new Date(`${tbilisiDateKey(now)}T00:00:00+04:00`).toISOString();
+}
+
+let ensuredDay = "";
+let ensureFlight: Promise<void> | null = null;
+
+/** დღეში ერთი ავტომატური ასლი. თუ იმ დღეს უკვე არის ხელით ან ყოველდღიური, აღარ იმეორებს. */
+export async function ensureDailyStoreBackup(store: Store) {
+  if (!canBackupStore()) return;
+  if ((store.transactions?.length ?? 0) === 0) return;
+  const day = tbilisiDateKey();
+  if (ensuredDay === day || ensureFlight) return;
+  ensureFlight = (async () => {
+    try {
+      const sb = getSupabaseRestClient();
+      const since = tbilisiDayStartIso();
+      const { data, error } = await sb
+        .from("finance_store_backups")
+        .select("id")
+        .gte("created_at", since)
+        .limit(1);
+      if (error) return;
+      if ((data?.length ?? 0) > 0) {
+        ensuredDay = day;
+        return;
+      }
+      await createStoreBackup(store, "daily", "auto");
+      ensuredDay = day;
+    } catch {
+      // ბექაპმა წაკითხვა არ უნდა გააჩეროს
+    } finally {
+      ensureFlight = null;
+    }
+  })();
+  await ensureFlight;
+}
+
 export async function createStoreBackup(
   store: Store,
   reason: BackupReason = "manual",

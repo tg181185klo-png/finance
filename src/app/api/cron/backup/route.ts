@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readStore } from "@/lib/server-store";
-import { canBackupStore, createStoreBackup, pruneStoreBackups } from "@/lib/store-backup";
+import { canBackupStore, ensureDailyStoreBackup, pruneStoreBackups } from "@/lib/store-backup";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +15,8 @@ function authorized(req: NextRequest) {
   if (q && q === secret) return true;
   // Vercel cron jobs include this header on Hobby+ when cron is defined
   if (req.headers.get("x-vercel-cron") === "1") return true;
+  const agent = req.headers.get("user-agent") || "";
+  if (agent.startsWith("vercel-cron")) return true;
   return false;
 }
 
@@ -28,9 +30,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const store = await readStore();
-    const meta = await createStoreBackup(store, "daily", "cron");
+    await ensureDailyStoreBackup(store);
     await pruneStoreBackups(20);
-    return NextResponse.json({ ok: true, backup: meta });
+    return NextResponse.json({ ok: true, transactions: store.transactions?.length ?? 0 });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "backup failed" },
