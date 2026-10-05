@@ -19,6 +19,7 @@ export const STANDARD_EXPENSE_CATEGORIES = [
   "საყოფაცხოვრებო",
   "საწვავი",
   "სესხი",
+  "იჯარა",
   "სხვა",
 ] as const;
 
@@ -36,6 +37,7 @@ const BRANCH_CATEGORY_HINTS: Record<string, string> = {
   "საყოფაცხოვრებო": "საყოფაცხოვრებო — ჰიგიენა, დასუფთავება",
   "საწვავი": "საწვავი",
   "სესხი": "სესხი — ვალი",
+  "იჯარა": "იჯარა — ქირა",
   "სხვა": "სხვა — წვრილმანი",
 };
 
@@ -67,6 +69,7 @@ export function keywordCategory(label: string): string {
   if (/ხელფას/i.test(text) || /^(ნინო|ციცი)$/i.test(text)) return "ხელფასი";
   if (/საბიუჯეტ|დღგ|დივიდენდ|ქველმოქმედ/i.test(text)) return "საბიუჯეტო";
   if (/სესხ|ვალი/i.test(text)) return "სესხი";
+  if (/იჯარ|ქირა/i.test(text)) return "იჯარა";
   if (/საწარმო|წარმოებ|პროდუქც/i.test(text)) return "საწარმო";
   if (/ნედლეულ/i.test(text)) return "ნედლეული";
   if (/კომუნალ|ელ\.?\s*ენერგ|წყალ/i.test(text)) return "კომუნალური";
