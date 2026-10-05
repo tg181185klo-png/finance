@@ -3,6 +3,7 @@ import { BRANCHES } from "@/lib/constants";
 import { requireAdminSession } from "@/lib/require-admin";
 import { addRecurringObligation, currentMonth, syncMonthObligationCycles, uid } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
+import { ALL_EXPENSE_CATEGORIES } from "@/lib/expense-categories";
 import type { Expense, Obligation, PaymentMethod, ExpenseBranch, SettlementPaymentMethod } from "@/lib/types";
 import { isSettlementPaymentMethod } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
       recurring?: boolean;
       action?: "pay" | "update" | "setRecurring";
       name?: string;
+      category?: string;
       plannedPayDate?: string;
       obligationId?: string;
       month?: string;
@@ -66,8 +68,14 @@ export async function POST(req: NextRequest) {
         }
         if (!found) throw new Error("ვალდებულება ვერ მოიძებნა");
         if (amount < found.paid) throw new Error("თანხა გადახდილზე ნაკლები ვერ იქნება");
+        const category = (body.category ?? found.category).trim();
+        const known = (ALL_EXPENSE_CATEGORIES as readonly string[]).includes(category);
+        if (!category || (!known && category !== found.category)) {
+          throw new Error("კატეგორია არასწორია");
+        }
         found.name = name;
         found.amount = amount;
+        found.category = category;
         found.plannedPayDate = plannedPayDate;
         const nextMonth = plannedPayDate.slice(0, 7);
         found.month = nextMonth;
@@ -81,7 +89,14 @@ export async function POST(req: NextRequest) {
           if (rec) {
             rec.name = name;
             rec.amount = amount;
+            rec.category = category;
             rec.plannedPayDate = plannedPayDate;
+            for (const [month, list] of Object.entries(s.obligations)) {
+              if (month === found.month) continue;
+              for (const item of list) {
+                if (item.recurringId === found.recurringId && item.paid <= 0) item.category = category;
+              }
+            }
           }
         }
       });

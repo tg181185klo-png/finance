@@ -231,6 +231,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obEditName, setObEditName] = useState("");
   const [obEditDue, setObEditDue] = useState("");
   const [obEditAmount, setObEditAmount] = useState("");
+  const [obEditCategory, setObEditCategory] = useState<ExpenseCategory>("სხვა");
   const [showAddOb, setShowAddOb] = useState(false);
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
@@ -1343,6 +1344,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           obligationId: id,
           month,
           name: obEditName.trim(),
+          category: obEditCategory,
           plannedPayDate: obEditDue,
           amount,
         }),
@@ -2650,6 +2652,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                       setObEditName(o.name);
                                       setObEditDue(o.plannedPayDate ?? "");
                                       setObEditAmount(String(o.amount));
+                                      setObEditCategory(o.category || "სხვა");
                                     }
                                   }}
                                 >
@@ -2723,13 +2726,37 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                         placeholder="თანხა"
                                       />
                                     </div>
-                                    <button
-                                      type="button"
-                                      className="rounded bg-amber-700 px-2 py-1 text-[11px] text-white hover:bg-amber-600"
-                                      onClick={() => updateObligation(o.id, o.month)}
-                                    >
-                                      შენახვა
-                                    </button>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <select
+                                        className={`${inputCls} w-auto`}
+                                        value={obEditCategory}
+                                        onChange={(e) => setObEditCategory(e.target.value)}
+                                      >
+                                        {!CATEGORIES.includes(obEditCategory) && (
+                                          <option value={obEditCategory}>{obEditCategory}</option>
+                                        )}
+                                        {CATEGORIES.map((c) => (
+                                          <option key={c} value={c}>
+                                            {c}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <label className="flex items-center gap-1.5 text-[11px] text-violet-200">
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(o.recurringId)}
+                                          onChange={(e) => setObligationRecurring(o.id, o.month, e.target.checked)}
+                                        />
+                                        ყოველთვიური
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="rounded bg-amber-700 px-2 py-1 text-[11px] text-white hover:bg-amber-600"
+                                        onClick={() => updateObligation(o.id, o.month)}
+                                      >
+                                        შენახვა
+                                      </button>
+                                    </div>
                                     {(o.carriedForward ?? 0) > 0 && (
                                       <p className="text-[10px] text-amber-400/90">
                                         წინა თვის ნარჩენი {formatMoney(o.carriedForward!)}
