@@ -228,6 +228,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [obPayMethods, setObPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [obPayBranches, setObPayBranches] = useState<Record<string, ExpenseBranch>>({});
   const [expandedObId, setExpandedObId] = useState<string | null>(null);
+  const [obEditName, setObEditName] = useState("");
+  const [obEditDue, setObEditDue] = useState("");
+  const [obEditAmount, setObEditAmount] = useState("");
   const [showAddOb, setShowAddOb] = useState(false);
   const [collapsedObCat, setCollapsedObCat] = useState<Record<string, boolean>>({});
   const [showRecurring, setShowRecurring] = useState(false);
@@ -1059,6 +1062,40 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     });
   }
 
+  async function receivePaidGoods(saleId: string, fromBranch: Branch): Promise<boolean> {
+    const sale = store?.transactions.find((t) => t.id === saleId && t.type === "sale");
+    if (!sale || sale.type !== "sale") return false;
+    const quantity = saleQuantityRemaining(sale);
+    if (quantity <= 0) return false;
+    try {
+      const res = await fetch("/api/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deliver", saleId, quantity, branch: fromBranch }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: d.transactions ?? prev.transactions,
+              creditPayments: d.creditPayments ?? prev.creditPayments,
+              creditDeliveries: d.creditDeliveries ?? prev.creditDeliveries,
+              inventory: d.inventory ?? prev.inventory,
+            }
+          : prev
+      );
+      setSaveMsg("პროდუქცია მიიღო ✓");
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   async function deleteTx(id: string): Promise<boolean> {
     if (!id) {
       setError("ჩანაწერის ID ვერ მოიძებნა");
@@ -1286,6 +1323,38 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         setCollapsedObCat((m) => ({ ...m, [d.item.category]: false }));
         setExpandedObId(d.item.id);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "შეცდომა");
+    }
+  }
+
+  async function updateObligation(id: string, month: string) {
+    const amount = parseFloat(obEditAmount);
+    if (!obEditName.trim() || !obEditDue || !amount || amount <= 0) {
+      setError("ვალდებულება, ბოლო ვადა და თანხა სავალდებულოა");
+      return;
+    }
+    try {
+      const res = await fetch("/api/obligations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          obligationId: id,
+          month,
+          name: obEditName.trim(),
+          plannedPayDate: obEditDue,
+          amount,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      await refresh({
+        obligations: d.obligations,
+        recurringObligations: d.recurringObligations,
+      });
+      setSaveMsg("ვალდებულება განახლდა ✓");
+      setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "შეცდომა");
     }
@@ -2144,6 +2213,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           onUpdateDriver={updateTxDriver}
           onToggleReview={toggleBankLedgerReview}
           onRefresh={refresh}
+          onReceiveGoods={receivePaidGoods}
         />
       )}
 
@@ -2542,7 +2612,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 <button
                                   type="button"
                                   className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-zinc-900/40"
-                                  onClick={() => setExpandedObId(open ? null : o.id)}
+                                  onClick={() => {
+                                    if (open) setExpandedObId(null);
+                                    else {
+                                      setExpandedObId(o.id);
+                                      setObEditName(o.name);
+                                      setObEditDue(o.plannedPayDate ?? "");
+                                      setObEditAmount(String(o.amount));
+                                    }
+                                  }}
                                 >
                                   <span
                                     className={`w-16 shrink-0 text-xs font-semibold tabular-nums sm:w-20 ${
@@ -2591,6 +2669,36 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                 </button>
                                 {open && (
                                   <div className="space-y-2 border-t border-zinc-800/50 px-2.5 py-2">
+                                    <div className="grid gap-1.5 sm:grid-cols-3">
+                                      <input
+                                        className={inputCls}
+                                        value={obEditName}
+                                        onChange={(e) => setObEditName(e.target.value)}
+                                        placeholder="რა ვალდებულებაა"
+                                      />
+                                      <input
+                                        type="date"
+                                        className={inputCls}
+                                        value={obEditDue}
+                                        onChange={(e) => setObEditDue(e.target.value)}
+                                      />
+                                      <input
+                                        className={inputCls}
+                                        type="number"
+                                        min={0}
+                                        step={0.01}
+                                        value={obEditAmount}
+                                        onChange={(e) => setObEditAmount(e.target.value)}
+                                        placeholder="თანხა"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="rounded bg-amber-700 px-2 py-1 text-[11px] text-white hover:bg-amber-600"
+                                      onClick={() => updateObligation(o.id, o.month)}
+                                    >
+                                      შენახვა
+                                    </button>
                                     {(o.carriedForward ?? 0) > 0 && (
                                       <p className="text-[10px] text-amber-400/90">
                                         წინა თვის ნარჩენი {formatMoney(o.carriedForward!)}

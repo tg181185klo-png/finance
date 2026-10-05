@@ -254,6 +254,7 @@ type Props = {
     branchReports?: BranchDailyReport[];
     transactions?: Transaction[];
   }) => void | Promise<unknown>;
+  onReceiveGoods?: (saleId: string, fromBranch: Branch) => Promise<boolean>;
 };
 
 export default function OverviewPanel({
@@ -271,7 +272,10 @@ export default function OverviewPanel({
   onUpdateDriver,
   onToggleReview,
   onRefresh,
+  onReceiveGoods,
 }: Props) {
+  const [goodsFrom, setGoodsFrom] = useState<Record<string, Branch>>({});
+  const [goodsBusy, setGoodsBusy] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
@@ -561,6 +565,37 @@ export default function OverviewPanel({
                           <span className="tabular-nums text-sky-300">{saleQuantityRemaining(sale)} ც</span>
                         </div>
                         <p className="text-[11px] text-zinc-500">თანხა სრულად გადახდილია</p>
+                        {!readOnly && onReceiveGoods && (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <label className="text-[11px] text-zinc-500">
+                              საიდან
+                              <select
+                                className="ml-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
+                                value={goodsFrom[sale.id] ?? sale.branch}
+                                onChange={(e) =>
+                                  setGoodsFrom((m) => ({ ...m, [sale.id]: e.target.value as Branch }))
+                                }
+                              >
+                                {BRANCHES.map((b) => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              disabled={goodsBusy === sale.id}
+                              className="rounded bg-sky-700 px-2 py-1 text-xs text-white disabled:opacity-40"
+                              onClick={async () => {
+                                setGoodsBusy(sale.id);
+                                const ok = await onReceiveGoods(sale.id, goodsFrom[sale.id] ?? sale.branch);
+                                setGoodsBusy(null);
+                                if (ok) setGoodsFrom((m) => ({ ...m, [sale.id]: sale.branch }));
+                              }}
+                            >
+                              მიიღო
+                            </button>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>

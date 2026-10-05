@@ -102,6 +102,8 @@ export interface CreditDelivery {
   quantity: number;
   deliveredAt: string;
   note?: string;
+  /** საიდან გავიდა პროდუქცია */
+  fromBranch?: Branch;
 }
 
 export interface Expense {

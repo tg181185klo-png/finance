@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       } else if (body.action === "deliver") {
         const quantity = Number(body.quantity);
         if (!quantity || quantity <= 0) throw new Error("რაოდენობა საჭიროა");
-        applyCreditDelivery(s, saleId, quantity, body.note);
+        applyCreditDelivery(s, saleId, quantity, body.note, body.branch);
       } else {
         throw new Error("არასწორი action");
       }

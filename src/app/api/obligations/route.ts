@@ -30,7 +30,9 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       obligation?: Omit<Obligation, "id" | "paid">;
       recurring?: boolean;
-      action?: "pay";
+      action?: "pay" | "update";
+      name?: string;
+      plannedPayDate?: string;
       obligationId?: string;
       month?: string;
       amount?: number;
@@ -38,6 +40,53 @@ export async function POST(req: NextRequest) {
       branch?: ExpenseBranch;
       note?: string;
     };
+
+    if (body.action === "update") {
+      const name = (body.name ?? "").trim();
+      const plannedPayDate = (body.plannedPayDate ?? "").slice(0, 10);
+      const amount = Number(body.amount);
+      if (!body.obligationId) return NextResponse.json({ error: "ID საჭიროა" }, { status: 400 });
+      if (!name) return NextResponse.json({ error: "ვალდებულება საჭიროა" }, { status: 400 });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedPayDate)) {
+        return NextResponse.json({ error: "ბოლო ვადა არასწორია" }, { status: 400 });
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: "თანხა არასწორია" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        let found: Obligation | undefined;
+        let fromMonth = "";
+        for (const [month, list] of Object.entries(s.obligations)) {
+          const ob = list.find((o) => o.id === body.obligationId);
+          if (ob) {
+            found = ob;
+            fromMonth = month;
+            break;
+          }
+        }
+        if (!found) throw new Error("ვალდებულება ვერ მოიძებნა");
+        if (amount < found.paid) throw new Error("თანხა გადახდილზე ნაკლები ვერ იქნება");
+        found.name = name;
+        found.amount = amount;
+        found.plannedPayDate = plannedPayDate;
+        const nextMonth = plannedPayDate.slice(0, 7);
+        found.month = nextMonth;
+        if (nextMonth !== fromMonth) {
+          s.obligations[fromMonth] = (s.obligations[fromMonth] ?? []).filter((o) => o.id !== found!.id);
+          if (!s.obligations[nextMonth]) s.obligations[nextMonth] = [];
+          s.obligations[nextMonth].push(found);
+        }
+        if (found.recurringId) {
+          const rec = (s.recurringObligations ?? []).find((r) => r.id === found!.recurringId);
+          if (rec) {
+            rec.name = name;
+            rec.amount = amount;
+            rec.plannedPayDate = plannedPayDate;
+          }
+        }
+      });
+      return NextResponse.json({ ok: true, obligations: store.obligations, recurringObligations: store.recurringObligations });
+    }
 
     if (body.action === "pay") {
       const month = body.month || currentMonth();

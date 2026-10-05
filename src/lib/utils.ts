@@ -712,7 +712,13 @@ export function applyCreditPayment(
   return payment;
 }
 
-export function applyCreditDelivery(store: Store, saleId: string, quantity: number, note?: string) {
+export function applyCreditDelivery(
+  store: Store,
+  saleId: string,
+  quantity: number,
+  note?: string,
+  fromBranch?: Branch
+) {
   if (!store.creditDeliveries) store.creditDeliveries = [];
   const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
   if (!sale) throw new Error("შეკვეთა ვერ მოიძებნა");
@@ -724,15 +730,17 @@ export function applyCreditDelivery(store: Store, saleId: string, quantity: numb
   const qty = Math.min(quantity, remaining);
   if (qty <= 0) throw new Error("პროდუქტი უკვე სრულადაა მიწოდებული");
 
+  const stockBranch = fromBranch ?? sale.branch;
   sale.quantityDelivered = saleQuantityDelivered(sale) + qty;
-  store.inventory = adjustStock(store.inventory, sale.branch, sale.productCode, -qty);
+  store.inventory = adjustStock(store.inventory, stockBranch, sale.productCode, -qty);
 
   const delivery: CreditDelivery = {
     id: uid(),
     saleId,
     quantity: qty,
     deliveredAt: new Date().toISOString(),
-    note,
+    note: note || `საიდან: ${stockBranch}`,
+    fromBranch: stockBranch,
   };
   store.creditDeliveries.push(delivery);
   markCreditOrderProgress(sale, delivery.deliveredAt);
@@ -744,12 +752,19 @@ export function reverseCreditOrderData(store: Store, saleId: string, saleHint?: 
     saleHint ??
     store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
   if (sale && saleQuantityDelivered(sale) > 0) {
-    store.inventory = adjustStock(
-      store.inventory,
-      sale.branch,
-      sale.productCode,
-      saleQuantityDelivered(sale)
-    );
+    const deliveries = (store.creditDeliveries ?? []).filter((d) => d.saleId === saleId);
+    if (deliveries.length === 0) {
+      store.inventory = adjustStock(store.inventory, sale.branch, sale.productCode, saleQuantityDelivered(sale));
+    } else {
+      for (const delivery of deliveries) {
+        store.inventory = adjustStock(
+          store.inventory,
+          delivery.fromBranch ?? sale.branch,
+          sale.productCode,
+          delivery.quantity
+        );
+      }
+    }
   }
   const removedPaymentIds = new Set(
     (store.creditPayments ?? []).filter((p) => p.saleId === saleId).map((p) => p.id)
