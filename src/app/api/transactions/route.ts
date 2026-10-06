@@ -23,6 +23,21 @@ function removeTransaction(s: Store, id: string) {
     reverseCreditOrderData(s, removed.id, removed);
   } else if (removed.type === "expense") {
     reverseExpenseObligation(s, removed);
+    if (removed.reportId) {
+      const report = s.branchReports.find((r) => r.id === removed.reportId);
+      if (report?.expenses?.length) {
+        const idx = report.expenses.findIndex(
+          (ex) =>
+            ex.amount === removed.amount &&
+            ex.comment === removed.comment &&
+            ex.category === removed.category
+        );
+        if (idx >= 0) {
+          report.expenses = report.expenses.filter((_, i) => i !== idx);
+          report.expensesTotal = report.expenses.reduce((sum, ex) => sum + ex.amount, 0);
+        }
+      }
+    }
   }
 
   return removed;
@@ -47,6 +62,7 @@ export async function POST(req: NextRequest) {
       date?: string;
       amount?: number;
       comment?: string;
+      category?: string;
       ids?: string[];
       clientSaleId?: string;
       recurrence?: string;
@@ -66,6 +82,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         transactions: store.transactions,
+        branchReports: store.branchReports,
         inventory: store.inventory,
         obligations: store.obligations,
         creditPayments: store.creditPayments,
@@ -151,16 +168,42 @@ export async function POST(req: NextRequest) {
       }
       const store = await updateStore((s) => {
         const t = s.transactions.find((x) => x.id === body.id);
-        if (!t || t.type !== "expense" || t.expensePaymentMethod !== "ბარათი") {
+        const editable =
+          t?.type === "expense" &&
+          (t.expensePaymentMethod === "ბარათი" ||
+            t.spentBy === "მფლობელი" ||
+            t.source === "branch" ||
+            Boolean(t.reportId));
+        if (!t || t.type !== "expense" || !editable) {
           throw new Error("ჩანაწერი ვერ მოიძებნა");
+        }
+        const category = (body.category ?? t.category).trim();
+        if (!category) throw new Error("კატეგორია საჭიროა");
+        if (t.reportId) {
+          const report = s.branchReports.find((r) => r.id === t.reportId);
+          const line = report?.expenses?.find(
+            (ex) => ex.amount === t.amount && ex.comment === t.comment && ex.category === t.category
+          );
+          if (line && report?.expenses) {
+            line.amount = amount;
+            line.comment = comment;
+            line.category = category;
+            report.expensesTotal = report.expenses.reduce((sum, ex) => sum + ex.amount, 0);
+          }
         }
         reverseExpenseObligation(s, t);
         t.date = `${date}T12:00:00.000Z`;
         t.amount = amount;
         t.comment = comment;
+        t.category = category;
         applyExpenseToStore(s, t);
       });
-      return NextResponse.json({ ok: true, transactions: store.transactions, obligations: store.obligations });
+      return NextResponse.json({
+        ok: true,
+        transactions: store.transactions,
+        obligations: store.obligations,
+        branchReports: store.branchReports,
+      });
     }
 
     if (body.action === "toggleBankLedgerReview") {

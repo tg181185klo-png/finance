@@ -19,7 +19,10 @@ type Props = {
   expenses: Expense[];
   onDelete: (id: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
-  onUpdateCard: (id: string, patch: { date: string; amount: number; comment: string }) => Promise<boolean>;
+  onUpdateCard: (
+    id: string,
+    patch: { date: string; amount: number; comment: string; category: string }
+  ) => Promise<boolean>;
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -62,6 +65,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editComment, setEditComment] = useState("");
+  const [editCategory, setEditCategory] = useState<ExpenseCategory>("სხვა");
   const [editBusy, setEditBusy] = useState(false);
 
   const { rangeFrom, rangeTo } = useMemo(() => {
@@ -272,7 +276,12 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
               <tbody>
                 {visibleRows.map((row) => {
                   const e = row.expense;
-                  const cardSpend = e.expensePaymentMethod === "ბარათი" && row.ids.length === 1;
+                  const canEdit =
+                    row.ids.length === 1 &&
+                    (e.spentBy === "მფლობელი" ||
+                      e.source === "branch" ||
+                      Boolean(e.reportId) ||
+                      e.expensePaymentMethod === "ბარათი");
                   const editing = editId === e.id;
                   return (
                   <tr key={e.id} className="border-b border-zinc-800/50">
@@ -285,7 +294,18 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                     </td>
                     <td className="py-2 pr-3">{row.account ? "ანგარიში" : effectiveExpenseBranch(e)}</td>
                     <td className="py-2 pr-3">{e.spentBy || "—"}</td>
-                    <td className="py-2 pr-3">{e.category}</td>
+                    <td className="py-2 pr-3">
+                      {editing ? (
+                        <select className={inputCls} value={editCategory} onChange={(ev) => setEditCategory(ev.target.value)}>
+                          {!CATEGORIES.includes(editCategory) && <option value={editCategory}>{editCategory}</option>}
+                          {CATEGORIES.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        e.category
+                      )}
+                    </td>
                     <td className="py-2 pr-3 text-zinc-500">
                       {editing ? (
                         <input className={inputCls} value={editComment} onChange={(ev) => setEditComment(ev.target.value)} />
@@ -319,7 +339,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                       )}
                     </td>
                     <td className="py-2 whitespace-nowrap">
-                      {cardSpend && !editing && (
+                      {canEdit && !editing && (
                         <button
                           type="button"
                           className="mr-2 text-xs text-sky-400 hover:text-sky-300"
@@ -328,6 +348,7 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                             setEditDate(e.date.slice(0, 10));
                             setEditAmount(String(e.amount));
                             setEditComment(e.comment || "");
+                            setEditCategory(e.category || "სხვა");
                           }}
                         >
                           შეცვლა
@@ -342,7 +363,12 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                             const amount = parseFloat(editAmount);
                             if (!editComment.trim() || !amount || amount <= 0) return;
                             setEditBusy(true);
-                            const ok = await onUpdateCard(e.id, { date: editDate, amount, comment: editComment.trim() });
+                            const ok = await onUpdateCard(e.id, {
+                              date: editDate,
+                              amount,
+                              comment: editComment.trim(),
+                              category: editCategory,
+                            });
                             setEditBusy(false);
                             if (ok) setEditId(null);
                           }}

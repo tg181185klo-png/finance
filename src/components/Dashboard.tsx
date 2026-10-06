@@ -1118,6 +1118,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           ? {
               ...prev,
               transactions: d.transactions ?? prev.transactions.filter((t) => t.id !== id),
+              branchReports: d.branchReports ?? prev.branchReports,
               inventory: d.inventory ?? prev.inventory,
               obligations: d.obligations ?? prev.obligations,
               creditPayments: d.creditPayments ?? prev.creditPayments,
@@ -1155,7 +1156,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   async function updateCardExpense(
     id: string,
-    patch: { date: string; amount: number; comment: string }
+    patch: { date: string; amount: number; comment: string; category?: string }
   ): Promise<boolean> {
     try {
       setError("");
@@ -1171,8 +1172,9 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         ...prev,
         transactions: d.transactions ?? prev.transactions,
         obligations: d.obligations ?? prev.obligations,
+        branchReports: d.branchReports ?? prev.branchReports,
       }));
-      setSaveMsg("ბარათის ხარჯი განახლდა ✓");
+      setSaveMsg("ხარჯი განახლდა ✓");
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "შეცდომა");

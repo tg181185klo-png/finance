@@ -432,6 +432,17 @@ export default function OverviewPanel({
     () => branchReports.filter((r) => r.date === reportWatch.day && RETAIL_BRANCHES.includes(r.branch)),
     [branchReports, reportWatch.day]
   );
+  const ownerAccountOutflows = useMemo(
+    () =>
+      transactions.filter(
+        (t): t is Expense =>
+          t.type === "expense" &&
+          t.spentBy === "მფლობელი" &&
+          t.date.slice(0, 10) === reportWatch.day &&
+          (t.expensePaymentMethod === "ბარათი" || t.expensePaymentMethod === "ანგარიშზე ჩარიცხვა")
+      ),
+    [transactions, reportWatch.day]
+  );
   const missingReportBranches = RETAIL_BRANCHES.filter(
     (branch) => !dayReports.some((r) => r.branch === branch)
   );
@@ -780,6 +791,20 @@ export default function OverviewPanel({
                 ) : null}
               </div>
             ))}
+          </div>
+        )}
+
+        {ownerAccountOutflows.length > 0 && (
+          <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 p-3 text-sm">
+            <p className="mb-1 font-medium text-violet-200">ანგარიშიდან გასავალი · მფლობელი</p>
+            <div className="space-y-1">
+              {ownerAccountOutflows.map((row) => (
+                <p key={row.id} className="text-red-300">
+                  -{formatMoney(row.amount)} — {row.comment || row.category}
+                  <span className="text-zinc-500"> · ანგარიში</span>
+                </p>
+              ))}
+            </div>
           </div>
         )}
       </div>
