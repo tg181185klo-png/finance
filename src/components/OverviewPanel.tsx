@@ -283,6 +283,8 @@ export default function OverviewPanel({
   const [selectedDay, setSelectedDay] = useState(today);
   const [companyOpen, setCompanyOpen] = useState(true);
   const [objectsOpen, setObjectsOpen] = useState(true);
+  const [moneyObOpen, setMoneyObOpen] = useState(true);
+  const [goodsObOpen, setGoodsObOpen] = useState(true);
   const { drill, toggle, close, isActive, setAccountChannel } = useFlowDrill();
 
   const { from, to, rangeLabel } = useMemo(() => {
@@ -387,7 +389,12 @@ export default function OverviewPanel({
     () =>
       BRANCHES.map((branch) => ({
         branch,
-        revenue: periodFlow(transactions, branch, from, to).revenue,
+        revenue: transactions.reduce((sum, t) => {
+          if (t.type !== "sale" || t.branch !== branch) return sum;
+          if (!txInPeriod(t.date, from, to)) return sum;
+          if (isCreditOrder(t) || t.paymentMethod !== "ქეში (ნაღდი)") return sum;
+          return sum + t.amount;
+        }, 0),
       })),
     [transactions, from, to]
   );
@@ -505,15 +512,25 @@ export default function OverviewPanel({
         </div>
 
         {obligations && (
-        <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            კომპანიის ვალდებულებები — რაც გადასახდელია
-          </p>
-              <p className="mb-2 text-sm">
-                დარჩენილი{" "}
-                <span className="font-semibold text-amber-300">{formatMoney(companyObligations.remaining)}</span>
-                <span className="text-zinc-500"> · {companyObligations.months.join(", ")}</span>
-              </p>
+        <div className="space-y-2">
+          <div className="rounded-lg border border-zinc-800">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left"
+              onClick={() => setMoneyObOpen((v) => !v)}
+              aria-expanded={moneyObOpen}
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                კომპანიის ვალდებულებები — თანხები
+                <span className="ml-2 normal-case tracking-normal text-amber-300">
+                  {formatMoney(companyObligations.remaining)}
+                </span>
+              </span>
+              <span className="text-xs text-zinc-500">{moneyObOpen ? "▲" : "▼"}</span>
+            </button>
+            {moneyObOpen && (
+              <div className="border-t border-zinc-800 px-2 py-2">
+              <p className="mb-2 text-sm text-zinc-500">{companyObligations.months.join(", ")}</p>
               {companyObligations.unpaid.length === 0 ? (
                 <p className="text-sm text-zinc-500">ამ პერიოდში გადასახდელი ვალდებულება არ დარჩა.</p>
               ) : (
@@ -550,11 +567,29 @@ export default function OverviewPanel({
                   })}
                 </ul>
               )}
-              {goodsToDeliver.length > 0 && (
-                <div className="mt-3 border-t border-zinc-800 pt-2">
-                  <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-sky-400/90">
-                    გასაცემი პროდუქცია
-                  </p>
+              </div>
+            )}
+          </div>
+          <div className="rounded-lg border border-zinc-800">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left"
+              onClick={() => setGoodsObOpen((v) => !v)}
+              aria-expanded={goodsObOpen}
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wide text-sky-400/90">
+                კომპანიის ვალდებულებები — პროდუქცია
+                <span className="ml-2 normal-case tracking-normal text-sky-300">
+                  {goodsToDeliver.length}
+                </span>
+              </span>
+              <span className="text-xs text-zinc-500">{goodsObOpen ? "▲" : "▼"}</span>
+            </button>
+            {goodsObOpen && (
+              <div className="border-t border-zinc-800 px-2 py-2">
+              {goodsToDeliver.length === 0 ? (
+                <p className="text-sm text-zinc-500">გასაცემი პროდუქცია არ დარჩა.</p>
+              ) : (
                   <ul className="space-y-1">
                     {goodsToDeliver.map((sale) => (
                       <li key={sale.id} className="text-sm text-zinc-200">
@@ -600,13 +635,15 @@ export default function OverviewPanel({
                       </li>
                     ))}
                   </ul>
-                </div>
               )}
+              </div>
+            )}
+          </div>
         </div>
         )}
 
         <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">შემოსავალი ფილიალებით</p>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში შემოსავალი ფილიალებით</p>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {incomeByBranch.map((row) => (
               <div key={row.branch} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
@@ -656,7 +693,7 @@ export default function OverviewPanel({
               </span>
             </p>
             <p className="text-[11px] text-zinc-500">
-              ბარათით შემოვიდა და გადმორიცხვა ერთ ანგარიშზე ჯდება
+              ბარათით და გადმორიცხვით შემოსული აქ გროვდება. აქედან გადახდა ობიექტის ქეშს არ აკლდება.
             </p>
           </div>
         </div>

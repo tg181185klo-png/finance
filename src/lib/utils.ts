@@ -46,7 +46,12 @@ export function formatMoney(n: number) {
 
 function matchBranch(branch: Branch | ExpenseBranch, filter: Branch | "ყველა") {
   if (filter === "ყველა") return true;
-  return branch === filter || branch === "საერთო";
+  if (branch === "საერთო") return false;
+  return branch === filter;
+}
+
+function isAccountPaymentMethod(method: string | undefined) {
+  return method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა";
 }
 
 export function emptyBranchCash(): BranchCash {
@@ -142,6 +147,7 @@ function buildByBranchStats(
         if (!matchBranch(t.branch, br)) continue;
         revenue += t.amount;
       } else if (t.type === "expense") {
+        if (isAccountPaymentMethod(t.expensePaymentMethod)) continue;
         if (effectiveExpenseBranch(t) !== br) continue;
         expenses += operatingExpenseAmount(t);
       } else if (t.type === "deposit") {
@@ -185,6 +191,7 @@ export function calcBalances(
   }
 
   for (const t of tx) {
+    if (branch !== "ყველა" && t.type === "expense" && isAccountPaymentMethod(t.expensePaymentMethod)) continue;
     const txBranch = effectiveTxBranch(t);
     if (!matchBranch(txBranch, branch)) continue;
       if (t.type === "sale") {

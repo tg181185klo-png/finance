@@ -32,8 +32,13 @@ export function effectiveTxBranch(t: Transaction): Branch | ExpenseBranch {
 
 export function txMatchesBranchFilter(t: Transaction, filter: Branch | "ყველა"): boolean {
   if (filter === "ყველა") return true;
+  if (t.type === "expense") {
+    const method = t.expensePaymentMethod ?? "ქეში (ნაღდი)";
+    if (method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა") return false;
+  }
   const attributed = effectiveTxBranch(t);
-  return attributed === filter || attributed === "საერთო";
+  if (attributed === "საერთო") return false;
+  return attributed === filter;
 }
 
 export function resolveExpenseBranchFromText(
