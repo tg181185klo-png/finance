@@ -285,6 +285,7 @@ export default function OverviewPanel({
   const [objectsOpen, setObjectsOpen] = useState(true);
   const [moneyObOpen, setMoneyObOpen] = useState(true);
   const [goodsObOpen, setGoodsObOpen] = useState(true);
+  const [reportsOpen, setReportsOpen] = useState(false);
   const { drill, toggle, close, isActive, setAccountChannel } = useFlowDrill();
 
   const { from, to, rangeLabel } = useMemo(() => {
@@ -709,26 +710,36 @@ export default function OverviewPanel({
           </div>
         </div>
 
-        <div
-          className={`rounded-lg border px-3 py-2 ${
+        <button
+          type="button"
+          className={`w-full rounded-lg border px-3 py-2 text-left ${
             missingReportBranches.length
               ? "border-red-800/70 bg-red-950/30"
               : "border-emerald-900/50 bg-emerald-950/20"
           }`}
+          onClick={() => setReportsOpen((v) => !v)}
+          aria-expanded={reportsOpen}
         >
-          <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            ფილიალის რეპორტი · {reportWatch.phrase} ({formatDate(reportWatch.day)})
-          </p>
-          {missingReportBranches.length ? (
-            <p className="mt-1 text-sm font-semibold text-red-300">
-              რეპორტი არ გაუგზავნიათ — შეახსენეთ: {missingReportBranches.join(", ")}
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-emerald-300">ქუთაისი, ლილო და დიღომი — რეპორტი გამოგზავნილია.</p>
-          )}
-        </div>
+          <span className="flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                ფილიალის რეპორტი · {reportWatch.phrase} ({formatDate(reportWatch.day)})
+              </span>
+              {missingReportBranches.length ? (
+                <span className="mt-1 block text-sm font-semibold text-red-300">
+                  რეპორტი არ გაუგზავნიათ — შეახსენეთ: {missingReportBranches.join(", ")}
+                </span>
+              ) : (
+                <span className="mt-1 block text-sm text-emerald-300">
+                  ქუთაისი, ლილო და დიღომი — რეპორტი გამოგზავნილია.
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 text-xs text-zinc-400">{reportsOpen ? "▲" : "▼"}</span>
+          </span>
+        </button>
 
-        {dayReports.length > 0 && (
+        {reportsOpen && dayReports.length > 0 && (
           <div className="space-y-2">
             {dayReports.map((r) => (
               <div key={r.id} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm">
@@ -794,7 +805,7 @@ export default function OverviewPanel({
           </div>
         )}
 
-        {ownerAccountOutflows.length > 0 && (
+        {reportsOpen && ownerAccountOutflows.length > 0 && (
           <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 p-3 text-sm">
             <p className="mb-1 font-medium text-violet-200">ანგარიშიდან გასავალი · მფლობელი</p>
             <div className="space-y-1">
