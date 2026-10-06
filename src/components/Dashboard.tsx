@@ -2807,7 +2807,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                           </select>
                                         </div>
                                         <div className="min-w-[90px] flex-1">
-                                          <label className={labelCls}>ფილიალი</label>
+                                          <label className={labelCls}>საიდან</label>
                                           <select
                                             className={inputCls}
                                             value={

@@ -7,8 +7,9 @@ const BRANCH_KEYWORDS: { branch: Branch; pattern: RegExp }[] = [
   { branch: "ქუთაისი", pattern: /ქუთაის/i },
 ];
 
-/** ხარჯის რეპორტინგ ფილიალი — კომენტარი/კატეგორიიდან (მაგ. „დისტრიბუცია“) */
+/** ხარჯის რეპორტინგ ფილიალი. ვალდებულების გასტუმრება იკლებს იქიდან, საიდანაც გადაიხადეს. */
 export function effectiveExpenseBranch(expense: Expense): ExpenseBranch {
+  if (expense.obligationId) return expense.branch;
   const text = `${expense.category} ${expense.comment}`;
   for (const { branch, pattern } of BRANCH_KEYWORDS) {
     if (pattern.test(text)) return branch;
