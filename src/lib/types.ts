@@ -122,6 +122,8 @@ export interface Expense {
   expensePaymentMethod?: ExpensePaymentMethod;
   /** ვინ დახარჯა ეს თანხა */
   spentBy?: string;
+  /** ბარათის საკომისიო მიბმულია ამ შემოსავლის ჩანაწერებზე */
+  cardFeeSaleIds?: string[];
 }
 
 export type DepositKind = "founder" | "loan_repayment" | "other";

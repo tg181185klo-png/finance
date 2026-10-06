@@ -185,6 +185,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [price, setPrice] = useState(0);
   const [payStatus, setPayStatus] = useState<PaymentStatus>("სრულად გადახდილი");
   const [payMethod, setPayMethod] = useState<PaymentMethod>("ქეში (ნაღდი)");
+  const [cardFee, setCardFee] = useState("");
   const [sRecurrence, setSRecurrence] = useState<TxRecurrence>("ერთჯერადი");
   const [sComment, setSComment] = useState("");
   const [otherSaleName, setOtherSaleName] = useState("");
@@ -870,7 +871,12 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
             }
           : prev
       );
-      setSaveMsg("გაყიდვა შენახულია ✓");
+      const fee = payMethod === "ბარათი" ? parseFloat(cardFee) || 0 : 0;
+      if (fee > 0) {
+        await apiTx("POST", { action: "setCardFee", ids: [sale.id], amount: fee });
+        await refresh();
+      }
+      setSaveMsg(fee > 0 ? "გაყიდვა და ბარათის საკომისიო შენახულია ✓" : "გაყიდვა შენახულია ✓");
       setFilter(sBranch);
       ensureSaleVisibleInPeriod(sDate);
       setSearch("");
@@ -883,6 +889,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setSaleEmployeeId("");
       setCreditAdvance("");
       setCreditDueDate("");
+      setCardFee("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "გაყიდვა ვერ შეინახა");
     }
@@ -1870,6 +1877,19 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   </select>
                 </Field>
                 <Field label="ჯამი"><input className={inputCls} readOnly value={formatMoney(qty * price)} /></Field>
+                {payMethod === "ბარათი" && (
+                  <Field label="ბარათის საკომისიო">
+                    <input
+                      className={inputCls}
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={cardFee}
+                      onChange={(e) => setCardFee(e.target.value)}
+                      placeholder="ამონაწერის მიხედვით"
+                    />
+                  </Field>
+                )}
                 <Field label="ტიპი (მოგება-ზარალი)">
                   <select className={inputCls} value={sRecurrence} onChange={(e) => setSRecurrence(e.target.value as TxRecurrence)}>
                     {TX_RECURRENCE.map((r) => <option key={r} value={r}>{r}</option>)}

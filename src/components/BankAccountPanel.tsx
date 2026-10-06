@@ -68,6 +68,14 @@ function channelLabel(ch: LedgerChannel) {
   return ch === "bank" ? "ანგარიში" : "ბარათი";
 }
 
+function savedCardFee(transactions: Transaction[], ids: string[]) {
+  const key = [...ids].sort().join("|");
+  const fee = transactions.find(
+    (t) => t.type === "expense" && [...(t.cardFeeSaleIds ?? [])].sort().join("|") === key
+  );
+  return fee && fee.type === "expense" ? fee.amount : 0;
+}
+
 function typeLabel(row: AccountLedgerRow) {
   if (row.direction === "out") return "გასავალი";
   if (row.label.includes("შენატანი") || row.label.includes("დამფუძნებელ")) return "შენატანი";
@@ -90,6 +98,8 @@ export default function BankAccountPanel({
   const [channelFilter, setChannelFilter] = useState<"all" | LedgerChannel>("all");
   const [search, setSearch] = useState("");
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
+  const [feeBusy, setFeeBusy] = useState<string | null>(null);
+  const [feeMsg, setFeeMsg] = useState("");
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const freshMonth = viewMonth >= FRESH_START_MONTH;
   const [draft, setDraft] = useState<Record<Branch, { cash: string; card: string; bank: string }>>(() =>
@@ -247,6 +257,32 @@ export default function BankAccountPanel({
     }));
   }
 
+  async function saveCardFee(rowId: string, ids: string[], raw: string) {
+    const amount = parseFloat(raw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setErr("საკომისიო არასწორია");
+      return;
+    }
+    setFeeBusy(rowId);
+    setErr("");
+    setFeeMsg("");
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setCardFee", ids, amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "შეცდომა");
+      setFeeMsg(amount > 0 ? "საკომისიო ხარჯად ჩაიწერა" : "საკომისიო მოიხსნა");
+      await onRefresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "შეცდომა");
+    } finally {
+      setFeeBusy(null);
+    }
+  }
+
   async function toggleReview(ids: string | string[], currentlyReviewed: boolean) {
     const list = Array.isArray(ids) ? ids : [ids];
     setReviewBusy(list[0] ?? null);
@@ -328,6 +364,7 @@ export default function BankAccountPanel({
         </div>
         {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
         {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+        {feeMsg && <p className="mt-2 text-sm text-emerald-400">{feeMsg}</p>}
       </div>
 
       <BankStatementMatchPanel
@@ -490,6 +527,7 @@ export default function BankAccountPanel({
                   <th className="whitespace-nowrap px-2.5 py-2">არხი</th>
                   <th className="whitespace-nowrap px-2.5 py-2">გადახდა</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-right">თანხა</th>
+                  <th className="whitespace-nowrap px-2.5 py-2 text-right">საკომისიო</th>
                   <th className="whitespace-nowrap px-2.5 py-2 text-center">ნანახია</th>
                   <th className="whitespace-nowrap px-2.5 py-2">ამონაწერის თარიღი</th>
                   <th className="whitespace-nowrap px-2.5 py-2 font-semibold text-zinc-300">
@@ -562,6 +600,19 @@ export default function BankAccountPanel({
                         {isIncoming ? "+" : "−"}
                         {formatMoney(row.amount)}
                       </td>
+                      <td className="px-2.5 py-2 text-right">
+                        {isIncoming && row.channel === "card" ? (
+                          <CardFeeField
+                            key={`${row.id}:${savedCardFee(transactions, row.ids)}`}
+                            saved={savedCardFee(transactions, row.ids)}
+                            hint={hint?.commission ?? null}
+                            busy={feeBusy === row.id}
+                            onSave={(raw) => saveCardFee(row.id, row.ids, raw)}
+                          />
+                        ) : (
+                          <span className="text-xs text-zinc-600">—</span>
+                        )}
+                      </td>
                       <td className="px-2.5 py-2 text-center">
                         <button
                           type="button"
@@ -613,6 +664,7 @@ export default function BankAccountPanel({
                     {totals.net >= 0 ? "+" : ""}
                     {formatMoney(totals.net)}
                   </td>
+                  <td />
                   <td colSpan={4} />
                 </tr>
               </tfoot>
@@ -621,10 +673,46 @@ export default function BankAccountPanel({
         )}
 
         <p className="mt-3 text-xs text-zinc-600">
-          ამონაწერის ატვირთვისას დამთხვეული ჩანაწერები ნანახად მოინიშნება. გადმორიცხვებსა და ხარჯებს
+          ბარათის შემოსავალს გვერდით ჩაწერე საკომისიო ამონაწერის მიხედვით — ხარჯად გატარდება ანგარიშიდან. ამონაწერის ატვირთვისას დამთხვეული ჩანაწერები ნანახად მოინიშნება. გადმორიცხვებსა და ხარჯებს
           მიეწერება გადმომრიცხავი ან ხარჯის გამწევი/მიმღები, თარიღი და სხვაობა.
         </p>
       </div>
     </section>
+  );
+}
+
+function CardFeeField({
+  saved,
+  hint,
+  busy,
+  onSave,
+}: {
+  saved: number;
+  hint: number | null;
+  busy: boolean;
+  onSave: (raw: string) => void;
+}) {
+  const [value, setValue] = useState(saved > 0 ? String(saved) : "");
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <input
+        className="w-20 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-right text-xs"
+        type="number"
+        min={0}
+        step={0.01}
+        value={value}
+        placeholder={hint != null && hint > 0 ? hint.toFixed(2) : "0.00"}
+        title={hint != null && hint > 0 ? `ამონაწერში სხვაობა ${hint.toFixed(2)}` : "ამონაწერის მიხედვით"}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button
+        type="button"
+        disabled={busy}
+        className="text-[10px] text-sky-300 disabled:opacity-40"
+        onClick={() => onSave(value.trim() ? value : "0")}
+      >
+        {busy ? "..." : "ჩაწერა"}
+      </button>
+    </div>
   );
 }

@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
         | "updateRecurrence"
         | "updatePaymentMethod"
         | "updateCardExpense"
+        | "setCardFee"
         | "toggleBankLedgerReview"
         | "updateDriver";
       id?: string;
@@ -204,6 +205,61 @@ export async function POST(req: NextRequest) {
         obligations: store.obligations,
         branchReports: store.branchReports,
       });
+    }
+
+    if (body.action === "setCardFee") {
+      const ids = [...new Set((body.ids ?? []).filter(Boolean))].sort();
+      const amount = Number(body.amount);
+      if (!ids.length) return NextResponse.json({ error: "შემოსავალი საჭიროა" }, { status: 400 });
+      if (!Number.isFinite(amount) || amount < 0) {
+        return NextResponse.json({ error: "საკომისიო არასწორია" }, { status: 400 });
+      }
+      const store = await updateStore((s) => {
+        const sales = s.transactions.filter((t) => t.type === "sale" && ids.includes(t.id));
+        if (!sales.length) throw new Error("ბარათის შემოსავალი ვერ მოიძებნა");
+        const key = ids.join("|");
+        const existing = s.transactions.find(
+          (t) => t.type === "expense" && (t.cardFeeSaleIds ?? []).slice().sort().join("|") === key
+        );
+        if (amount <= 0) {
+          if (existing) removeTransaction(s, existing.id);
+          return;
+        }
+        const names = [
+          ...new Set(
+            sales.map((t) => (t.type === "sale" ? t.buyerName || t.comment || t.productName : "")).filter(Boolean)
+          ),
+        ];
+        const comment = `ბარათის საკომისიო${names.length ? ` · ${names.join(", ")}` : ""}`;
+        const date = sales.map((t) => t.date).sort()[0] ?? new Date().toISOString();
+        if (existing && existing.type === "expense") {
+          reverseExpenseObligation(s, existing);
+          existing.amount = amount;
+          existing.comment = comment;
+          existing.category = "საკომისიო";
+          existing.expensePaymentMethod = "ბარათი";
+          existing.branch = "საერთო";
+          existing.date = date;
+          applyExpenseToStore(s, existing);
+          return;
+        }
+        const expense: Expense = {
+          id: uid(),
+          type: "expense",
+          date,
+          branch: "საერთო",
+          category: "საკომისიო",
+          amount,
+          comment,
+          recurrence: "ერთჯერადი",
+          source: "admin",
+          expensePaymentMethod: "ბარათი",
+          cardFeeSaleIds: ids,
+        };
+        applyExpenseToStore(s, expense);
+        s.transactions = [expense, ...s.transactions];
+      });
+      return NextResponse.json({ ok: true, transactions: store.transactions, obligations: store.obligations });
     }
 
     if (body.action === "toggleBankLedgerReview") {
