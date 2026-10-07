@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import type { Employee, PaymentMethod, Transaction } from "@/lib/types";
+import type { Branch, Employee, PaymentMethod, Sale, Transaction } from "@/lib/types";
+import { BRANCHES } from "@/lib/constants";
 import { PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { groupTransactionsForDisplay } from "@/lib/tx-display-groups";
 import {
@@ -174,6 +175,139 @@ function ReviewedCell({
   );
 }
 
+export type SaleEditPatch = {
+  date: string;
+  branch: Branch;
+  buyerName: string;
+  comment: string;
+  lines: { id: string; quantity: number; unitPrice: number; productName: string }[];
+};
+
+const editInputCls = "w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs";
+
+function SaleEditForm({
+  sales,
+  onSave,
+  onClose,
+}: {
+  sales: Sale[];
+  onSave: (patch: SaleEditPatch) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const first = sales[0];
+  const [date, setDate] = useState(first.date.slice(0, 10));
+  const [branch, setBranch] = useState<Branch>(first.branch);
+  const [buyerName, setBuyerName] = useState(first.buyerName ?? "");
+  const [comment, setComment] = useState(first.comment ?? "");
+  const [lines, setLines] = useState(
+    sales.map((s) => ({
+      id: s.id,
+      productName: s.productName,
+      quantity: String(s.quantity),
+      unitPrice: String(s.unitPrice),
+    }))
+  );
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        const ok = await onSave({
+          date,
+          branch,
+          buyerName,
+          comment,
+          lines: lines.map((line) => ({
+            id: line.id,
+            productName: line.productName.trim(),
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+          })),
+        });
+        setBusy(false);
+        if (ok) onClose();
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="grid gap-2 sm:grid-cols-4">
+        <label className="text-xs text-zinc-400">
+          თარიღი
+          <input type="date" className={`${editInputCls} mt-1`} value={date} onChange={(e) => setDate(e.target.value)} required />
+        </label>
+        <label className="text-xs text-zinc-400">
+          ფილიალი
+          <select className={`${editInputCls} mt-1`} value={branch} onChange={(e) => setBranch(e.target.value as Branch)}>
+            {BRANCHES.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-zinc-400 sm:col-span-2">
+          მომხმარებელი
+          <input className={`${editInputCls} mt-1`} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} />
+        </label>
+      </div>
+      <label className="block text-xs text-zinc-400">
+        კომენტარი
+        <input className={`${editInputCls} mt-1`} value={comment} onChange={(e) => setComment(e.target.value)} />
+      </label>
+      {lines.map((line, idx) => (
+        <div key={line.id} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_7rem]">
+          <label className="text-xs text-zinc-400">
+            პროდუქტი
+            <input
+              className={`${editInputCls} mt-1`}
+              value={line.productName}
+              onChange={(e) =>
+                setLines((prev) => prev.map((row, i) => (i === idx ? { ...row, productName: e.target.value } : row)))
+              }
+            />
+          </label>
+          <label className="text-xs text-zinc-400">
+            რაოდენობა
+            <input
+              type="number"
+              min={0.01}
+              step={0.01}
+              className={`${editInputCls} mt-1`}
+              value={line.quantity}
+              onChange={(e) =>
+                setLines((prev) => prev.map((row, i) => (i === idx ? { ...row, quantity: e.target.value } : row)))
+              }
+            />
+          </label>
+          <label className="text-xs text-zinc-400">
+            ფასი
+            <input
+              type="number"
+              min={0.01}
+              step={0.01}
+              className={`${editInputCls} mt-1`}
+              value={line.unitPrice}
+              onChange={(e) =>
+                setLines((prev) => prev.map((row, i) => (i === idx ? { ...row, unitPrice: e.target.value } : row)))
+              }
+            />
+          </label>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <button type="submit" disabled={busy} className="rounded bg-emerald-700 px-3 py-1.5 text-xs text-white disabled:opacity-50">
+          {busy ? "..." : "შენახვა"}
+        </button>
+        <button type="button" onClick={onClose} className="rounded border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300">
+          გაუქმება
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function DeleteRow({
   id,
   onDelete,
@@ -209,6 +343,7 @@ type Props = {
   employees?: Employee[];
   bankLedgerReviewed?: Record<string, string>;
   onDelete?: (id: string) => Promise<boolean>;
+  onUpdateSale?: (patch: SaleEditPatch) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
   onToggleReview?: (ids: string | string[], reviewed: boolean) => Promise<boolean>;
@@ -222,12 +357,14 @@ export default function TransactionTable({
   employees,
   bankLedgerReviewed,
   onDelete,
+  onUpdateSale,
   onUpdatePayment,
   onUpdateDriver,
   onToggleReview,
   emptyText = "ტრანზაქციები არ არის",
 }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null);
 
   const groups = useMemo(
     () => (groupSales ? groupTransactionsForDisplay(rows) : rows.map((t) => ({
@@ -252,7 +389,7 @@ export default function TransactionTable({
     (showBranch ? 1 : 0) +
     (showDriver ? 1 : 0) +
     (showReviewed ? 1 : 0) +
-    (onDelete ? 1 : 0);
+    (onDelete || onUpdateSale ? 1 : 0);
 
   return (
     <div className="overflow-x-auto">
@@ -267,7 +404,7 @@ export default function TransactionTable({
           {showDriver && <col className="w-[11%]" />}
           <col className="w-[10%]" />
           {showReviewed && <col className="w-[6%]" />}
-          {onDelete && <col className="w-[8%]" />}
+          {(onDelete || onUpdateSale) && <col className="w-[8.5rem]" />}
         </colgroup>
         <thead>
           <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
@@ -284,7 +421,7 @@ export default function TransactionTable({
                 აისახა
               </th>
             )}
-            {onDelete && <th className="px-2 py-2 font-medium">წაშლა</th>}
+            {(onDelete || onUpdateSale) && <th className="px-2 py-2 font-medium">მოქმედება</th>}
           </tr>
         </thead>
         <tbody>
@@ -370,12 +507,34 @@ export default function TransactionTable({
                       <ReviewedCell ids={ids} reviewed={reviewed} onToggleReview={onToggleReview} />
                     </td>
                   )}
-                  {onDelete && (
-                    <td className="px-2 py-2.5">
-                      <DeleteRow id={t.id} onDelete={onDelete} />
+                  {(onDelete || onUpdateSale) && (
+                    <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col items-start gap-1">
+                        {onUpdateSale && isSale && (
+                          <button
+                            type="button"
+                            className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:border-emerald-600 hover:text-emerald-300"
+                            onClick={() => setEditKey((prev) => (prev === g.key ? null : g.key))}
+                          >
+                            რედაქტირება
+                          </button>
+                        )}
+                        {onDelete && <DeleteRow id={t.id} onDelete={onDelete} />}
+                      </div>
                     </td>
                   )}
                 </tr>
+                {editKey === g.key && isSale && onUpdateSale && (
+                  <tr className="border-b border-emerald-900/40 bg-zinc-950/50">
+                    <td colSpan={colCount} className="px-3 py-3">
+                      <SaleEditForm
+                        sales={g.items.filter((item): item is Sale => item.type === "sale")}
+                        onSave={onUpdateSale}
+                        onClose={() => setEditKey(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {open && isSale && (
                   <tr className="border-b border-sky-900/30 bg-zinc-950/40">
                     <td colSpan={colCount} className="px-3 py-3">

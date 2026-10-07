@@ -48,7 +48,7 @@ import OwnerMetricsPanel from "@/components/OwnerMetricsPanel";
 import ReceivablesPanel from "@/components/ReceivablesPanel";
 import { ClickableFlowStat, FlowDrillPanel, useFlowDrill } from "@/components/FlowDrillDown";
 import ThemeToggle from "@/components/ThemeToggle";
-import TransactionTable from "@/components/TransactionTable";
+import TransactionTable, { type SaleEditPatch } from "@/components/TransactionTable";
 import BranchActivityPanel from "@/components/BranchActivityPanel";
 import { groupTransactionsForDisplay } from "@/lib/tx-display-groups";
 import {
@@ -1190,6 +1190,30 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
+  async function updateSale(patch: SaleEditPatch): Promise<boolean> {
+    try {
+      setError("");
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateSale", ...patch }),
+        cache: "no-store",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      applyLocalStore((prev) => ({
+        ...prev,
+        transactions: d.transactions ?? prev.transactions,
+        inventory: d.inventory ?? prev.inventory,
+      }));
+      setSaveMsg("შემოსავალი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
+  }
+
   async function updateTxDriver(
     id: string,
     driverEmployeeId: string,
@@ -1978,6 +2002,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               employees={activeStore.employees ?? []}
               bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
               onDelete={deleteTx}
+              onUpdateSale={updateSale}
               onUpdatePayment={updateTxPayment}
               onUpdateDriver={updateTxDriver}
               onToggleReview={toggleBankLedgerReview}

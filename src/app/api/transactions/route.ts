@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
-import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod } from "@/lib/utils";
+import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod, adjustStock, isCreditOrder, saleAffectsStock, saleCreditPaid, saleQuantityDelivered } from "@/lib/utils";
+import { BRANCHES } from "@/lib/constants";
 import { deleteStoredTransaction } from "@/lib/activity-log";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { updateStore } from "@/lib/server-store";
-import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
+import type { Branch, CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
         | "updateRecurrence"
         | "updatePaymentMethod"
         | "updateCardExpense"
+        | "updateSale"
         | "setCardFee"
         | "toggleBankLedgerReview"
         | "updateDriver";
@@ -41,6 +43,9 @@ export async function POST(req: NextRequest) {
       reviewed?: boolean;
       driverEmployeeId?: string;
       driverEmployeeName?: string;
+      branch?: Branch;
+      buyerName?: string;
+      lines?: { id: string; quantity: number; unitPrice: number; productName?: string }[];
     };
 
     if (body.action === "delete") {
@@ -174,6 +179,64 @@ export async function POST(req: NextRequest) {
         transactions: store.transactions,
         obligations: store.obligations,
         branchReports: store.branchReports,
+      });
+    }
+
+    if (body.action === "updateSale") {
+      const date = (body.date ?? "").slice(0, 10);
+      const branch = body.branch;
+      const buyerName = (body.buyerName ?? "").trim();
+      const comment = (body.comment ?? "").trim();
+      const lines = body.lines ?? [];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < OPERATIONAL_DATA_FROM) {
+        return NextResponse.json({ error: "თარიღი არასწორია" }, { status: 400 });
+      }
+      if (!branch || !BRANCHES.includes(branch)) {
+        return NextResponse.json({ error: "ფილიალი არასწორია" }, { status: 400 });
+      }
+      if (!lines.length) return NextResponse.json({ error: "შემოსავალი საჭიროა" }, { status: 400 });
+
+      const store = await updateStore((s) => {
+        for (const line of lines) {
+          const sale = s.transactions.find((t) => t.id === line.id && t.type === "sale");
+          if (!sale || sale.type !== "sale") throw new Error("შემოსავალი ვერ მოიძებნა");
+          const quantity = Number(line.quantity);
+          const unitPrice = Number(line.unitPrice);
+          if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("რაოდენობა არასწორია");
+          if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error("ფასი არასწორია");
+          const amount = Math.round(quantity * unitPrice * 100) / 100;
+          const productName = (line.productName ?? sale.productName).trim();
+          if (!productName) throw new Error("პროდუქტი საჭიროა");
+          if (isCreditOrder(sale)) {
+            if (quantity < saleQuantityDelivered(sale)) {
+              throw new Error("რაოდენობა მიწოდებულზე ნაკლები ვერ იქნება");
+            }
+            if (amount + 0.001 < saleCreditPaid(sale)) {
+              throw new Error("თანხა გადახდილზე ნაკლები ვერ იქნება");
+            }
+          } else if (saleAffectsStock(sale)) {
+            s.inventory = adjustStock(s.inventory, sale.branch, sale.productCode, sale.quantity);
+          }
+          sale.date = `${date}T12:00:00.000Z`;
+          sale.branch = branch;
+          sale.buyerName = buyerName || undefined;
+          sale.comment = comment;
+          sale.quantity = quantity;
+          sale.unitPrice = unitPrice;
+          sale.amount = amount;
+          sale.productName = productName;
+          if (isCreditOrder(sale)) {
+            markCreditOrderProgress(sale, sale.date);
+          } else if (saleAffectsStock(sale)) {
+            s.inventory = adjustStock(s.inventory, sale.branch, sale.productCode, -sale.quantity);
+          }
+        }
+      });
+
+      return NextResponse.json({
+        ok: true,
+        transactions: store.transactions,
+        inventory: store.inventory,
       });
     }
 
