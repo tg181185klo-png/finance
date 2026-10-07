@@ -17,7 +17,8 @@ export type DashboardTabId =
   | "inventory"
   | "employees"
   | "employee-bonus"
-  | "costing";
+  | "costing"
+  | "actions";
 
 export type DashboardTab = { id: DashboardTabId; label: string };
 
@@ -57,6 +58,7 @@ export const DASHBOARD_MENU_GROUPS: { label: string; tabs: DashboardTab[] }[] = 
   {
     label: "რეპორტები",
     tabs: [
+      { id: "actions", label: "მოქმედებები" },
       { id: "reports", label: "რეპორტების ამოღება" },
       { id: "owner", label: "მფლობელის მაჩვენებლები" },
       { id: "system", label: "აღრიცხვის რუკა" },

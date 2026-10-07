@@ -1,7 +1,7 @@
 import type { Branch, PaymentMethod, Transaction, TxSource } from "./types";
 import { saleGroupKey, saleGroupLabel } from "./branch-payments";
 import { saleGroupDescription } from "./tx-display-groups";
-import { isCreditOrder, isCreditOrderActive, txPaymentMethod } from "./utils";
+import { isCreditOrder, txPaymentMethod } from "./utils";
 
 export const CARD_METHOD: PaymentMethod = "ბარათი";
 export const BANK_METHOD: PaymentMethod = "ანგარიშზე ჩარიცხვა";
@@ -145,7 +145,8 @@ export function buildAccountLedgerRows(
     if (channelFilter !== "all" && channelFilter !== ch) continue;
 
     if (t.type === "sale") {
-      if (isCreditOrder(t) && isCreditOrderActive(t)) continue;
+      // ბეს ფული ამონაწერში შენატანით შედის. გაყიდვის ხაზი იმავე სახელს მეორედ აჩვენებდა.
+      if (isCreditOrder(t)) continue;
       const key = saleGroupKey(t);
       const list = salesByPay.get(key) ?? [];
       list.push(t);

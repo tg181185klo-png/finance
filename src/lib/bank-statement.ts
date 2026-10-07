@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { Transaction } from "./types";
 import { saleGroupKey, saleGroupLabel } from "./branch-payments";
-import { isCreditOrder, isCreditOrderActive, txPaymentMethod } from "./utils";
+import { isCreditOrder, txPaymentMethod } from "./utils";
 import { BANK_METHOD, CARD_METHOD } from "./bank-ledger";
 
 export type StatementDirection = "in" | "out";
@@ -554,7 +554,7 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
     if (method !== CARD_METHOD && method !== BANK_METHOD) continue;
 
     if (t.type === "sale") {
-      if (isCreditOrder(t) && isCreditOrderActive(t)) continue;
+      if (isCreditOrder(t)) continue;
       const key = matchSaleKey(t);
       const list = salesByGroup.get(key) ?? [];
       list.push(t);

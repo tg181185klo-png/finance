@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod } from "@/lib/utils";
+import { deleteStoredTransaction } from "@/lib/activity-log";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { updateStore } from "@/lib/server-store";
 import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } from "@/lib/types";
@@ -9,38 +10,7 @@ import type { CreditPayment, Expense, PaymentMethod, Sale, Store, Transaction } 
 export const dynamic = "force-dynamic";
 
 function removeTransaction(s: Store, id: string) {
-  const removed = s.transactions.find((t) => t.id === id);
-  if (!removed) throw new Error("ჩანაწერი ვერ მოიძებნა");
-
-  s.transactions = s.transactions.filter((t) => t.id !== id);
-
-  if (removed.type === "sale") {
-    try {
-      s.inventory = applySaleToStock(s.inventory, removed, 1);
-    } catch {
-      // მარაგის დაბრუნება არ უნდა დაბლოკოს წაშლა
-    }
-    reverseCreditOrderData(s, removed.id, removed);
-  } else if (removed.type === "expense") {
-    reverseExpenseObligation(s, removed);
-    if (removed.reportId) {
-      const report = s.branchReports.find((r) => r.id === removed.reportId);
-      if (report?.expenses?.length) {
-        const idx = report.expenses.findIndex(
-          (ex) =>
-            ex.amount === removed.amount &&
-            ex.comment === removed.comment &&
-            ex.category === removed.category
-        );
-        if (idx >= 0) {
-          report.expenses = report.expenses.filter((_, i) => i !== idx);
-          report.expensesTotal = report.expenses.reduce((sum, ex) => sum + ex.amount, 0);
-        }
-      }
-    }
-  }
-
-  return removed;
+  return deleteStoredTransaction(s, id);
 }
 
 export async function POST(req: NextRequest) {

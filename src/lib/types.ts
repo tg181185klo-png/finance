@@ -322,6 +322,24 @@ export interface Store {
   bankLedgerReviewed?: Record<string, string>;
   /** თვითღირებულება / მასალა / დისტრიბუტორის ანაზღაურება */
   costSettings?: import("./product-cost").CostSettings;
+  /** ჩაწერა, შეცვლა, წაშლა — გაუქმებისთვის */
+  activityLog: ActivityEntry[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  at: string;
+  kind: "create" | "update" | "delete";
+  title: string;
+  detail: string;
+  txId: string;
+  /** წაშლამდე ან შეცვლამდე */
+  before?: Transaction;
+  /** ბეს შენატანის გაუქმებისას გაყიდვის წინა მდგომარეობა */
+  relatedSale?: Transaction;
+  creditPayments?: CreditPayment[];
+  creditDeliveries?: CreditDelivery[];
+  undoneAt?: string;
 }
 
 export interface Balances {

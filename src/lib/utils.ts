@@ -773,19 +773,11 @@ export function reverseCreditOrderData(store: Store, saleId: string, saleHint?: 
       }
     }
   }
-  const removedPaymentIds = new Set(
-    (store.creditPayments ?? []).filter((p) => p.saleId === saleId).map((p) => p.id)
-  );
   if (store.creditPayments) {
     store.creditPayments = store.creditPayments.filter((p) => p.saleId !== saleId);
   }
   if (store.creditDeliveries) {
     store.creditDeliveries = store.creditDeliveries.filter((d) => d.saleId !== saleId);
-  }
-  if (removedPaymentIds.size > 0) {
-    store.transactions = store.transactions.filter(
-      (t) => !(t.type === "deposit" && t.linkedCreditPaymentId && removedPaymentIds.has(t.linkedCreditPaymentId))
-    );
   }
 }
 

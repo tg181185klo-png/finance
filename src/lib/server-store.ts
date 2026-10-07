@@ -21,6 +21,7 @@ import {
 } from "./supabase-rest-store";
 import { mergeStore } from "./store-merge";
 import { ensureDailyStoreBackup } from "./store-backup";
+import { recordTransactionDiff } from "./activity-log";
 
 export { mergeStore } from "./store-merge";
 export { StoreConflictError } from "./supabase-rest-store";
@@ -391,7 +392,13 @@ export async function updateStore(
         }
       }
       const expectedAt = hasSupabaseRestStore() ? lastKnownUpdatedAt : undefined;
+      const beforeTx = structuredClone(store.transactions);
+      const beforeCredits = structuredClone(store.creditPayments ?? []);
+      const beforeDeliveries = structuredClone(store.creditDeliveries ?? []);
       mutator(store);
+      if (!options.allowDestructive) {
+        recordTransactionDiff(store, beforeTx, beforeCredits, beforeDeliveries);
+      }
       await persistStore(store, expectedAt, options);
       return store;
     } catch (err) {

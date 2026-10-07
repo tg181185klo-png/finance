@@ -63,6 +63,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     customers: data.customers ?? [],
     bankLedgerReviewed: data.bankLedgerReviewed ?? {},
     costSettings: data.costSettings ?? emptyCostSettings(),
+    activityLog: data.activityLog ?? [],
   };
 }
 

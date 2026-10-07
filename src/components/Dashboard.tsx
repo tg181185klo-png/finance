@@ -30,6 +30,7 @@ import ClientsPanel from "@/components/ClientsPanel";
 import BranchesPanel from "@/components/BranchesPanel";
 import BranchesPaymentsHub from "@/components/BranchesPaymentsHub";
 import BankAccountPanel from "@/components/BankAccountPanel";
+import ActivityPanel from "@/components/ActivityPanel";
 import CostingPanel from "@/components/CostingPanel";
 import {
   DASHBOARD_MENU_GROUPS,
@@ -3146,6 +3147,37 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           branchCash={activeStore.branchCash}
           onRefresh={async () => {
             await refresh();
+          }}
+        />
+      )}
+
+      {tab === "actions" && !loading && (
+        <ActivityPanel
+          transactions={activeStore.transactions}
+          activityLog={activeStore.activityLog ?? []}
+          onUndo={async (body) => {
+            const res = await fetch("/api/activity", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "გაუქმება ვერ მოხერხდა");
+            storeLoadGen.current += 1;
+            setStore((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    transactions: data.transactions ?? prev.transactions,
+                    activityLog: data.activityLog ?? prev.activityLog,
+                    inventory: data.inventory ?? prev.inventory,
+                    obligations: data.obligations ?? prev.obligations,
+                    creditPayments: data.creditPayments ?? prev.creditPayments,
+                    creditDeliveries: data.creditDeliveries ?? prev.creditDeliveries,
+                    branchReports: data.branchReports ?? prev.branchReports,
+                  }
+                : prev
+            );
           }}
         />
       )}
