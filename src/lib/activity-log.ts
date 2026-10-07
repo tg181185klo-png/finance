@@ -23,6 +23,7 @@ const LOG_LIMIT = 400;
 export type ActionView = {
   key: string;
   at: string;
+  kind: ActivityEntry["kind"];
   title: string;
   detail: string;
   undone: boolean;
@@ -120,9 +121,7 @@ function restoreTransaction(store: Store, entry: ActivityEntry) {
     }
     if (entry.relatedSale) {
       const idx = store.transactions.findIndex((t) => t.id === entry.relatedSale!.id);
-      const saleCopy = clone(entry.relatedSale);
-      if (idx >= 0) store.transactions[idx] = saleCopy;
-      else store.transactions = [saleCopy, ...store.transactions];
+      if (idx >= 0) store.transactions[idx] = clone(entry.relatedSale);
     }
     return;
   }
@@ -276,7 +275,23 @@ export function recordTransactionDiff(
   }
 
   if (!entries.length) return;
-  store.activityLog = [...entries.reverse(), ...(store.activityLog ?? [])].slice(0, LOG_LIMIT);
+  store.activityLog = trimActivityLog([...entries.reverse(), ...(store.activityLog ?? [])]);
+}
+
+/** წაშლის ჩანაწერი რჩება, რომ დაბრუნება არ დაიკარგოს. */
+export function trimActivityLog(entries: ActivityEntry[]) {
+  const kept: ActivityEntry[] = [];
+  let other = 0;
+  for (const entry of entries) {
+    if (entry.kind === "delete" && entry.before) {
+      kept.push(entry);
+      continue;
+    }
+    if (other >= LOG_LIMIT) continue;
+    other += 1;
+    kept.push(entry);
+  }
+  return kept;
 }
 
 export function listActions(transactions: Transaction[], log: ActivityEntry[]): ActionView[] {
@@ -284,10 +299,11 @@ export function listActions(transactions: Transaction[], log: ActivityEntry[]): 
   const fromLog: ActionView[] = log.map((e) => ({
     key: e.id,
     at: e.at,
-    title: e.undoneAt ? `${e.title} · გაუქმებულია` : e.title,
+    kind: e.kind,
+    title: e.undoneAt ? `${e.title} · ${e.kind === "delete" ? "დაბრუნებულია" : "გაუქმებულია"}` : e.title,
     detail: e.detail,
     undone: Boolean(e.undoneAt),
-    canUndo: !e.undoneAt && (e.kind === "create" || e.kind === "delete" || (e.kind === "update" && Boolean(e.before))),
+    canUndo: !e.undoneAt && (e.kind === "create" || (e.kind === "delete" && Boolean(e.before)) || (e.kind === "update" && Boolean(e.before))),
     entryId: e.id,
   }));
 
@@ -296,6 +312,7 @@ export function listActions(transactions: Transaction[], log: ActivityEntry[]): 
     .map((t) => ({
       key: `tx:${t.id}`,
       at: t.date,
+      kind: "create" as const,
       title: actionTitle("create", t),
       detail: actionDetail(t),
       undone: false,

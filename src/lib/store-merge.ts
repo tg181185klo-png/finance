@@ -64,6 +64,7 @@ export function mergeStore(data: Partial<Store> = {}): Store {
     bankLedgerReviewed: data.bankLedgerReviewed ?? {},
     costSettings: data.costSettings ?? emptyCostSettings(),
     activityLog: data.activityLog ?? [],
+    activityScanBackupId: data.activityScanBackupId,
   };
 }
 

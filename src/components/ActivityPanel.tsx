@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listActions } from "@/lib/activity-log";
 import type { ActivityEntry, Transaction } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -9,15 +9,44 @@ type Props = {
   transactions: Transaction[];
   activityLog: ActivityEntry[];
   onUndo: (body: { entryId?: string; txId?: string }) => Promise<void>;
+  onRecovered: (activityLog: ActivityEntry[]) => void;
 };
 
-export default function ActivityPanel({ transactions, activityLog, onUndo }: Props) {
+export default function ActivityPanel({ transactions, activityLog, onUndo, onRecovered }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [loadingDeletes, setLoadingDeletes] = useState(true);
+  const onRecoveredRef = useRef(onRecovered);
+  onRecoveredRef.current = onRecovered;
   const rows = useMemo(() => listActions(transactions, activityLog), [transactions, activityLog]);
   const q = query.trim().toLowerCase();
-  const visible = (q ? rows.filter((r) => `${r.title} ${r.detail}`.toLowerCase().includes(q)) : rows).slice(0, 250);
+  const matched = q ? rows.filter((r) => `${r.title} ${r.detail}`.toLowerCase().includes(q)) : rows;
+  const visible = q
+    ? matched.slice(0, 400)
+    : [
+        ...matched.filter((r) => r.kind === "delete"),
+        ...matched.filter((r) => r.kind !== "delete").slice(0, 200),
+      ];
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/activity");
+        const data = await res.json();
+        if (!cancel && res.ok && Array.isArray(data.activityLog)) onRecoveredRef.current(data.activityLog);
+        if (!cancel && data.error) setError(data.error);
+      } catch (err) {
+        if (!cancel) setError(err instanceof Error ? err.message : "წაშლილი ჩანაწერები ვერ წაიკითხა");
+      } finally {
+        if (!cancel) setLoadingDeletes(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
 
   async function undo(key: string, body: { entryId?: string; txId?: string }) {
     setBusy(key);
@@ -35,8 +64,8 @@ export default function ActivityPanel({ transactions, activityLog, onUndo }: Pro
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
       <h2 className="text-lg font-semibold">მოქმედებები</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        ჩაწერა, შეცვლა და წაშლა. გაუქმება აბრუნებს სწორედ იმ ჩანაწერს. ამ გვერდამდე წაშლილი ჩანაწერი სიაში აღარ
-        არის — წაშლისას არ ინახებოდა. აქედან ახალი წაშლა და შეცვლა ბრუნდება. სიაში ბოლო 250 ჩანს, ძებნით ძველიც.
+        ჩაწერა, შეცვლა და წაშლა. წაშლილ ჩანაწერზე „დაბრუნება“ იმასვე აბრუნებს, მათ შორის აქამდე წაშლილსაც,
+        თუ ბექაპში იყო. ჯორჯიაშვილის პური ძებნითაც მოიძებნება.
       </p>
       <input
         value={query}
@@ -44,6 +73,7 @@ export default function ActivityPanel({ transactions, activityLog, onUndo }: Pro
         placeholder="ძებნა სახელით, თარიღით, თანხით"
         className="mt-4 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
       />
+      {loadingDeletes && <p className="mt-3 text-xs text-zinc-500">წაშლილი ჩანაწერები იტვირთება...</p>}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
@@ -69,7 +99,7 @@ export default function ActivityPanel({ transactions, activityLog, onUndo }: Pro
                       onClick={() => void undo(row.key, { entryId: row.entryId, txId: row.txId })}
                       className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:border-violet-500 hover:text-violet-200 disabled:opacity-50"
                     >
-                      {busy === row.key ? "..." : "გაუქმება"}
+                      {busy === row.key ? "..." : row.kind === "delete" ? "დაბრუნება" : "გაუქმება"}
                     </button>
                   ) : (
                     <span className="text-xs text-zinc-600">—</span>

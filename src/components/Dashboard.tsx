@@ -3155,6 +3155,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <ActivityPanel
           transactions={activeStore.transactions}
           activityLog={activeStore.activityLog ?? []}
+          onRecovered={(activityLog) => {
+            storeLoadGen.current += 1;
+            setStore((prev) => (prev ? { ...prev, activityLog } : prev));
+          }}
           onUndo={async (body) => {
             const res = await fetch("/api/activity", {
               method: "POST",

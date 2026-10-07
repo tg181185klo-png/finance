@@ -324,6 +324,8 @@ export interface Store {
   costSettings?: import("./product-cost").CostSettings;
   /** ჩაწერა, შეცვლა, წაშლა — გაუქმებისთვის */
   activityLog: ActivityEntry[];
+  /** რომელი ბექაპი უკვე გადაიხედა წაშლილი ჩანაწერებისთვის */
+  activityScanBackupId?: string;
 }
 
 export interface ActivityEntry {
