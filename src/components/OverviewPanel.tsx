@@ -341,10 +341,14 @@ function AccountMovementDays({
       .map(([date, items]) => ({
         date,
         items: [...items].sort((a, b) => b.amount - a.amount),
+        bank: items.reduce((sum, item) => sum + (item.channel === "bank" ? item.amount : 0), 0),
+        card: items.reduce((sum, item) => sum + (item.channel === "card" ? item.amount : 0), 0),
         total: items.reduce((sum, item) => sum + item.amount, 0),
       }));
   }, [transactions, from, to, direction, branches, includeShared]);
   const total = days.reduce((sum, day) => sum + day.total, 0);
+  const bankTotal = days.reduce((sum, day) => sum + day.bank, 0);
+  const cardTotal = days.reduce((sum, day) => sum + day.card, 0);
   const count = days.reduce((sum, day) => sum + day.items.length, 0);
   const tone = incoming
     ? {
@@ -390,6 +394,8 @@ function AccountMovementDays({
                 <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                   <th className="pb-2 pl-3 pr-3 pt-2">დღე</th>
                   <th className="pb-2 pr-3 text-right">{incoming ? "ჩარიცხვა" : "ხარჯი"}</th>
+                  {incoming && <th className="pb-2 pr-3 text-right">გადმორიცხვა</th>}
+                  {incoming && <th className="pb-2 pr-3 text-right">ბარათი</th>}
                   <th className="pb-2 pr-3 text-right">ჯამი</th>
                   <th className="pb-2 pr-3" />
                 </tr>
@@ -400,6 +406,8 @@ function AccountMovementDays({
                     <tr className="border-b border-zinc-800/50">
                       <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
                       <td className="py-2 pr-3 text-right">{day.items.length}</td>
+                      {incoming && <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(day.bank)}</td>}
+                      {incoming && <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(day.card)}</td>}
                       <td className={`py-2 pr-3 text-right font-medium ${tone.money}`}>{formatMoney(day.total)}</td>
                       <td className="py-2 pr-3">
                         <button
@@ -413,7 +421,7 @@ function AccountMovementDays({
                     </tr>
                     {expandedDay === day.date && (
                       <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
-                        <td colSpan={4} className="px-3 py-3">
+                        <td colSpan={incoming ? 6 : 4} className="px-3 py-3">
                           <div className="space-y-2">
                             {day.items.map((item) => (
                               <div
@@ -442,6 +450,8 @@ function AccountMovementDays({
                   <td colSpan={2} className="py-2 pl-3 pr-3 text-right text-zinc-400">
                     {incoming ? "დღიური შემოსავლის ჯამი" : "დღიური ხარჯის ჯამი"}
                   </td>
+                  {incoming && <td className="py-2 pr-3 text-right text-sky-400">{formatMoney(bankTotal)}</td>}
+                  {incoming && <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(cardTotal)}</td>}
                   <td className={`py-2 pr-3 text-right ${tone.money}`}>{formatMoney(total)}</td>
                   <td />
                 </tr>
@@ -1384,6 +1394,22 @@ export default function OverviewPanel({
             დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
           </p>
         </div>
+        <div className="space-y-3">
+          <AccountMovementDays
+            direction="in"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+          <AccountMovementDays
+            direction="out"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+        </div>
         {scope === KUTAISI_DISTRIB_LABEL ? (
           <div className="space-y-3">
             <BranchPaymentsPanel
@@ -1420,22 +1446,6 @@ export default function OverviewPanel({
             </div>
           ))
         )}
-        <div className="space-y-3">
-          <AccountMovementDays
-            direction="in"
-            transactions={transactions}
-            month={paymentsMonth}
-            branches={paymentBranches}
-            includeShared={scope === "company"}
-          />
-          <AccountMovementDays
-            direction="out"
-            transactions={transactions}
-            month={paymentsMonth}
-            branches={paymentBranches}
-            includeShared={scope === "company"}
-          />
-        </div>
         </>
         )}
       </div>
