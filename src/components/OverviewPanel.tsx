@@ -667,7 +667,7 @@ export default function OverviewPanel({
   const balanceAsOf = to > today ? today : to;
   const placeCash = useMemo(
     () =>
-      RETAIL_BRANCHES.map((branch) => ({
+      BRANCHES.map((branch) => ({
         branch,
         cash: calcBalancesUpToDate(transactions, branch, branchCash, balanceAsOf, openingByMonth).cash,
       })),
@@ -975,28 +975,30 @@ export default function OverviewPanel({
         </div>
 
         <div>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">სალაროს ნაშთი</p>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {placeCash.map((row) => (
+              <div key={row.branch} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
+                <p className="text-xs text-zinc-500">{row.branch}</p>
+                <p className="text-base font-semibold text-emerald-300">{formatMoney(row.cash)}</p>
+                <p className="text-[10px] text-zinc-500">სალაროში</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
           <button
             type="button"
             className="mb-2 flex w-full items-center justify-between gap-3 text-left"
             onClick={() => setCashPlaceOpen((v) => !v)}
             aria-expanded={cashPlaceOpen}
           >
-            <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში ადგილზე და ანგარიში</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">ანგარიში</span>
             <span className="text-xs text-zinc-500">{cashPlaceOpen ? "▲" : "▼"}</span>
           </button>
           {cashPlaceOpen && (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში ადგილზე</p>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {placeCash.map((row) => (
-                <div key={row.branch} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-                  <p className="text-xs text-zinc-500">{row.branch}</p>
-                  <p className="text-base font-semibold text-emerald-300">{formatMoney(row.cash)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div>
           <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2">
             <p className="text-xs text-zinc-500">ანგარიში</p>
             <p className="group relative inline-flex text-xl font-semibold text-violet-300">
