@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Branch, BranchCash, BranchDailyReport, Employee, Expense, Obligation, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/dashboard-data";
 import { branchSaleBuyerName } from "@/lib/customers";
 import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
-import { effectiveTxBranch } from "@/lib/branch-allocation";
+import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import {
   calcBalancesUpToDate,
@@ -168,6 +168,134 @@ function OverviewBreakdown({
 
 const RETAIL_BRANCHES: Branch[] = ["ქუთაისი", "ლილო", "დიღომი"];
 
+function monthBounds(month: string) {
+  const [y, m] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return {
+    from: `${month}-01`,
+    to: `${month}-${String(last).padStart(2, "0")}`,
+  };
+}
+
+function BranchExpenseDays({
+  branches,
+  title,
+  transactions,
+  month,
+}: {
+  branches: Branch[];
+  title: string;
+  transactions: Transaction[];
+  month: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const { from, to } = useMemo(() => monthBounds(month), [month]);
+  const days = useMemo(() => {
+    const map = new Map<string, Expense[]>();
+    for (const t of transactions) {
+      if (t.type !== "expense") continue;
+      const date = t.date.slice(0, 10);
+      if (date < from || date > to) continue;
+      if (!branches.some((b) => txMatchesBranchFilter(t, b))) continue;
+      const list = map.get(date) ?? [];
+      list.push(t);
+      map.set(date, list);
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, items]) => ({
+        date,
+        items: [...items].sort((a, b) => b.amount - a.amount),
+        total: items.reduce((sum, item) => sum + item.amount, 0),
+      }));
+  }, [transactions, branches, from, to]);
+  const total = days.reduce((sum, day) => sum + day.total, 0);
+  const count = days.reduce((sum, day) => sum + day.items.length, 0);
+
+  return (
+    <div className="rounded-xl border border-red-900/30 bg-red-950/10 p-4">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span>
+          <span className="font-semibold text-red-200">ხარჯები · {title}</span>
+          <span className="mt-0.5 block text-xs text-zinc-500">
+            {formatMoney(total)} · {count} ჩანაწერი · დღეების მიხედვით
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-zinc-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open &&
+        (days.length === 0 ? (
+          <p className="mt-3 text-sm text-zinc-500">ამ თვეში ხარჯი არ არის.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                  <th className="pb-2 pl-3 pr-3 pt-2">დღე</th>
+                  <th className="pb-2 pr-3 text-right">ხარჯი</th>
+                  <th className="pb-2 pr-3 text-right">ჯამი</th>
+                  <th className="pb-2 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {days.map((day) => (
+                  <Fragment key={day.date}>
+                    <tr className="border-b border-zinc-800/50">
+                      <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
+                      <td className="py-2 pr-3 text-right">{day.items.length}</td>
+                      <td className="py-2 pr-3 text-right font-medium text-red-300">{formatMoney(day.total)}</td>
+                      <td className="py-2 pr-3">
+                        <button
+                          type="button"
+                          className="text-xs text-red-300 hover:text-red-200"
+                          onClick={() => setExpandedDay((cur) => (cur === day.date ? null : day.date))}
+                        >
+                          {expandedDay === day.date ? "▲ დამალვა" : "▼ დეტალები"}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedDay === day.date && (
+                      <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
+                        <td colSpan={4} className="px-3 py-3">
+                          <div className="space-y-2">
+                            {day.items.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-zinc-200">
+                                    {item.category}
+                                    {item.comment ? ` · ${item.comment}` : ""}
+                                  </p>
+                                  <p className="text-zinc-500">
+                                    {item.branch}
+                                    {item.expensePaymentMethod ? ` · ${item.expensePaymentMethod}` : ""}
+                                  </p>
+                                </div>
+                                <span className="font-medium text-red-300">{formatMoney(item.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function monthsTouching(from: string, to: string): string[] {
   const out: string[] = [];
   let y = Number(from.slice(0, 4));
@@ -283,8 +411,8 @@ export default function OverviewPanel({
   const [selectedDay, setSelectedDay] = useState(today);
   const [companyOpen, setCompanyOpen] = useState(true);
   const [objectsOpen, setObjectsOpen] = useState(true);
-  const [moneyObOpen, setMoneyObOpen] = useState(true);
-  const [goodsObOpen, setGoodsObOpen] = useState(true);
+  const [moneyObOpen, setMoneyObOpen] = useState(false);
+  const [goodsObOpen, setGoodsObOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const { drill, toggle, close, isActive, setAccountChannel } = useFlowDrill();
 
@@ -1038,29 +1166,39 @@ export default function OverviewPanel({
           </p>
         </div>
         {scope === KUTAISI_DISTRIB_LABEL ? (
-          <BranchPaymentsPanel
-            branches={[...KUTAISI_DISTRIB_BRANCHES]}
-            title={KUTAISI_DISTRIB_LABEL}
-            transactions={transactions}
-            branchReports={branchReports}
-            month={paymentsMonth}
-            compact
-            readOnly={readOnly || !onRefresh}
-            onRefresh={onRefresh ?? (async () => undefined)}
-            subtitle="ქუთაისი და დისტრიბუცია ერთად · თარიღის მიხედვით"
-          />
-        ) : (
-          paymentBranches.map((b) => (
+          <div className="space-y-3">
             <BranchPaymentsPanel
-              key={b}
-              branch={b}
+              branches={[...KUTAISI_DISTRIB_BRANCHES]}
+              title={KUTAISI_DISTRIB_LABEL}
               transactions={transactions}
               branchReports={branchReports}
               month={paymentsMonth}
               compact
               readOnly={readOnly || !onRefresh}
               onRefresh={onRefresh ?? (async () => undefined)}
+              subtitle="ქუთაისი და დისტრიბუცია ერთად · თარიღის მიხედვით"
             />
+            <BranchExpenseDays
+              branches={[...KUTAISI_DISTRIB_BRANCHES]}
+              title={KUTAISI_DISTRIB_LABEL}
+              transactions={transactions}
+              month={paymentsMonth}
+            />
+          </div>
+        ) : (
+          paymentBranches.map((b) => (
+            <div key={b} className="space-y-3">
+              <BranchPaymentsPanel
+                branch={b}
+                transactions={transactions}
+                branchReports={branchReports}
+                month={paymentsMonth}
+                compact
+                readOnly={readOnly || !onRefresh}
+                onRefresh={onRefresh ?? (async () => undefined)}
+              />
+              <BranchExpenseDays branches={[b]} title={b} transactions={transactions} month={paymentsMonth} />
+            </div>
           ))
         )}
       </div>
