@@ -424,7 +424,6 @@ export default function OverviewPanel({
   const [cashPlaceOpen, setCashPlaceOpen] = useState(false);
   const [branchDetailOpen, setBranchDetailOpen] = useState(false);
   const [txOpen, setTxOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
   const [moneyObOpen, setMoneyObOpen] = useState(false);
   const [goodsObOpen, setGoodsObOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -1278,27 +1277,12 @@ export default function OverviewPanel({
         )}
       </div>
 
-      <div className="rounded-xl border border-teal-900/40 bg-teal-950/15 p-4">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between gap-3 text-left"
-          onClick={() => setActivityOpen((v) => !v)}
-          aria-expanded={activityOpen}
-        >
-          <h3 className="font-semibold text-teal-200">ფილიალის ლინკებიდან — აქტივობა</h3>
-          <span className="shrink-0 text-xs text-zinc-400">{activityOpen ? "▲" : "▼"}</span>
-        </button>
-        {activityOpen && (
-          <div className="mt-3">
-            <BranchActivityPanel
-              branchReports={branchReports}
-              period={period}
-              scopeBranches={activityScopeBranches}
-              dayFilter={rangeMode === "day" ? selectedDay : undefined}
-            />
-          </div>
-        )}
-      </div>
+      <BranchActivityPanel
+        branchReports={branchReports}
+        period={period}
+        scopeBranches={activityScopeBranches}
+        dayFilter={rangeMode === "day" ? selectedDay : undefined}
+      />
     </section>
   );
 }

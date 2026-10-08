@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Branch, BranchDailyReport } from "@/lib/types";
 import { branchSaleBuyerName } from "@/lib/customers";
 import { BRANCHES } from "@/lib/dashboard-data";
@@ -29,6 +29,7 @@ export default function BranchActivityPanel({
   dayFilter,
   limit = 50,
 }: Props) {
+  const [open, setOpen] = useState(false);
   const from = dayFilter ?? period.from;
   const to = dayFilter ?? period.to;
   const periodLabel = dayFilter ? formatDate(dayFilter) : period.label;
@@ -132,13 +133,23 @@ export default function BranchActivityPanel({
 
   return (
     <section className="rounded-xl border border-teal-900/40 bg-teal-950/15 p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span>
           <h3 className="font-semibold text-teal-200">ფილიალის ლინკებიდან — აქტივობა</h3>
           <p className="text-xs text-zinc-500">
             გაყიდვები, კლიენტები, ხარჯები · {periodLabel}
           </p>
-        </div>
+        </span>
+        <span className="shrink-0 text-xs text-zinc-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+      <div className="mt-4">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
         <div className="flex flex-wrap gap-2 text-xs">
           {BRANCHES.map((b) => (
             <span key={b} className="rounded-full border border-zinc-700 px-2 py-0.5 text-zinc-400">
@@ -183,6 +194,8 @@ export default function BranchActivityPanel({
             </tbody>
           </table>
         </div>
+      )}
+      </div>
       )}
     </section>
   );

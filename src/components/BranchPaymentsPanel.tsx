@@ -191,6 +191,7 @@ export default function BranchPaymentsPanel({
   const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const [split, setSplit] = useState<{ group: SalePaymentGroup; account: string } | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const activeMonth = monthProp ?? viewMonth;
   const { from, to } = useMemo(() => monthStartEnd(activeMonth), [activeMonth]);
@@ -359,19 +360,27 @@ export default function BranchPaymentsPanel({
       {header}
 
       <div className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className={`font-semibold ${theme.title}`}>
-              {combined || title ? heading : `${primaryBranch} — გადახდები`}
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
-            {monthTotals.zeros > 0 && (
-              <p className="mt-1 text-xs text-zinc-400">
-                ნულოვანი რეპორტი: {monthTotals.zeros} დღე/ობიექტი
-              </p>
-            )}
-          </div>
-          {!monthProp && (
+        <div className={`flex flex-wrap items-end justify-between gap-3 ${panelOpen ? "mb-4" : ""}`}>
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+            onClick={() => setPanelOpen((v) => !v)}
+            aria-expanded={panelOpen}
+          >
+            <span>
+              <h2 className={`font-semibold ${theme.title}`}>
+                {combined || title ? heading : `${primaryBranch} — გადახდები`}
+              </h2>
+              <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
+              {monthTotals.zeros > 0 && (
+                <p className="mt-1 text-xs text-zinc-400">
+                  ნულოვანი რეპორტი: {monthTotals.zeros} დღე/ობიექტი
+                </p>
+              )}
+            </span>
+            <span className="shrink-0 text-xs text-zinc-400">{panelOpen ? "▲" : "▼"}</span>
+          </button>
+          {panelOpen && !monthProp && (
             <Field label="თვე">
               <input
                 type="month"
@@ -382,6 +391,8 @@ export default function BranchPaymentsPanel({
             </Field>
           )}
         </div>
+        {panelOpen && (
+        <>
 
         {!compact && branchCash && !combined && (
           <div className="mb-4">
@@ -634,6 +645,8 @@ export default function BranchPaymentsPanel({
               </tfoot>
             </table>
           </div>
+        )}
+        </>
         )}
       </div>
       {split && (
