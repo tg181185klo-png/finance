@@ -689,7 +689,8 @@ export function applyCreditPayment(
   amount: number,
   note?: string,
   paymentMethod?: PaymentMethod,
-  branch?: Branch
+  branch?: Branch,
+  paidAt?: string
 ) {
   if (!store.creditPayments) store.creditPayments = [];
   const sale = store.transactions.find((t): t is Sale => t.id === saleId && t.type === "sale");
@@ -714,7 +715,7 @@ export function applyCreditPayment(
     id: uid(),
     saleId,
     amount: pay,
-    paidAt: new Date().toISOString(),
+    paidAt: paidAt && /^\d{4}-\d{2}-\d{2}$/.test(paidAt.slice(0, 10)) ? `${paidAt.slice(0, 10)}T12:00:00.000Z` : new Date().toISOString(),
     note,
     paymentMethod: settleMethod,
     branch: settleBranch,

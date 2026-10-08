@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
+import { ENTRY_ACTION_PIN } from "@/lib/action-password";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { applyCreditDelivery, applyCreditPayment, isSettlementPaymentMethod } from "@/lib/utils";
 import { updateStore } from "@/lib/server-store";
 import type { Branch, PaymentMethod, SettlementPaymentMethod } from "@/lib/types";
@@ -12,7 +14,7 @@ export async function POST(req: NextRequest) {
     if (authError) return authError;
 
     const body = (await req.json()) as {
-      action: "pay" | "deliver" | "updatePaymentMethod" | "updateDueDate";
+      action: "pay" | "deliver" | "updatePaymentMethod" | "updateDueDate" | "updatePaidAt";
       saleId?: string;
       paymentId?: string;
       amount?: number;
@@ -20,8 +22,36 @@ export async function POST(req: NextRequest) {
       note?: string;
       paymentMethod?: PaymentMethod;
       creditDueDate?: string;
+      paidAt?: string;
+      pin?: string;
       branch?: Branch;
     };
+
+    if (body.action === "updatePaidAt") {
+      const day = (body.paidAt ?? "").slice(0, 10);
+      if (!body.paymentId) return NextResponse.json({ error: "ჩარიცხვა საჭიროა" }, { status: 400 });
+      if ((body.pin ?? "").trim() !== ENTRY_ACTION_PIN) {
+        return NextResponse.json({ error: "პაროლი არასწორია" }, { status: 400 });
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < OPERATIONAL_DATA_FROM) {
+        return NextResponse.json({ error: "თარიღი არასწორია" }, { status: 400 });
+      }
+      const paidAt = `${day}T12:00:00.000Z`;
+      const store = await updateStore((s) => {
+        const payment = (s.creditPayments ?? []).find((p) => p.id === body.paymentId);
+        if (!payment) throw new Error("ჩარიცხვა ვერ მოიძებნა");
+        payment.paidAt = paidAt;
+        const linked = s.transactions.find(
+          (t) => t.type === "deposit" && t.linkedCreditPaymentId === payment.id
+        );
+        if (linked && linked.type === "deposit") linked.date = paidAt;
+      });
+      return NextResponse.json({
+        ok: true,
+        creditPayments: store.creditPayments,
+        transactions: store.transactions,
+      });
+    }
 
     if (body.action === "updateDueDate") {
       if (!body.saleId || !body.creditDueDate) {
@@ -78,7 +108,7 @@ export async function POST(req: NextRequest) {
         if (body.paymentMethod && !isSettlementPaymentMethod(body.paymentMethod)) {
           throw new Error("დაფარვა: ქეში, ბარათი ან გადმორიცხვა");
         }
-        applyCreditPayment(s, saleId, amount, body.note, body.paymentMethod, body.branch);
+        applyCreditPayment(s, saleId, amount, body.note, body.paymentMethod, body.branch, body.paidAt);
       } else if (body.action === "deliver") {
         const quantity = Number(body.quantity);
         if (!quantity || quantity <= 0) throw new Error("რაოდენობა საჭიროა");

@@ -199,6 +199,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [creditAdvance, setCreditAdvance] = useState("");
   const [creditDueDate, setCreditDueDate] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
+  const [creditPayDates, setCreditPayDates] = useState<Record<string, string>>({});
   const [creditDeliverInputs, setCreditDeliverInputs] = useState<Record<string, string>>({});
   const [creditPayMethods, setCreditPayMethods] = useState<Record<string, PaymentMethod>>({});
   const [creditPayBranches, setCreditPayBranches] = useState<Record<string, Branch>>({});
@@ -974,14 +975,15 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     saleId: string,
     amount: number,
     paymentMethod: PaymentMethod,
-    branch?: Branch
+    branch?: Branch,
+    paidAt?: string
   ): Promise<boolean> {
     if (!amount || amount <= 0) return false;
     try {
       const res = await fetch("/api/credit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "pay", saleId, amount, paymentMethod, branch }),
+        body: JSON.stringify({ action: "pay", saleId, amount, paymentMethod, branch, paidAt }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "შეცდომა");
@@ -1014,8 +1016,39 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       saleId,
       amount,
       creditPayMethods[saleId] ?? "ქეში (ნაღდი)",
-      creditPayBranches[saleId]
+      creditPayBranches[saleId],
+      creditPayDates[saleId] || new Date().toISOString().slice(0, 10)
     );
+  }
+
+  async function updateCreditPaidAt(paymentId: string, paidAt: string): Promise<boolean> {
+    const pin = confirmedActionPin();
+    if (!pin) return false;
+    try {
+      setError("");
+      const res = await fetch("/api/credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updatePaidAt", paymentId, paidAt, pin }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "შეცდომა");
+      storeLoadGen.current += 1;
+      setStore((prev) =>
+        prev
+          ? {
+              ...prev,
+              transactions: d.transactions ?? prev.transactions,
+              creditPayments: d.creditPayments ?? prev.creditPayments,
+            }
+          : prev
+      );
+      setSaveMsg("ჩარიცხვის თარიღი განახლდა ✓");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "შეცდომა");
+      return false;
+    }
   }
 
   async function setCreditSaleDueDate(saleId: string, dueDate: string): Promise<boolean> {
@@ -2146,8 +2179,21 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                           <div>
                             <p className="mb-1 text-xs text-zinc-500">გადახდების ისტორია:</p>
                             {payments.map((p) => (
-                              <div key={p.id} className="flex justify-between text-xs text-emerald-400/90">
-                                <span>{formatDate(p.paidAt)} · {p.note || "გადახდა"}</span>
+                              <div key={p.id} className="flex items-center justify-between gap-2 text-xs text-emerald-400/90">
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <input
+                                    type="date"
+                                    className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[11px] text-zinc-200"
+                                    min={OPERATIONAL_DATA_FROM}
+                                    value={p.paidAt.slice(0, 10)}
+                                    onChange={(e) => {
+                                      const next = e.target.value;
+                                      if (!next || next === p.paidAt.slice(0, 10)) return;
+                                      void updateCreditPaidAt(p.id, next);
+                                    }}
+                                  />
+                                  <span className="truncate">{p.note || "გადახდა"}</span>
+                                </span>
                                 <span>+{formatMoney(p.amount)}</span>
                               </div>
                             ))}
@@ -2207,6 +2253,16 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                   {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
                                 </select>
                               </div>
+                              <div className="min-w-[130px]">
+                                <label className={labelCls}>თარიღი</label>
+                                <input
+                                  type="date"
+                                  className={inputCls}
+                                  min={OPERATIONAL_DATA_FROM}
+                                  value={creditPayDates[sale.id] || new Date().toISOString().slice(0, 10)}
+                                  onChange={(e) => setCreditPayDates((m) => ({ ...m, [sale.id]: e.target.value }))}
+                                />
+                              </div>
                               <button type="button" className={btnCls} onClick={() => addCreditPayment(sale.id)}>ჩარიცხვა</button>
                             </div>
                           )}
@@ -2259,7 +2315,23 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                   <tbody>
                     {creditHistory.map((row) => (
                       <tr key={row.id} className="border-b border-zinc-800/50">
-                        <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">{formatDate(row.at)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap text-zinc-400">
+                          {row.kind === "pay" ? (
+                            <input
+                              type="date"
+                              className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
+                              min={OPERATIONAL_DATA_FROM}
+                              value={row.at.slice(0, 10)}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                if (!next || next === row.at.slice(0, 10)) return;
+                                void updateCreditPaidAt(row.id, next);
+                              }}
+                            />
+                          ) : (
+                            formatDate(row.at)
+                          )}
+                        </td>
                         <td className={`py-2 pr-3 ${row.kind === "pay" ? "text-emerald-400" : "text-sky-400"}`}>
                           {row.kind === "pay" ? "გადახდა" : "მიწოდება"}
                         </td>

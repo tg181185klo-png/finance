@@ -16,6 +16,7 @@ import {
   txPaymentMethod,
 } from "@/lib/utils";
 import { confirmedActionPin } from "@/lib/action-password";
+import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 
 export function txLabel(t: Transaction) {
   if (t.type === "sale") {
@@ -472,7 +473,35 @@ export default function TransactionTable({
                     if (isSale) setOpenKey((prev) => (prev === g.key ? null : g.key));
                   }}
                 >
-                  <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400">{formatDate(t.date)}</td>
+                  <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400" onClick={(e) => e.stopPropagation()}>
+                    {onUpdateSale && isSale ? (
+                      <input
+                        type="date"
+                        className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
+                        min={OPERATIONAL_DATA_FROM}
+                        value={t.date.slice(0, 10)}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (!next || next === t.date.slice(0, 10)) return;
+                          const sales = g.items.filter((item): item is Sale => item.type === "sale");
+                          void onUpdateSale({
+                            date: next,
+                            branch: t.branch,
+                            buyerName: t.buyerName ?? "",
+                            comment: t.comment ?? "",
+                            lines: sales.map((line) => ({
+                              id: line.id,
+                              quantity: line.quantity,
+                              unitPrice: line.unitPrice,
+                              productName: line.productName,
+                            })),
+                          });
+                        }}
+                      />
+                    ) : (
+                      formatDate(t.date)
+                    )}
+                  </td>
                   <td
                     className={`px-2 py-2.5 ${
                       t.type === "sale"
