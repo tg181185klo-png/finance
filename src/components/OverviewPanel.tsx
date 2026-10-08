@@ -212,15 +212,6 @@ function BranchExpenseDays({
   }, [transactions, branches, from, to]);
   const total = days.reduce((sum, day) => sum + day.total, 0);
   const count = days.reduce((sum, day) => sum + day.items.length, 0);
-  const runningToDate = useMemo(() => {
-    const map = new Map<string, number>();
-    let running = 0;
-    for (const day of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
-      running += day.total;
-      map.set(day.date, running);
-    }
-    return map;
-  }, [days]);
 
   return (
     <div className="rounded-xl border border-red-900/30 bg-red-950/10 p-4">
@@ -249,7 +240,6 @@ function BranchExpenseDays({
                   <th className="pb-2 pl-3 pr-3 pt-2">დღე</th>
                   <th className="pb-2 pr-3 text-right">ხარჯი</th>
                   <th className="pb-2 pr-3 text-right">ჯამი</th>
-                  <th className="pb-2 pr-3 text-right" title="თვის დასაწყისიდან ამ დღის ჩათვლით">მანამდე</th>
                   <th className="pb-2 pr-3" />
                 </tr>
               </thead>
@@ -260,9 +250,6 @@ function BranchExpenseDays({
                       <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
                       <td className="py-2 pr-3 text-right">{day.items.length}</td>
                       <td className="py-2 pr-3 text-right font-medium text-red-300">{formatMoney(day.total)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-zinc-400">
-                        {formatMoney(runningToDate.get(day.date) ?? day.total)}
-                      </td>
                       <td className="py-2 pr-3">
                         <button
                           type="button"
@@ -275,7 +262,7 @@ function BranchExpenseDays({
                     </tr>
                     {expandedDay === day.date && (
                       <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
-                        <td colSpan={5} className="px-3 py-3">
+                        <td colSpan={4} className="px-3 py-3">
                           <div className="space-y-2">
                             {day.items.map((item) => (
                               <div
@@ -302,6 +289,15 @@ function BranchExpenseDays({
                   </Fragment>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t border-zinc-700 font-semibold">
+                  <td colSpan={2} className="py-2 pl-3 pr-3 text-right text-zinc-400">
+                    დღიური ხარჯის ჯამი
+                  </td>
+                  <td className="py-2 pr-3 text-right text-red-300">{formatMoney(total)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
         ))}
@@ -1175,7 +1171,7 @@ export default function OverviewPanel({
           </h3>
           <p className="mb-1 text-xs text-zinc-500">{txSectionHint}</p>
           <p className="text-xs text-zinc-600">
-            დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · მანამდე · დეტალები
+            დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
           </p>
         </div>
         {scope === KUTAISI_DISTRIB_LABEL ? (

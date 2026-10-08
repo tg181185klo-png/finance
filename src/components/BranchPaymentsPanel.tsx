@@ -255,16 +255,6 @@ export default function BranchPaymentsPanel({
     return [...byDay.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [groups, zeroRows]);
 
-  const runningToDate = useMemo(() => {
-    const map = new Map<string, number>();
-    let running = 0;
-    for (const day of [...daySummaries].sort((a, b) => a.date.localeCompare(b.date))) {
-      running += day.total;
-      map.set(day.date, running);
-    }
-    return map;
-  }, [daySummaries]);
-
   const monthTotals = useMemo(() => {
     let cash = 0;
     let bank = 0;
@@ -325,7 +315,7 @@ export default function BranchPaymentsPanel({
       ? "ნაგულისხმევად ქეში · შეგიძლიათ შეცვალოთ ქეშად ან გადმორიცხვად"
       : "გაყიდვები დღეების მიხედვით · გადახდის ტიპის ცვლილება ერთ გაყიდვაზე";
 
-  const colSpan = showCard ? 8 : 7;
+  const colSpan = showCard ? 7 : 6;
 
   return (
     <section className="space-y-6">
@@ -424,7 +414,6 @@ export default function BranchPaymentsPanel({
                   <th className="pb-2 pr-3 text-right">გადმორიცხვა</th>
                   {showCard && <th className="pb-2 pr-3 text-right">ბარათი</th>}
                   <th className="pb-2 pr-3 text-right">ჯამი</th>
-                  <th className="pb-2 pr-3 text-right" title="თვის დასაწყისიდან ამ დღის ჩათვლით">მანამდე</th>
                   <th className="pb-2 pr-3" />
                 </tr>
               </thead>
@@ -456,9 +445,6 @@ export default function BranchPaymentsPanel({
                           <td className="py-2 pr-3 text-right text-violet-400">{formatMoney(day.card)}</td>
                         )}
                         <td className="py-2 pr-3 text-right font-medium">{formatMoney(day.total)}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-zinc-400">
-                          {formatMoney(runningToDate.get(day.date) ?? day.total)}
-                        </td>
                         <td className="py-2 pr-3">
                           <button
                             type="button"
@@ -576,6 +562,15 @@ export default function BranchPaymentsPanel({
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t border-zinc-700 font-semibold">
+                  <td colSpan={showCard ? 5 : 4} className="py-2 pl-3 pr-3 text-right text-zinc-400">
+                    დღიური ნავაჭრის ჯამი
+                  </td>
+                  <td className="py-2 pr-3 text-right">{formatMoney(monthTotals.total)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
