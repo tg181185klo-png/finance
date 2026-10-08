@@ -359,7 +359,7 @@ export default function BranchPaymentsPanel({
     <section className="space-y-6">
       {header}
 
-      <div className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
+      <div className={compact ? "rounded-xl border border-emerald-900/30 bg-emerald-950/10 p-4" : `rounded-xl border ${theme.border} ${theme.bg} p-5`}>
         <div className={`flex flex-wrap items-end justify-between gap-3 ${panelOpen ? "mb-4" : ""}`}>
           <button
             type="button"
@@ -368,14 +368,25 @@ export default function BranchPaymentsPanel({
             aria-expanded={panelOpen}
           >
             <span>
-              <h2 className={`font-semibold ${theme.title}`}>
-                {combined || title ? heading : `${primaryBranch} — გადახდები`}
-              </h2>
-              <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
-              {monthTotals.zeros > 0 && (
-                <p className="mt-1 text-xs text-zinc-400">
-                  ნულოვანი რეპორტი: {monthTotals.zeros} დღე/ობიექტი
-                </p>
+              {compact ? (
+                <>
+                  <span className="font-semibold text-emerald-200">შემოსავლები · {title ?? primaryBranch}</span>
+                  <span className="mt-0.5 block text-xs text-zinc-500">
+                    {formatMoney(monthTotals.total)} · {monthTotals.groups} გაყიდვა · დღეების მიხედვით
+                  </span>
+                </>
+              ) : (
+                <>
+                  <h2 className={`font-semibold ${theme.title}`}>
+                    {combined || title ? heading : `${primaryBranch} — გადახდები`}
+                  </h2>
+                  <p className="mt-1 text-xs text-zinc-500">{subtitle ?? defaultSubtitle}</p>
+                  {monthTotals.zeros > 0 && (
+                    <p className="mt-1 text-xs text-zinc-400">
+                      ნულოვანი რეპორტი: {monthTotals.zeros} დღე/ობიექტი
+                    </p>
+                  )}
+                </>
               )}
             </span>
             <span className="shrink-0 text-xs text-zinc-400">{panelOpen ? "▲" : "▼"}</span>
