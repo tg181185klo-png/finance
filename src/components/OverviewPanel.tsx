@@ -423,6 +423,7 @@ export default function OverviewPanel({
   const [objectsOpen, setObjectsOpen] = useState(false);
   const [cashPlaceOpen, setCashPlaceOpen] = useState(false);
   const [branchDetailOpen, setBranchDetailOpen] = useState(false);
+  const [txOpen, setTxOpen] = useState(true);
   const [moneyObOpen, setMoneyObOpen] = useState(false);
   const [goodsObOpen, setGoodsObOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -1214,13 +1215,23 @@ export default function OverviewPanel({
       )}
 
       <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <div>
-          <h3 className="mb-1 font-semibold">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setTxOpen((v) => !v)}
+          aria-expanded={txOpen}
+        >
+          <h3 className="font-semibold">
             ტრანზაქციები — {scopeLabel(scope)}
             <span className="ml-2 text-sm font-normal text-zinc-500">
               ({paymentSaleGroups}) · {rangeLabel}
             </span>
           </h3>
+          <span className="shrink-0 text-xs text-zinc-400">{txOpen ? "▲" : "▼"}</span>
+        </button>
+        {txOpen && (
+        <>
+        <div>
           <p className="mb-1 text-xs text-zinc-500">{txSectionHint}</p>
           <p className="text-xs text-zinc-600">
             დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
@@ -1261,6 +1272,8 @@ export default function OverviewPanel({
               <BranchExpenseDays branches={[b]} title={b} transactions={transactions} month={paymentsMonth} />
             </div>
           ))
+        )}
+        </>
         )}
       </div>
 
