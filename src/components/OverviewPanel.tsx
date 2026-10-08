@@ -34,6 +34,7 @@ import BranchActivityPanel from "@/components/BranchActivityPanel";
 import { ClientSaleActions } from "@/components/ClientSaleActions";
 import BranchPaymentsPanel from "@/components/BranchPaymentsPanel";
 import { branchSalesForPayments, branchesSalesForPayments, groupBranchSales } from "@/lib/branch-payments";
+import { buildAccountLedgerRows, type AccountLedgerRow, type LedgerDirection } from "@/lib/bank-ledger";
 
 /** დროებით დამალული სექციები მიმოხილვაზე */
 const SHOW_OBJECTS_SECTION = false;
@@ -296,6 +297,152 @@ function BranchExpenseDays({
                     დღიური ხარჯის ჯამი
                   </td>
                   <td className="py-2 pr-3 text-right text-red-300">{formatMoney(total)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ))}
+    </div>
+  );
+}
+
+function AccountMovementDays({
+  direction,
+  transactions,
+  month,
+  branches,
+  includeShared,
+}: {
+  direction: LedgerDirection;
+  transactions: Transaction[];
+  month: string;
+  branches: Branch[];
+  includeShared: boolean;
+}) {
+  const incoming = direction === "in";
+  const [open, setOpen] = useState(false);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const { from, to } = useMemo(() => monthBounds(month), [month]);
+  const days = useMemo(() => {
+    const rows = buildAccountLedgerRows(transactions, { from, to, branch: "ყველა" }).filter((row) => {
+      if (row.direction !== direction) return false;
+      if (row.branch === "საერთო") return includeShared;
+      return branches.includes(row.branch);
+    });
+    const map = new Map<string, AccountLedgerRow[]>();
+    for (const row of rows) {
+      const list = map.get(row.date) ?? [];
+      list.push(row);
+      map.set(row.date, list);
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, items]) => ({
+        date,
+        items: [...items].sort((a, b) => b.amount - a.amount),
+        total: items.reduce((sum, item) => sum + item.amount, 0),
+      }));
+  }, [transactions, from, to, direction, branches, includeShared]);
+  const total = days.reduce((sum, day) => sum + day.total, 0);
+  const count = days.reduce((sum, day) => sum + day.items.length, 0);
+  const tone = incoming
+    ? {
+        box: "border-emerald-900/30 bg-emerald-950/10",
+        title: "text-emerald-200",
+        money: "text-emerald-300",
+        link: "text-emerald-300 hover:text-emerald-200",
+      }
+    : {
+        box: "border-red-900/30 bg-red-950/10",
+        title: "text-red-200",
+        money: "text-red-300",
+        link: "text-red-300 hover:text-red-200",
+      };
+
+  return (
+    <div className={`rounded-xl border p-4 ${tone.box}`}>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span>
+          <span className={`font-semibold ${tone.title}`}>
+            {incoming ? "შემოსავლები" : "ხარჯები"} · საბანკო ანგარიში
+          </span>
+          <span className="mt-0.5 block text-xs text-zinc-500">
+            {formatMoney(total)} · {count} ჩანაწერი · დღეების მიხედვით
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-zinc-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open &&
+        (days.length === 0 ? (
+          <p className="mt-3 text-sm text-zinc-500">
+            {incoming ? "ამ თვეში ანგარიშზე ჩარიცხვა არ არის." : "ამ თვეში ანგარიშიდან ხარჯი არ არის."}
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                  <th className="pb-2 pl-3 pr-3 pt-2">დღე</th>
+                  <th className="pb-2 pr-3 text-right">{incoming ? "ჩარიცხვა" : "ხარჯი"}</th>
+                  <th className="pb-2 pr-3 text-right">ჯამი</th>
+                  <th className="pb-2 pr-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {days.map((day) => (
+                  <Fragment key={day.date}>
+                    <tr className="border-b border-zinc-800/50">
+                      <td className="py-2 pl-3 pr-3 font-medium">{day.date}</td>
+                      <td className="py-2 pr-3 text-right">{day.items.length}</td>
+                      <td className={`py-2 pr-3 text-right font-medium ${tone.money}`}>{formatMoney(day.total)}</td>
+                      <td className="py-2 pr-3">
+                        <button
+                          type="button"
+                          className={`text-xs ${tone.link}`}
+                          onClick={() => setExpandedDay((cur) => (cur === day.date ? null : day.date))}
+                        >
+                          {expandedDay === day.date ? "▲ დამალვა" : "▼ დეტალები"}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedDay === day.date && (
+                      <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
+                        <td colSpan={4} className="px-3 py-3">
+                          <div className="space-y-2">
+                            {day.items.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 text-xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-zinc-200">{item.label}</p>
+                                  <p className="text-zinc-500">
+                                    {item.branch} · {item.channel === "card" ? "ბარათი" : "გადმორიცხვა"}
+                                    {item.comment ? ` · ${item.comment}` : ""}
+                                  </p>
+                                </div>
+                                <span className={`font-medium ${tone.money}`}>{formatMoney(item.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-zinc-700 font-semibold">
+                  <td colSpan={2} className="py-2 pl-3 pr-3 text-right text-zinc-400">
+                    {incoming ? "დღიური შემოსავლის ჯამი" : "დღიური ხარჯის ჯამი"}
+                  </td>
+                  <td className={`py-2 pr-3 text-right ${tone.money}`}>{formatMoney(total)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -1273,6 +1420,22 @@ export default function OverviewPanel({
             </div>
           ))
         )}
+        <div className="space-y-3">
+          <AccountMovementDays
+            direction="in"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+          <AccountMovementDays
+            direction="out"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+        </div>
         </>
         )}
       </div>
