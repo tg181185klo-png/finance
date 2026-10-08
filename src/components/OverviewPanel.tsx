@@ -1394,22 +1394,6 @@ export default function OverviewPanel({
             დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
           </p>
         </div>
-        <div className="space-y-3">
-          <AccountMovementDays
-            direction="in"
-            transactions={transactions}
-            month={paymentsMonth}
-            branches={paymentBranches}
-            includeShared={scope === "company"}
-          />
-          <AccountMovementDays
-            direction="out"
-            transactions={transactions}
-            month={paymentsMonth}
-            branches={paymentBranches}
-            includeShared={scope === "company"}
-          />
-        </div>
         {scope === KUTAISI_DISTRIB_LABEL ? (
           <div className="space-y-3">
             <BranchPaymentsPanel
@@ -1446,6 +1430,22 @@ export default function OverviewPanel({
             </div>
           ))
         )}
+        <div className="space-y-3">
+          <AccountMovementDays
+            direction="in"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+          <AccountMovementDays
+            direction="out"
+            transactions={transactions}
+            month={paymentsMonth}
+            branches={paymentBranches}
+            includeShared={scope === "company"}
+          />
+        </div>
         </>
         )}
       </div>
