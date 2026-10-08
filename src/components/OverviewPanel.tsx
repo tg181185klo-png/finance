@@ -419,8 +419,12 @@ export default function OverviewPanel({
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
   const [selectedDay, setSelectedDay] = useState(today);
-  const [companyOpen, setCompanyOpen] = useState(true);
-  const [objectsOpen, setObjectsOpen] = useState(true);
+  const [companyOpen, setCompanyOpen] = useState(false);
+  const [objectsOpen, setObjectsOpen] = useState(false);
+  const [cashPlaceOpen, setCashPlaceOpen] = useState(false);
+  const [branchDetailOpen, setBranchDetailOpen] = useState(false);
+  const [txOpen, setTxOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [moneyObOpen, setMoneyObOpen] = useState(false);
   const [goodsObOpen, setGoodsObOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -513,6 +517,11 @@ export default function OverviewPanel({
       })),
     [transactions, branchCash, openingByMonth, balanceAsOf]
   );
+  const kutaisiDistribCashBalance = useMemo(() => {
+    const kutaisi = calcBalancesUpToDate(transactions, "ქუთაისი", branchCash, balanceAsOf, openingByMonth).cash;
+    const distrib = calcBalancesUpToDate(transactions, "დისტრიბუცია", branchCash, balanceAsOf, openingByMonth).cash;
+    return kutaisi + distrib;
+  }, [transactions, branchCash, openingByMonth, balanceAsOf]);
   const accountNow = useMemo(
     () => calcBalancesUpToDate(transactions, "ყველა", branchCash, balanceAsOf, openingByMonth),
     [transactions, branchCash, openingByMonth, balanceAsOf]
@@ -801,9 +810,25 @@ export default function OverviewPanel({
                 <p className="text-base font-semibold text-emerald-400">{formatMoney(row.revenue)}</p>
               </div>
             ))}
+            <div className="rounded-lg border border-violet-900/50 bg-violet-950/30 px-3 py-2">
+              <p className="text-xs text-violet-200/80">დისტრიბუცია+ქუთაისი</p>
+              <p className="text-base font-semibold text-violet-200">{formatMoney(kutaisiDistribCashBalance)}</p>
+              <p className="text-[10px] text-zinc-500">ქეშის ნაშთი</p>
+            </div>
           </div>
         </div>
 
+        <div>
+          <button
+            type="button"
+            className="mb-2 flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setCashPlaceOpen((v) => !v)}
+            aria-expanded={cashPlaceOpen}
+          >
+            <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში ადგილზე და ანგარიში</span>
+            <span className="text-xs text-zinc-500">{cashPlaceOpen ? "▲" : "▼"}</span>
+          </button>
+          {cashPlaceOpen && (
         <div className="grid gap-3 lg:grid-cols-2">
           <div>
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში ადგილზე</p>
@@ -846,6 +871,8 @@ export default function OverviewPanel({
               ბარათით და გადმორიცხვით შემოსული აქ გროვდება. აქედან გადახდა ობიექტის ქეშს არ აკლდება.
             </p>
           </div>
+        </div>
+          )}
         </div>
 
         <button
@@ -1129,9 +1156,19 @@ export default function OverviewPanel({
 
       {activeBranch && (
         <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
-          <h3 className="mb-3 text-xl font-bold text-emerald-200">
-            {activeBranch.branch} · {rangeLabel}
-          </h3>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setBranchDetailOpen((v) => !v)}
+            aria-expanded={branchDetailOpen}
+          >
+            <h3 className="text-xl font-bold text-emerald-200">
+              {activeBranch.branch} · {rangeLabel}
+            </h3>
+            <span className="shrink-0 text-sm text-emerald-400/80">{branchDetailOpen ? "▲" : "▼"}</span>
+          </button>
+          {branchDetailOpen && (
+          <div className="mt-3">
           <OverviewBreakdown
             stats={activeBranch.channel}
             cashBalance={activeBranch.cash}
@@ -1142,13 +1179,27 @@ export default function OverviewPanel({
           />
           <p className="mt-3 text-xs text-zinc-500">{activeBranch.count} ჩანაწერი პერიოდში</p>
           {detailDrillPanel}
+          </div>
+          )}
         </div>
       )}
 
       {activeGroup && (
         <div className="rounded-xl border border-violet-900/40 bg-violet-950/20 p-4">
-          <h3 className="mb-1 text-xl font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</h3>
-          <p className="mb-3 text-xs text-violet-300/70">ქუთაისი და დისტრიბუცია ერთად · {rangeLabel}</p>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setBranchDetailOpen((v) => !v)}
+            aria-expanded={branchDetailOpen}
+          >
+            <span>
+              <h3 className="text-xl font-bold text-violet-200">{KUTAISI_DISTRIB_LABEL}</h3>
+              <p className="text-xs text-violet-300/70">ქუთაისი და დისტრიბუცია ერთად · {rangeLabel}</p>
+            </span>
+            <span className="shrink-0 text-sm text-violet-300/80">{branchDetailOpen ? "▲" : "▼"}</span>
+          </button>
+          {branchDetailOpen && (
+          <div className="mt-3">
           <OverviewBreakdown
             stats={kutaisiDistribChannelStats}
             cashBalance={activeGroup.cash}
@@ -1159,17 +1210,29 @@ export default function OverviewPanel({
           />
           <p className="mt-3 text-xs text-zinc-500">{activeGroup.count} ჩანაწერი პერიოდში</p>
           {detailDrillPanel}
+          </div>
+          )}
         </div>
       )}
 
       <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <div>
-          <h3 className="mb-1 font-semibold">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setTxOpen((v) => !v)}
+          aria-expanded={txOpen}
+        >
+          <h3 className="font-semibold">
             ტრანზაქციები — {scopeLabel(scope)}
             <span className="ml-2 text-sm font-normal text-zinc-500">
               ({paymentSaleGroups}) · {rangeLabel}
             </span>
           </h3>
+          <span className="shrink-0 text-xs text-zinc-400">{txOpen ? "▲" : "▼"}</span>
+        </button>
+        {txOpen && (
+        <>
+        <div>
           <p className="mb-1 text-xs text-zinc-500">{txSectionHint}</p>
           <p className="text-xs text-zinc-600">
             დღე · გაყიდვები · ქეში · გადმორიცხვა · ბარათი · ჯამი · დეტალები
@@ -1211,14 +1274,31 @@ export default function OverviewPanel({
             </div>
           ))
         )}
+        </>
+        )}
       </div>
 
-      <BranchActivityPanel
-        branchReports={branchReports}
-        period={period}
-        scopeBranches={activityScopeBranches}
-        dayFilter={rangeMode === "day" ? selectedDay : undefined}
-      />
+      <div className="rounded-xl border border-teal-900/40 bg-teal-950/15 p-4">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setActivityOpen((v) => !v)}
+          aria-expanded={activityOpen}
+        >
+          <h3 className="font-semibold text-teal-200">ფილიალის ლინკებიდან — აქტივობა</h3>
+          <span className="shrink-0 text-xs text-zinc-400">{activityOpen ? "▲" : "▼"}</span>
+        </button>
+        {activityOpen && (
+          <div className="mt-3">
+            <BranchActivityPanel
+              branchReports={branchReports}
+              period={period}
+              scopeBranches={activityScopeBranches}
+              dayFilter={rangeMode === "day" ? selectedDay : undefined}
+            />
+          </div>
+        )}
+      </div>
     </section>
   );
 }
