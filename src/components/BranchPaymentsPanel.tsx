@@ -105,7 +105,7 @@ function isCreditGroup(group: SalePaymentGroup) {
   );
 }
 
-function groupSettlement(group: SalePaymentGroup) {
+export function groupSettlement(group: SalePaymentGroup) {
   return group.lines.reduce(
     (sum, line) => {
       const parts = saleSettlementParts(line);
@@ -122,7 +122,7 @@ function isDistributionGroup(group: SalePaymentGroup) {
   return group.branch === "დისტრიბუცია" || group.isDistribucia;
 }
 
-async function updateGroupPayment(
+export async function updateGroupPayment(
   group: SalePaymentGroup,
   paymentMethod: PaymentMethod,
   accountPaid?: number

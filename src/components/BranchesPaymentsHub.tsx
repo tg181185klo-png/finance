@@ -39,7 +39,9 @@ export default function BranchesPaymentsHub({ transactions, branchCash, onRefres
         branchCash={branchCash}
         onRefresh={onRefresh}
         header={
-          branch === "დისტრიბუცია" ? <DistribuciaSyncPanel onSynced={onRefresh} /> : undefined
+          branch === "დისტრიბუცია" ? (
+            <DistribuciaSyncPanel transactions={transactions} onSynced={onRefresh} />
+          ) : undefined
         }
       />
     </div>
