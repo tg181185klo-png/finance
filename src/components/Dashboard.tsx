@@ -88,6 +88,7 @@ import {
   isCreditOrder,
   isCreditOrderFullyComplete,
   isCreditOrderActive,
+  isSettlementPaymentMethod,
   uid,
 } from "@/lib/utils";
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
@@ -1476,9 +1477,26 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     });
   }
 
-  function payObligation(obId: string) {
-    const amount = parseFloat(obPayInputs[obId] ?? "");
-    if (!amount || amount <= 0) return;
+  function obligationPayMethod(o: Obligation): PaymentMethod {
+    if (obPayMethods[o.id]) return obPayMethods[o.id];
+    if (o.plannedPaymentMethod && isSettlementPaymentMethod(o.plannedPaymentMethod)) return o.plannedPaymentMethod;
+    return "ქეში (ნაღდი)";
+  }
+
+  function obligationPayBranch(o: Obligation): ExpenseBranch {
+    if (obPayBranches[o.id]) return obPayBranches[o.id];
+    return o.branch !== "ყველა" ? o.branch : "საერთო";
+  }
+
+  function payObligation(o: Obligation) {
+    const left = Math.round((o.amount - o.paid) * 100) / 100;
+    const raw = (obPayInputs[o.id] ?? "").trim().replace(",", ".");
+    const typed = raw ? parseFloat(raw) : left;
+    const amount = Math.round((Number.isFinite(typed) && typed > 0 ? Math.min(typed, left) : left) * 100) / 100;
+    if (!amount || amount <= 0) {
+      setError("გადასახდელი თანხა არ დარჩა");
+      return;
+    }
     runWithPin(async () => {
       try {
         const res = await fetch("/api/obligations", {
@@ -1486,11 +1504,11 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "pay",
-            obligationId: obId,
+            obligationId: o.id,
             month: obMonth,
             amount,
-            paymentMethod: obPayMethods[obId] ?? "ქეში (ნაღდი)",
-            branch: obPayBranches[obId] ?? "საერთო",
+            paymentMethod: obligationPayMethod(o),
+            branch: obligationPayBranch(o),
           }),
         });
         const d = await res.json();
@@ -1500,7 +1518,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           obligationPayments: d.obligationPayments,
           transactions: d.transactions,
         });
-        setObPayInputs((m) => ({ ...m, [obId]: "" }));
+        setObPayInputs((m) => ({ ...m, [o.id]: "" }));
         setSaveMsg("ვალდებულება გასტუმრდა ✓");
         setError("");
       } catch (e) {
@@ -2855,7 +2873,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                           <label className={labelCls}>საშუალება</label>
                                           <select
                                             className={inputCls}
-                                            value={obPayMethods[o.id] ?? "ქეში (ნაღდი)"}
+                                            value={obligationPayMethod(o)}
                                             onChange={(e) =>
                                               setObPayMethods((m) => ({
                                                 ...m,
@@ -2874,10 +2892,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                           <label className={labelCls}>საიდან</label>
                                           <select
                                             className={inputCls}
-                                            value={
-                                              obPayBranches[o.id] ??
-                                              (o.branch !== "ყველა" ? o.branch : "საერთო")
-                                            }
+                                            value={obligationPayBranch(o)}
                                             onChange={(e) =>
                                               setObPayBranches((m) => ({
                                                 ...m,
@@ -2895,7 +2910,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                                         <button
                                           type="button"
                                           className={`${btnCls} bg-violet-600 hover:bg-violet-500`}
-                                          onClick={() => payObligation(o.id)}
+                                          onClick={() => payObligation(o)}
                                         >
                                           გასტუმრება
                                         </button>
