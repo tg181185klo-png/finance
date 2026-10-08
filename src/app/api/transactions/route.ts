@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod, adjustStock, isCreditOrder, saleAffectsStock, saleCreditPaid, saleQuantityDelivered } from "@/lib/utils";
 import { BRANCHES } from "@/lib/constants";
+import { ENTRY_ACTION_PIN } from "@/lib/action-password";
 import { deleteStoredTransaction } from "@/lib/activity-log";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { updateStore } from "@/lib/server-store";
@@ -12,6 +13,10 @@ export const dynamic = "force-dynamic";
 
 function removeTransaction(s: Store, id: string) {
   return deleteStoredTransaction(s, id);
+}
+
+function assertActionPin(pin?: string) {
+  if (pin !== ENTRY_ACTION_PIN) throw new Error("პაროლი არასწორია");
 }
 
 export async function POST(req: NextRequest) {
@@ -43,17 +48,20 @@ export async function POST(req: NextRequest) {
       reviewed?: boolean;
       driverEmployeeId?: string;
       driverEmployeeName?: string;
+      pin?: string;
       branch?: Branch;
       buyerName?: string;
       lines?: { id: string; quantity: number; unitPrice: number; productName?: string }[];
     };
 
     if (body.action === "delete") {
-      if (!body.id) {
+      const ids = [...new Set((body.ids?.length ? body.ids : body.id ? [body.id] : []).filter(Boolean))];
+      if (!ids.length) {
         return NextResponse.json({ error: "id საჭიროა" }, { status: 400 });
       }
+      assertActionPin(body.pin);
       const store = await updateStore((s) => {
-        removeTransaction(s, body.id!);
+        for (const id of ids) removeTransaction(s, id);
       });
       return NextResponse.json({
         ok: true,
@@ -131,6 +139,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === "updateCardExpense") {
+      assertActionPin(body.pin);
       const date = (body.date ?? "").slice(0, 10);
       const comment = (body.comment ?? "").trim();
       const amount = Number(body.amount);
@@ -138,19 +147,12 @@ export async function POST(req: NextRequest) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < OPERATIONAL_DATA_FROM) {
         return NextResponse.json({ error: "თარიღი არასწორია" }, { status: 400 });
       }
-      if (!comment) return NextResponse.json({ error: "კომენტარი საჭიროა" }, { status: 400 });
       if (!Number.isFinite(amount) || amount <= 0) {
         return NextResponse.json({ error: "თანხა არასწორია" }, { status: 400 });
       }
       const store = await updateStore((s) => {
         const t = s.transactions.find((x) => x.id === body.id);
-        const editable =
-          t?.type === "expense" &&
-          (t.expensePaymentMethod === "ბარათი" ||
-            t.spentBy === "მფლობელი" ||
-            t.source === "branch" ||
-            Boolean(t.reportId));
-        if (!t || t.type !== "expense" || !editable) {
+        if (!t || t.type !== "expense") {
           throw new Error("ჩანაწერი ვერ მოიძებნა");
         }
         const category = (body.category ?? t.category).trim();
@@ -183,6 +185,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === "updateSale") {
+      assertActionPin(body.pin);
       const date = (body.date ?? "").slice(0, 10);
       const branch = body.branch;
       const buyerName = (body.buyerName ?? "").trim();
@@ -440,7 +443,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";
-    const status = msg === "ჩანაწერი ვერ მოიძებნა" ? 404 : 500;
+    const status = msg === "ჩანაწერი ვერ მოიძებნა" ? 404 : msg === "პაროლი არასწორია" ? 400 : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }
@@ -454,6 +457,7 @@ export async function DELETE(req: NextRequest) {
   const reportId = searchParams.get("reportId");
 
   try {
+    assertActionPin(searchParams.get("pin") ?? undefined);
     const store = await updateStore((s) => {
       if (reportId) {
         const removed = s.transactions.filter((t) => t.reportId === reportId);

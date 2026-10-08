@@ -15,6 +15,7 @@ import {
   saleQuantityRemaining,
   txPaymentMethod,
 } from "@/lib/utils";
+import { confirmedActionPin } from "@/lib/action-password";
 
 export function txLabel(t: Transaction) {
   if (t.type === "sale") {
@@ -50,9 +51,11 @@ export function txDetail(t: Transaction) {
 function PaymentMethodCell({
   transaction,
   onUpdatePayment,
+  requirePin,
 }: {
   transaction: Transaction;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
+  requirePin?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const value = txPaymentMethod(transaction);
@@ -70,6 +73,10 @@ function PaymentMethodCell({
       onChange={async (e) => {
         const next = e.target.value as PaymentMethod;
         if (next === value) return;
+        if (requirePin && !confirmedActionPin()) {
+          e.target.value = value;
+          return;
+        }
         setBusy(true);
         await onUpdatePayment(transaction.id, next);
         setBusy(false);
@@ -88,10 +95,12 @@ function DriverCell({
   transaction,
   employees,
   onUpdateDriver,
+  requirePin,
 }: {
   transaction: Transaction;
   employees?: Employee[];
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
+  requirePin?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -118,6 +127,10 @@ function DriverCell({
       onChange={async (e) => {
         const emp = activeEmployees.find((x) => x.id === e.target.value);
         if (!emp) return;
+        if (requirePin && !confirmedActionPin()) {
+          e.target.value = value;
+          return;
+        }
         if (emp.name === currentName) return;
         setBusy(true);
         await onUpdateDriver(transaction.id, emp.id, emp.name);
@@ -309,24 +322,34 @@ function SaleEditForm({
 }
 
 function DeleteRow({
-  id,
+  ids,
   onDelete,
+  onDeleteMany,
 }: {
-  id: string;
-  onDelete: (id: string) => Promise<boolean>;
+  ids: string[];
+  onDelete?: (id: string) => Promise<boolean>;
+  onDeleteMany?: (ids: string[]) => Promise<boolean>;
 }) {
   const [busy, setBusy] = useState(false);
+  const unique = [...new Set(ids.filter(Boolean))];
 
   return (
     <button
       type="button"
       className="rounded border border-red-900/60 px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 disabled:opacity-40"
-      disabled={busy}
+      disabled={busy || unique.length === 0}
       onClick={async (e) => {
         e.stopPropagation();
-        if (!confirm("წავშალოთ ეს ჩანაწერი?")) return;
+        const label = unique.length > 1 ? `წავშალოთ ეს ჩანაწერი (${unique.length} პროდუქტი)?` : "წავშალოთ ეს ჩანაწერი?";
+        if (!confirm(label)) return;
         setBusy(true);
-        await onDelete(id);
+        if (onDeleteMany) await onDeleteMany(unique);
+        else if (onDelete) {
+          for (const id of unique) {
+            const ok = await onDelete(id);
+            if (!ok) break;
+          }
+        }
         setBusy(false);
       }}
     >
@@ -343,6 +366,7 @@ type Props = {
   employees?: Employee[];
   bankLedgerReviewed?: Record<string, string>;
   onDelete?: (id: string) => Promise<boolean>;
+  onDeleteMany?: (ids: string[]) => Promise<boolean>;
   onUpdateSale?: (patch: SaleEditPatch) => Promise<boolean>;
   onUpdatePayment?: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateDriver?: (id: string, driverEmployeeId: string, driverEmployeeName: string) => Promise<boolean>;
@@ -357,6 +381,7 @@ export default function TransactionTable({
   employees,
   bankLedgerReviewed,
   onDelete,
+  onDeleteMany,
   onUpdateSale,
   onUpdatePayment,
   onUpdateDriver,
@@ -483,11 +508,20 @@ export default function TransactionTable({
                     {t.comment || txDetail(t)}
                   </td>
                   <td className="px-2 py-2.5">
-                    <PaymentMethodCell transaction={t} onUpdatePayment={onUpdatePayment} />
+                    <PaymentMethodCell
+                      transaction={t}
+                      onUpdatePayment={onUpdatePayment}
+                      requirePin={Boolean(onUpdateSale)}
+                    />
                   </td>
                   {showDriver && (
                     <td className="truncate px-2 py-2.5">
-                      <DriverCell transaction={t} employees={employees} onUpdateDriver={onUpdateDriver} />
+                      <DriverCell
+                        transaction={t}
+                        employees={employees}
+                        onUpdateDriver={onUpdateDriver}
+                        requirePin={Boolean(onUpdateSale)}
+                      />
                     </td>
                   )}
                   <td
@@ -519,7 +553,17 @@ export default function TransactionTable({
                             რედაქტირება
                           </button>
                         )}
-                        {onDelete && <DeleteRow id={t.id} onDelete={onDelete} />}
+                        {onDelete && (
+                          <DeleteRow
+                            ids={
+                              onDeleteMany && isSale
+                                ? g.items.filter((item) => item.type === "sale").map((item) => item.id)
+                                : [t.id]
+                            }
+                            onDelete={onDelete}
+                            onDeleteMany={onDeleteMany}
+                          />
+                        )}
                       </div>
                     </td>
                   )}

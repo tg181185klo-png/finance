@@ -6,6 +6,7 @@ import { CATEGORIES, EXPENSE_BRANCHES, EXPENSE_PAYMENT_METHODS } from "@/lib/das
 import { effectiveExpenseBranch } from "@/lib/branch-allocation";
 import { OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
 import { monthStartEnd, formatDate, formatMoney, paymentMethodLabel, txPaymentMethod } from "@/lib/utils";
+import { confirmedActionPin } from "@/lib/action-password";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-red-500 focus:outline-none";
 const labelCls = "mb-1 block text-xs text-zinc-400";
@@ -18,12 +19,22 @@ type PeriodMode = "month" | "range" | "all";
 type Props = {
   expenses: Expense[];
   onDelete: (id: string) => Promise<boolean>;
+  onDeleteMany?: (ids: string[], pin?: string) => Promise<boolean>;
   onUpdatePayment: (id: string, paymentMethod: PaymentMethod) => Promise<boolean>;
   onUpdateCard: (
     id: string,
-    patch: { date: string; amount: number; comment: string; category: string }
+    patch: { date: string; amount: number; comment: string; category: string },
+    pin?: string
   ) => Promise<boolean>;
 };
+
+function splitExpenseAmounts(total: number, count: number): number[] {
+  if (count <= 1) return [Math.round(total * 100) / 100];
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / count);
+  const rem = cents - base * count;
+  return Array.from({ length: count }, (_, i) => (base + (i === count - 1 ? rem : 0)) / 100);
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -46,7 +57,7 @@ function inDateRange(date: string, from: string, to: string) {
   return day >= from && day <= to;
 }
 
-export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onUpdateCard }: Props) {
+export default function ExpensesPanel({ expenses, onDelete, onDeleteMany, onUpdatePayment, onUpdateCard }: Props) {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -276,12 +287,6 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
               <tbody>
                 {visibleRows.map((row) => {
                   const e = row.expense;
-                  const canEdit =
-                    row.ids.length === 1 &&
-                    (e.spentBy === "მფლობელი" ||
-                      e.source === "branch" ||
-                      Boolean(e.reportId) ||
-                      e.expensePaymentMethod === "ბარათი");
                   const editing = editId === e.id;
                   return (
                   <tr key={e.id} className="border-b border-zinc-800/50">
@@ -321,7 +326,12 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                         onChange={async (ev) => {
                           const next = ev.target.value as PaymentMethod;
                           if (next === txPaymentMethod(e)) return;
-                          await onUpdatePayment(e.id, next);
+                          const pin = confirmedActionPin();
+                          if (!pin) {
+                            ev.target.value = txPaymentMethod(e);
+                            return;
+                          }
+                          for (const id of row.ids) await onUpdatePayment(id, next);
                         }}
                       >
                         {EXPENSE_PAYMENT_METHODS.map((m) => (
@@ -339,14 +349,14 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                       )}
                     </td>
                     <td className="py-2 whitespace-nowrap">
-                      {canEdit && !editing && (
+                      {!editing && (
                         <button
                           type="button"
                           className="mr-2 text-xs text-sky-400 hover:text-sky-300"
                           onClick={() => {
                             setEditId(e.id);
                             setEditDate(e.date.slice(0, 10));
-                            setEditAmount(String(e.amount));
+                            setEditAmount(String(row.amount));
                             setEditComment(e.comment || "");
                             setEditCategory(e.category || "სხვა");
                           }}
@@ -361,14 +371,35 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                           className="mr-2 text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-40"
                           onClick={async () => {
                             const amount = parseFloat(editAmount);
-                            if (!editComment.trim() || !amount || amount <= 0) return;
+                            if (!Number.isFinite(amount) || amount <= 0) return;
+                            const pin = confirmedActionPin();
+                            if (!pin) return;
+                            const shares = splitExpenseAmounts(amount, row.ids.length).filter((part) => part > 0);
+                            const keep = row.ids.slice(0, shares.length);
+                            const drop = row.ids.slice(shares.length);
                             setEditBusy(true);
-                            const ok = await onUpdateCard(e.id, {
-                              date: editDate,
-                              amount,
-                              comment: editComment.trim(),
-                              category: editCategory,
-                            });
+                            let ok = true;
+                            for (let i = 0; i < keep.length; i++) {
+                              const saved = await onUpdateCard(
+                                keep[i],
+                                {
+                                  date: editDate,
+                                  amount: shares[i],
+                                  comment: editComment.trim(),
+                                  category: editCategory,
+                                },
+                                pin
+                              );
+                              if (!saved) {
+                                ok = false;
+                                break;
+                              }
+                            }
+                            if (ok && drop.length) {
+                              ok = onDeleteMany
+                                ? await onDeleteMany(drop, pin)
+                                : (await Promise.all(drop.map((id) => onDelete(id)))).every(Boolean);
+                            }
                             setEditBusy(false);
                             if (ok) setEditId(null);
                           }}
@@ -381,7 +412,13 @@ export default function ExpensesPanel({ expenses, onDelete, onUpdatePayment, onU
                         className="text-xs text-red-400 hover:text-red-300"
                         onClick={async () => {
                           if (!confirm("წავშალოთ ეს ხარჯი?")) return;
-                          for (const id of row.ids) await onDelete(id);
+                          if (onDeleteMany) await onDeleteMany(row.ids);
+                          else {
+                            for (const id of row.ids) {
+                              const ok = await onDelete(id);
+                              if (!ok) break;
+                            }
+                          }
                         }}
                       >
                         წაშლა

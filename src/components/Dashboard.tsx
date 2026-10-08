@@ -96,6 +96,7 @@ import { txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS, STORE_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
+import { confirmedActionPin } from "@/lib/action-password";
 
 function branchLink(token: string) {
   // ყოველთვის იმ დომენს იყენებს, რომლითაც ადმინი გახსნილია (მაგ. finance-eight-ruddy-60)
@@ -1105,27 +1106,31 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     }
   }
 
-  async function deleteTx(id: string): Promise<boolean> {
-    if (!id) {
+  async function deleteTxIds(ids: string[], pin?: string): Promise<boolean> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (!unique.length) {
       setError("ჩანაწერის ID ვერ მოიძებნა");
       return false;
     }
+    const code = pin ?? confirmedActionPin();
+    if (!code) return false;
     try {
       setError("");
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", id }),
+        body: JSON.stringify({ action: "delete", ids: unique, pin: code }),
         cache: "no-store",
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "წაშლა ვერ მოხერხდა");
+      const gone = new Set(unique);
       storeLoadGen.current += 1;
       setStore((prev) =>
         prev
           ? {
               ...prev,
-              transactions: d.transactions ?? prev.transactions.filter((t) => t.id !== id),
+              transactions: d.transactions ?? prev.transactions.filter((t) => !gone.has(t.id)),
               branchReports: d.branchReports ?? prev.branchReports,
               inventory: d.inventory ?? prev.inventory,
               obligations: d.obligations ?? prev.obligations,
@@ -1140,6 +1145,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
       setError(e instanceof Error ? e.message : "წაშლა ვერ მოხერხდა");
       return false;
     }
+  }
+
+  async function deleteTx(id: string): Promise<boolean> {
+    return deleteTxIds([id]);
   }
 
   async function updateTxPayment(id: string, paymentMethod: PaymentMethod): Promise<boolean> {
@@ -1164,14 +1173,17 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   async function updateCardExpense(
     id: string,
-    patch: { date: string; amount: number; comment: string; category?: string }
+    patch: { date: string; amount: number; comment: string; category?: string },
+    pin?: string
   ): Promise<boolean> {
+    const code = pin ?? confirmedActionPin();
+    if (!code) return false;
     try {
       setError("");
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "updateCardExpense", id, ...patch }),
+        body: JSON.stringify({ action: "updateCardExpense", id, ...patch, pin: code }),
         cache: "no-store",
       });
       const d = await res.json().catch(() => ({}));
@@ -1191,12 +1203,14 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   }
 
   async function updateSale(patch: SaleEditPatch): Promise<boolean> {
+    const pin = confirmedActionPin();
+    if (!pin) return false;
     try {
       setError("");
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "updateSale", ...patch }),
+        body: JSON.stringify({ action: "updateSale", ...patch, pin }),
         cache: "no-store",
       });
       const d = await res.json().catch(() => ({}));
@@ -2002,6 +2016,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               employees={activeStore.employees ?? []}
               bankLedgerReviewed={activeStore.bankLedgerReviewed ?? {}}
               onDelete={deleteTx}
+              onDeleteMany={deleteTxIds}
               onUpdateSale={updateSale}
               onUpdatePayment={updateTxPayment}
               onUpdateDriver={updateTxDriver}
@@ -2354,6 +2369,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         <ExpensesPanel
           expenses={operationalTx.filter((t): t is Expense => t.type === "expense")}
           onDelete={deleteTx}
+          onDeleteMany={deleteTxIds}
           onUpdatePayment={updateTxPayment}
           onUpdateCard={updateCardExpense}
         />
