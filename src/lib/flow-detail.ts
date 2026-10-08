@@ -3,7 +3,7 @@ import { effectiveTxBranch, txMatchesBranchFilter } from "./branch-allocation";
 import { KUTAISI_DISTRIB_BRANCHES, KUTAISI_DISTRIB_LABEL } from "./constants";
 import { txInPeriod } from "./period-filter";
 import type { Branch, PaymentMethod, Transaction, TxRecurrence } from "./types";
-import { countsTowardOperatingExpenses, isCreditOrder, saleCreditPaid, txPaymentMethod, txRecurrence } from "./utils";
+import { countsTowardOperatingExpenses, isCreditOrder, saleCreditPaid, saleSettlementParts, txPaymentMethod, txRecurrence } from "./utils";
 
 export type FlowBranchScope = Branch | "ყველა" | typeof KUTAISI_DISTRIB_LABEL;
 
@@ -102,9 +102,10 @@ export function computeScopePeriodStats(
         revenueTotal += saleCreditPaid(t);
       } else {
         revenueTotal += t.amount;
-        if (method === CASH_METHOD) revenueCash += t.amount;
-        else if (method === CARD_METHOD) revenueCard += t.amount;
-        else if (method === BANK_METHOD) revenueBank += t.amount;
+        const parts = saleSettlementParts(t);
+        revenueCash += parts.cash;
+        revenueCard += parts.card;
+        revenueBank += parts.bank;
       }
     } else if (t.type === "expense") {
       if (method === CASH_METHOD) expenseCash += t.amount;
@@ -133,13 +134,18 @@ function matchesChannelKind(t: Transaction, kind: FlowDetailKind): boolean {
     case "revenue":
       return t.type === "sale";
     case "revenue_cash":
-      return t.type === "sale" && method === CASH_METHOD;
+      return t.type === "sale" && (isCreditOrder(t) ? method === CASH_METHOD : saleSettlementParts(t).cash > 0);
     case "revenue_card":
-      return t.type === "sale" && method === CARD_METHOD;
+      return t.type === "sale" && (isCreditOrder(t) ? method === CARD_METHOD : saleSettlementParts(t).card > 0);
     case "revenue_bank":
-      return t.type === "sale" && method === BANK_METHOD;
+      return t.type === "sale" && (isCreditOrder(t) ? method === BANK_METHOD : saleSettlementParts(t).bank > 0);
     case "revenue_account":
-      return t.type === "sale" && isNonCashPayment(method);
+      return (
+        t.type === "sale" &&
+        (isCreditOrder(t)
+          ? isNonCashPayment(method)
+          : saleSettlementParts(t).card > 0 || saleSettlementParts(t).bank > 0)
+      );
     case "expense":
       return t.type === "expense" && countsTowardOperatingExpenses(t);
     case "expense_cash":

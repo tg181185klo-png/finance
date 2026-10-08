@@ -201,9 +201,12 @@ export function calcBalances(
         if (left > 0 && !t.orderCompletedAt) b.credit += left;
       } else if (t.paymentMethod === "კონსიგნაცია") {
         b.credit += t.amount;
-      } else if (t.paymentMethod === "ქეში (ნაღდი)") b.cash += t.amount;
-      else if (t.paymentMethod === "ბარათი") b.card += t.amount;
-      else if (t.paymentMethod === "ანგარიშზე ჩარიცხვა") b.bank += t.amount;
+      } else {
+        const parts = saleSettlementParts(t);
+        b.cash += parts.cash;
+        b.card += parts.card;
+        b.bank += parts.bank;
+      }
     } else if (t.type === "expense") {
       const amt = operatingExpenseAmount(t);
       b.expenses += amt;
@@ -567,6 +570,24 @@ export function applyConsignmentToSale(sale: Sale, opts?: { alreadyStockedOut?: 
     sale.quantityDelivered = sale.quantity;
     sale.deliveryCompletedAt = sale.deliveryCompletedAt ?? sale.date;
   }
+}
+
+/** გაყიდვის თანხა ქეშად, ბარათად და ანგარიშზე. ნაწილობრივი გადმორიცხვა ორივე სვეტში ჯდება. */
+export function saleSettlementParts(sale: Sale): { cash: number; card: number; bank: number } {
+  if (isCreditOrder(sale) || sale.paymentMethod === "კონსიგნაცია") {
+    return { cash: 0, card: 0, bank: 0 };
+  }
+  const paid = sale.accountPaid;
+  const split = typeof paid === "number" && Number.isFinite(paid) && paid > 0.009 && paid < sale.amount - 0.009;
+  if (split) {
+    const account = Math.round(paid * 100) / 100;
+    const cash = Math.round((sale.amount - account) * 100) / 100;
+    if (sale.paymentMethod === "ბარათი") return { cash, card: account, bank: 0 };
+    return { cash, card: 0, bank: account };
+  }
+  if (sale.paymentMethod === "ბარათი") return { cash: 0, card: sale.amount, bank: 0 };
+  if (sale.paymentMethod === "ანგარიშზე ჩარიცხვა") return { cash: 0, card: 0, bank: sale.amount };
+  return { cash: sale.amount, card: 0, bank: 0 };
 }
 
 export function isCreditOrder(sale: Sale) {

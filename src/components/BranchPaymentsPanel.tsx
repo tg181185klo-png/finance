@@ -14,7 +14,7 @@ import {
   isConsignmentOrCreditSale,
   type SalePaymentGroup,
 } from "@/lib/branch-payments";
-import { isCreditOrderActive, saleCreditRemaining } from "@/lib/utils";
+import { isCreditOrderActive, saleCreditRemaining, saleSettlementParts } from "@/lib/utils";
 import { currentMonth, formatMoney, monthStartEnd } from "@/lib/utils";
 import { CurrentBalanceStrip } from "@/components/OpeningBalancesSummary";
 
@@ -105,7 +105,28 @@ function isCreditGroup(group: SalePaymentGroup) {
   );
 }
 
-async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: PaymentMethod) {
+function groupSettlement(group: SalePaymentGroup) {
+  return group.lines.reduce(
+    (sum, line) => {
+      const parts = saleSettlementParts(line);
+      sum.cash += parts.cash;
+      sum.bank += parts.bank;
+      sum.card += parts.card;
+      return sum;
+    },
+    { cash: 0, bank: 0, card: 0 }
+  );
+}
+
+function isDistributionGroup(group: SalePaymentGroup) {
+  return group.branch === "დისტრიბუცია" || group.isDistribucia;
+}
+
+async function updateGroupPayment(
+  group: SalePaymentGroup,
+  paymentMethod: PaymentMethod,
+  accountPaid?: number
+) {
   if (group.distribuciaOrderId) {
     const res = await fetch("/api/distribucia/sync", {
       method: "POST",
@@ -114,6 +135,7 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
         action: "updatePayment",
         orderId: group.distribuciaOrderId,
         paymentMethod,
+        ...(accountPaid != null ? { accountPaid } : {}),
       }),
     });
     const data = await res.json();
@@ -121,8 +143,10 @@ async function updateGroupPayment(group: SalePaymentGroup, paymentMethod: Paymen
     return data as { transactions?: Transaction[] };
   }
 
-  const body: Record<string, string> = { action: "updatePaymentMethod", paymentMethod };
+  const body: Record<string, string | number | string[]> = { action: "updatePaymentMethod", paymentMethod };
+  if (accountPaid != null) body.accountPaid = accountPaid;
   if (group.clientSaleId) body.clientSaleId = group.clientSaleId;
+  else if (group.lineIds.length > 1) body.ids = group.lineIds;
   else body.id = group.lineIds[0];
 
   const res = await fetch("/api/transactions", {
@@ -166,6 +190,7 @@ export default function BranchPaymentsPanel({
   const [search, setSearch] = useState("");
   const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [split, setSplit] = useState<{ group: SalePaymentGroup; account: string } | null>(null);
 
   const activeMonth = monthProp ?? viewMonth;
   const { from, to } = useMemo(() => monthStartEnd(activeMonth), [activeMonth]);
@@ -232,9 +257,11 @@ export default function BranchPaymentsPanel({
         cur.consignment += left > 0 ? left : group.total;
       } else {
         cur.groups += 1;
-        cur.total += group.total;
-        const bucket = paymentBucket(group.paymentMethod);
-        if (bucket !== "credit") cur[bucket] += group.total;
+        const parts = groupSettlement(group);
+        cur.cash += parts.cash;
+        cur.bank += parts.bank;
+        cur.card += parts.card;
+        cur.total += parts.cash + parts.bank + parts.card;
       }
       byDay.set(group.date, cur);
     }
@@ -293,13 +320,14 @@ export default function BranchPaymentsPanel({
   }, [groups]);
 
   const handlePaymentChange = useCallback(
-    async (group: SalePaymentGroup, paymentMethod: PaymentMethod) => {
+    async (group: SalePaymentGroup, paymentMethod: PaymentMethod, accountPaid?: number) => {
       setBusyGroupId(group.groupId);
       setErr("");
       try {
-        const data = await updateGroupPayment(group, paymentMethod);
+        const data = await updateGroupPayment(group, paymentMethod, accountPaid);
         if (data.transactions) await onRefresh({ transactions: data.transactions });
         else await onRefresh();
+        setSplit(null);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "შეცდომა");
       } finally {
@@ -308,6 +336,15 @@ export default function BranchPaymentsPanel({
     },
     [onRefresh]
   );
+
+  function openTransferSplit(group: SalePaymentGroup) {
+    const settled = groupSettlement(group);
+    const current = settled.bank + settled.card;
+    setSplit({
+      group,
+      account: String(Math.round((current > 0 ? current : group.total) * 100) / 100),
+    });
+  }
 
   const defaultSubtitle = combined
     ? "ქუთაისი და დისტრიბუცია ერთად · თარიღის მიხედვით გაერთიანებული"
@@ -527,6 +564,16 @@ export default function BranchPaymentsPanel({
                                           {formatMoney(group.total)}
                                         </span>
                                       )}
+                                      {!credit && isDistributionGroup(group) && (() => {
+                                        const settled = groupSettlement(group);
+                                        const account = settled.bank + settled.card;
+                                        if (settled.cash <= 0.009 || account <= 0.009) return null;
+                                        return (
+                                          <span className="text-[10px] text-zinc-400">
+                                            ქეში {formatMoney(settled.cash)} · ანგარიში {formatMoney(account)}
+                                          </span>
+                                        );
+                                      })()}
                                       {readOnly || credit ? (
                                         <span className={credit ? "text-teal-400" : "text-zinc-400"}>
                                           {paymentShort(group.paymentMethod)}
@@ -536,12 +583,14 @@ export default function BranchPaymentsPanel({
                                           className={selectCls}
                                           value={group.paymentMethod}
                                           disabled={busyGroupId === group.groupId}
-                                          onChange={(e) =>
-                                            handlePaymentChange(
-                                              group,
-                                              e.target.value as PaymentMethod
-                                            )
-                                          }
+                                          onChange={(e) => {
+                                            const next = e.target.value as PaymentMethod;
+                                            if (isDistributionGroup(group) && next === "ანგარიშზე ჩარიცხვა") {
+                                              openTransferSplit(group);
+                                              return;
+                                            }
+                                            void handlePaymentChange(group, next);
+                                          }}
                                         >
                                           {opts.map((m) => (
                                             <option key={m} value={m}>
@@ -550,6 +599,18 @@ export default function BranchPaymentsPanel({
                                           ))}
                                         </select>
                                       )}
+                                      {!readOnly &&
+                                        !credit &&
+                                        isDistributionGroup(group) &&
+                                        group.paymentMethod === "ანგარიშზე ჩარიცხვა" && (
+                                          <button
+                                            type="button"
+                                            className="text-[10px] text-sky-300 hover:text-sky-200"
+                                            onClick={() => openTransferSplit(group)}
+                                          >
+                                            თანხა
+                                          </button>
+                                        )}
                                     </div>
                                   </div>
                                 );
@@ -575,6 +636,67 @@ export default function BranchPaymentsPanel({
           </div>
         )}
       </div>
+      {split && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form
+            className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const total = split.group.total;
+              const account = Math.round((parseFloat(split.account.replace(",", ".")) || 0) * 100) / 100;
+              if (!Number.isFinite(account) || account < 0) {
+                setErr("თანხა არასწორია");
+                return;
+              }
+              if (account > total + 0.02) {
+                setErr("ანგარიშზე გადმორიცხული შეკვეთის ჯამზე მეტია");
+                return;
+              }
+              setErr("");
+              if (account <= 0.009) void handlePaymentChange(split.group, "ქეში (ნაღდი)");
+              else void handlePaymentChange(split.group, "ანგარიშზე ჩარიცხვა", account);
+            }}
+          >
+            <h3 className="font-semibold text-zinc-100">გადმორიცხვა — {split.group.label}</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              შეკვეთის ჯამი {formatMoney(split.group.total)}. ნაწილი შეიძლება ანგარიშზე ჩაირიცხოს და ნაწილი ქეშად დარჩეს.
+            </p>
+            <label className="mt-4 block text-xs text-zinc-400">
+              ანგარიშზე გადმორიცხული
+              <input
+                autoFocus
+                className={`${inputCls} mt-1`}
+                inputMode="decimal"
+                value={split.account}
+                onChange={(e) => setSplit({ ...split, account: e.target.value })}
+              />
+            </label>
+            <p className="mt-2 text-sm text-emerald-300">
+              ქეში: {formatMoney(Math.max(0, split.group.total - (parseFloat(split.account.replace(",", ".")) || 0)))}
+            </p>
+            {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm text-zinc-300"
+                onClick={() => {
+                  setSplit(null);
+                  setErr("");
+                }}
+              >
+                გაუქმება
+              </button>
+              <button
+                type="submit"
+                disabled={busyGroupId === split.group.groupId}
+                className="rounded-lg bg-sky-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                შენახვა
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   );
 }

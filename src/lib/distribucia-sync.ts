@@ -92,17 +92,20 @@ export function isDistribuciaSale(t: Pick<Transaction, "id" | "source" | "type">
 export type DistribuciaPaymentMap = {
   bySaleId: Map<string, PaymentMethod>;
   byOrderId: Map<string, PaymentMethod>;
+  accountBySaleId: Map<string, number>;
 };
 
 export function buildDistribuciaPaymentMap(transactions: Transaction[]): DistribuciaPaymentMap {
   const bySaleId = new Map<string, PaymentMethod>();
   const byOrderId = new Map<string, PaymentMethod>();
+  const accountBySaleId = new Map<string, number>();
   for (const t of transactions) {
     if (!isDistribuciaSale(t) || t.type !== "sale") continue;
     bySaleId.set(t.id, t.paymentMethod);
+    if (typeof t.accountPaid === "number" && t.accountPaid > 0) accountBySaleId.set(t.id, t.accountPaid);
     if (t.distribuciaOrderId) byOrderId.set(t.distribuciaOrderId, t.paymentMethod);
   }
-  return { bySaleId, byOrderId };
+  return { bySaleId, byOrderId, accountBySaleId };
 }
 
 export function resolveDistribuciaPaymentMethod(
@@ -135,7 +138,13 @@ export function ordersToSales(
       const amount = Number(item.total) || quantity * Number(item.unitPrice || 0);
       if (quantity <= 0 || amount <= 0) return;
       const saleId = distribuciaSaleId(order.id, index);
-      sales.push({
+      const paymentMethod = resolveDistribuciaPaymentMethod(saleId, order.id, paymentMap);
+      const savedAccount = paymentMap?.accountBySaleId.get(saleId);
+      const accountPaid =
+        paymentMethod === "ანგარიშზე ჩარიცხვა" && savedAccount != null
+          ? Math.min(savedAccount, amount)
+          : undefined;
+      const sale: Sale = {
         id: saleId,
         type: "sale",
         date: saleIsoDate(order),
@@ -146,13 +155,17 @@ export function ordersToSales(
         unitPrice: Number(item.unitPrice) || amount / quantity,
         amount,
         paymentStatus: "სრულად გადახდილი",
-        paymentMethod: resolveDistribuciaPaymentMethod(saleId, order.id, paymentMap),
+        paymentMethod,
         comment: customerComment(order),
         buyerName: order.storeName,
         recurrence: "ერთჯერადი",
         source: "distribucia",
         distribuciaOrderId: order.id,
-      });
+      };
+      if (accountPaid != null && accountPaid > 0.009 && accountPaid < amount - 0.009) {
+        sale.accountPaid = Math.round(accountPaid * 100) / 100;
+      }
+      sales.push(sale);
     });
   }
   return sales;

@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { Transaction } from "./types";
 import { saleGroupKey, saleGroupLabel } from "./branch-payments";
-import { isCreditOrder, txPaymentMethod } from "./utils";
+import { isCreditOrder, saleSettlementParts, txPaymentMethod } from "./utils";
 import { BANK_METHOD, CARD_METHOD } from "./bank-ledger";
 
 export type StatementDirection = "in" | "out";
@@ -591,7 +591,8 @@ export function buildMatchCandidates(transactions: Transaction[], from: string, 
   const out: MatchCandidate[] = [...deposits];
 
   for (const [gKey, sales] of salesByGroup) {
-    const amount = sales.reduce((s, x) => s + x.amount, 0);
+    const amount = sales.reduce((s, x) => s + saleSettlementParts(x).bank + saleSettlementParts(x).card, 0);
+    if (amount <= 0.009) continue;
     const primary = [...sales].sort((a, b) => b.date.localeCompare(a.date))[0];
     const method = txPaymentMethod(primary);
     out.push({

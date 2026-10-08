@@ -14,6 +14,7 @@ import {
   formatDate,
   formatMoney,
   isCreditOrder,
+  saleSettlementParts,
   isCreditOrderActive,
   isDueUrgent,
   isPaidGoodsToDeliver,
@@ -530,8 +531,8 @@ export default function OverviewPanel({
         revenue: transactions.reduce((sum, t) => {
           if (t.type !== "sale" || t.branch !== branch) return sum;
           if (!txInPeriod(t.date, from, to)) return sum;
-          if (isCreditOrder(t) || t.paymentMethod !== "ქეში (ნაღდი)") return sum;
-          return sum + t.amount;
+          if (isCreditOrder(t)) return sum;
+          return sum + saleSettlementParts(t).cash;
         }, 0),
       })),
     [transactions, from, to]

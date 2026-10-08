@@ -68,6 +68,39 @@ export function isDistribuciaBranch(branch: Branch) {
   return branch === "დისტრიბუცია";
 }
 
+/** ანგარიშზე გადასული თანხა ხაზებზე იყოფა; ბოლო ხაზი იღებს დამრგვალების ნაშთს. */
+export function allocateAccountPaid(amounts: number[], accountTotal: number): number[] {
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  const target = Math.round(accountTotal * 100);
+  if (amounts.length === 0 || total <= 0 || target <= 0) return amounts.map(() => 0);
+  let left = target;
+  return amounts.map((amount, index) => {
+    if (index === amounts.length - 1) return Math.max(0, left) / 100;
+    const share = Math.min(left, Math.round((target * amount) / total));
+    left -= share;
+    return share / 100;
+  });
+}
+
+/** ნაწილობრივი გადმორიცხვა. სრული ან ნულოვანი თანხა accountPaid-ს შლის. */
+export function assignSaleAccountSplit(sales: Sale[], accountPaid: number) {
+  const total = sales.reduce((sum, sale) => sum + sale.amount, 0);
+  const partial = accountPaid > 0.009 && accountPaid < total - 0.009;
+  if (!partial) {
+    for (const sale of sales) delete sale.accountPaid;
+    return false;
+  }
+  const shares = allocateAccountPaid(
+    sales.map((sale) => sale.amount),
+    accountPaid
+  );
+  sales.forEach((sale, index) => {
+    sale.paymentMethod = "ანგარიშზე ჩარიცხვა";
+    sale.accountPaid = shares[index];
+  });
+  return true;
+}
+
 export function branchPaymentOptions(branch: Branch): PaymentMethod[] {
   return isDistribuciaBranch(branch)
     ? ["ქეში (ნაღდი)", "ანგარიშზე ჩარიცხვა", "კონსიგნაცია"]

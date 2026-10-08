@@ -1,7 +1,7 @@
 import type { Branch, PaymentMethod, Transaction, TxSource } from "./types";
 import { saleGroupKey, saleGroupLabel } from "./branch-payments";
 import { saleGroupDescription } from "./tx-display-groups";
-import { isCreditOrder, txPaymentMethod } from "./utils";
+import { isCreditOrder, saleSettlementParts, txPaymentMethod } from "./utils";
 
 export const CARD_METHOD: PaymentMethod = "ბარათი";
 export const BANK_METHOD: PaymentMethod = "ანგარიშზე ჩარიცხვა";
@@ -92,7 +92,8 @@ function salePaymentRow(
   const primary = [...sales].sort((a, b) => b.date.localeCompare(a.date))[0];
   const method = txPaymentMethod(primary);
   const ch = channel(method);
-  if (!ch) return null;
+  const amount = sales.reduce((s, x) => s + saleSettlementParts(x).bank + saleSettlementParts(x).card, 0);
+  if (!ch || amount <= 0.009) return null;
 
   const src = sourceLabel(primary.source);
   const buyer = primary.buyerName ? ` · ${primary.buyerName}` : "";
@@ -111,7 +112,7 @@ function salePaymentRow(
     label: `${src} · გადახდა${buyer}${emp}${countNote}`,
     comment: `${desc} — ${payNote}`,
     depositorName: saleGroupLabel(primary) || depositorName(primary),
-    amount: sales.reduce((s, x) => s + x.amount, 0),
+    amount,
     source: primary.source ?? "admin",
     paymentMethod: method,
     productCount: sales.length,

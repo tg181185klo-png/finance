@@ -80,6 +80,8 @@ export interface Sale {
   creditDueDate?: string;
   /** polimeridistribucia აპის შეკვეთის ID */
   distribuciaOrderId?: string;
+  /** ნაწილი ანგარიშზე (გადმორიცხვა/ბარათი), დანარჩენი თანხა ქეშია */
+  accountPaid?: number;
 }
 
 /** ბე შეკვეთის გადახდის ისტორია */

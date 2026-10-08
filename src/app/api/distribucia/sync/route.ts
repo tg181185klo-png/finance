@@ -8,7 +8,8 @@ import {
   isDistribuciaSale,
 } from "@/lib/distribucia-sync";
 import { readStore, updateStore } from "@/lib/server-store";
-import type { PaymentMethod } from "@/lib/types";
+import { assignSaleAccountSplit } from "@/lib/branch-payments";
+import type { PaymentMethod, Sale } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       orderId?: string;
       transactionId?: string;
       paymentMethod?: PaymentMethod;
+      accountPaid?: number | null;
     };
 
     if (body.action === "updatePayment") {
@@ -60,16 +62,40 @@ export async function POST(req: NextRequest) {
 
       let updated = 0;
       const store = await updateStore((s) => {
+        const sales: Sale[] = [];
         for (const t of s.transactions) {
           if (!isDistribuciaSale(t) || t.type !== "sale") continue;
           const match =
             (body.transactionId && t.id === body.transactionId) ||
             (body.orderId && t.distribuciaOrderId === body.orderId);
           if (!match) continue;
-          t.paymentMethod = body.paymentMethod!;
-          updated += 1;
+          sales.push(t);
         }
-        if (updated === 0) throw new Error("ჩანაწერი ვერ მოიძებნა");
+        if (!sales.length) throw new Error("ჩანაწერი ვერ მოიძებნა");
+        const method = body.paymentMethod!;
+        const total = sales.reduce((sum, sale) => sum + sale.amount, 0);
+        const accountPaid = body.accountPaid == null ? null : Number(body.accountPaid);
+        if (method === "ანგარიშზე ჩარიცხვა" && accountPaid != null) {
+          if (!Number.isFinite(accountPaid) || accountPaid < 0) throw new Error("ანგარიშის თანხა არასწორია");
+          if (accountPaid > total + 0.02) throw new Error("ანგარიშზე გადმორიცხული შეკვეთის ჯამზე მეტია");
+          if (accountPaid <= 0.009) {
+            for (const sale of sales) {
+              sale.paymentMethod = "ქეში (ნაღდი)";
+              delete sale.accountPaid;
+            }
+          } else if (!assignSaleAccountSplit(sales, accountPaid)) {
+            for (const sale of sales) {
+              sale.paymentMethod = method;
+              delete sale.accountPaid;
+            }
+          }
+        } else {
+          for (const sale of sales) {
+            sale.paymentMethod = method;
+            delete sale.accountPaid;
+          }
+        }
+        updated = sales.length;
       });
 
       return NextResponse.json({ ok: true, updated, transactions: store.transactions });

@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/require-admin";
 import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod, adjustStock, isCreditOrder, saleAffectsStock, saleCreditPaid, saleQuantityDelivered } from "@/lib/utils";
 import { BRANCHES } from "@/lib/constants";
+import { assignSaleAccountSplit } from "@/lib/branch-payments";
 import { ENTRY_ACTION_PIN } from "@/lib/action-password";
 import { deleteStoredTransaction } from "@/lib/activity-log";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       clientSaleId?: string;
       recurrence?: string;
       paymentMethod?: PaymentMethod;
+      accountPaid?: number | null;
       reviewed?: boolean;
       driverEmployeeId?: string;
       driverEmployeeName?: string;
@@ -106,19 +108,52 @@ export async function POST(req: NextRequest) {
 
       let updated = 0;
       const store = await updateStore((s) => {
+        const sales: Sale[] = [];
+        const idSet = new Set((body.ids ?? []).filter(Boolean));
+        if (body.id) idSet.add(body.id);
         for (const t of s.transactions) {
           const match =
-            (body.id && t.id === body.id) ||
+            (idSet.size > 0 && idSet.has(t.id)) ||
             (body.clientSaleId && t.type === "sale" && t.clientSaleId === body.clientSaleId);
-          if (!match) continue;
-          if (t.type === "sale") {
-            if (paymentMethod === "კონსიგნაცია") {
-              applyConsignmentToSale(t, { alreadyStockedOut: true });
-            } else {
-              t.paymentMethod = paymentMethod;
+          if (!match || t.type !== "sale") continue;
+          sales.push(t);
+        }
+        if (sales.length) {
+          const total = sales.reduce((sum, sale) => sum + sale.amount, 0);
+          const accountPaid = body.accountPaid == null ? null : Number(body.accountPaid);
+          if (paymentMethod === "კონსიგნაცია") {
+            for (const sale of sales) {
+              applyConsignmentToSale(sale, { alreadyStockedOut: true });
+              delete sale.accountPaid;
             }
-            updated += 1;
-          } else if (t.type === "expense") {
+          } else if (paymentMethod === "ანგარიშზე ჩარიცხვა" && accountPaid != null) {
+            if (!Number.isFinite(accountPaid) || accountPaid < 0) throw new Error("ანგარიშის თანხა არასწორია");
+            if (accountPaid > total + 0.02) throw new Error("ანგარიშზე გადმორიცხული შეკვეთის ჯამზე მეტია");
+            if (accountPaid <= 0.009) {
+              for (const sale of sales) {
+                sale.paymentMethod = "ქეში (ნაღდი)";
+                delete sale.accountPaid;
+              }
+            } else if (!assignSaleAccountSplit(sales, accountPaid)) {
+              for (const sale of sales) {
+                sale.paymentMethod = paymentMethod;
+                delete sale.accountPaid;
+              }
+            }
+          } else {
+            for (const sale of sales) {
+              sale.paymentMethod = paymentMethod;
+              delete sale.accountPaid;
+            }
+          }
+          updated += sales.length;
+        }
+        for (const t of s.transactions) {
+          const match =
+            (idSet.size > 0 && idSet.has(t.id)) ||
+            (body.clientSaleId && t.type === "sale" && t.clientSaleId === body.clientSaleId);
+          if (!match || t.type === "sale") continue;
+          if (t.type === "expense") {
             if (paymentMethod === "კონსიგნაცია") {
               throw new Error("ხარჯზე კონსიგნაცია შეუძლებელია");
             }
