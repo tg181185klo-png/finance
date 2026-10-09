@@ -702,6 +702,23 @@ export default function OverviewPanel({
       })),
     [transactions, from, to]
   );
+  const accountIncome = useMemo(
+    () =>
+      transactions.reduce((sum, t) => {
+        if (!txInPeriod(t.date, from, to)) return sum;
+        if (t.type === "sale") {
+          if (isCreditOrder(t)) return sum;
+          const parts = saleSettlementParts(t);
+          return sum + parts.card + parts.bank;
+        }
+        if (t.type === "deposit") {
+          const method = t.depositPaymentMethod ?? "ანგარიშზე ჩარიცხვა";
+          if (method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა") return sum + t.amount;
+        }
+        return sum;
+      }, 0),
+    [transactions, from, to]
+  );
   const companyObligations = useMemo(() => {
     const months = monthsTouching(from, to);
     const items = months.flatMap((month) => obligations?.[month] ?? []);
@@ -958,32 +975,43 @@ export default function OverviewPanel({
         )}
 
         <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში შემოსავალი ფილიალებით</p>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში შემოსავალი ფილიალებით</p>
+          <div className="flex flex-nowrap gap-1.5">
             {incomeByBranch.map((row) => (
-              <div key={row.branch} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-                <p className="text-xs text-zinc-500">{row.branch}</p>
-                <p className="text-base font-semibold text-emerald-400">{formatMoney(row.revenue)}</p>
+              <div key={row.branch} className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+                <p className="truncate text-[10px] text-zinc-500">{row.branch}</p>
+                <p className="truncate text-sm font-semibold tabular-nums text-emerald-400">{formatMoney(row.revenue)}</p>
+                <p className="truncate text-[10px] text-zinc-500">შემოსავალი</p>
               </div>
             ))}
-            <div className="rounded-lg border border-violet-900/50 bg-violet-950/30 px-3 py-2">
-              <p className="text-xs text-violet-200/80">დისტრიბუცია+ქუთაისი</p>
-              <p className="text-base font-semibold text-violet-200">{formatMoney(kutaisiDistribCashBalance)}</p>
-              <p className="text-[10px] text-zinc-500">ქეშის ნაშთი</p>
+            <div className="min-w-0 flex-1 rounded-md border border-violet-900/50 bg-violet-950/30 px-2 py-1" title="დისტრიბუცია+ქუთაისი">
+              <p className="truncate text-[10px] text-violet-200/80">დისტრიბუცია+ქუთაისი</p>
+              <p className="truncate text-sm font-semibold tabular-nums text-violet-200">{formatMoney(kutaisiDistribCashBalance)}</p>
+              <p className="truncate text-[10px] text-zinc-500">ქეშის ნაშთი</p>
+            </div>
+            <div className="min-w-0 flex-1 rounded-md border border-sky-900/50 bg-sky-950/30 px-2 py-1">
+              <p className="truncate text-[10px] text-sky-200/80">საბანკო ანგარიში</p>
+              <p className="truncate text-sm font-semibold tabular-nums text-sky-300">{formatMoney(accountIncome)}</p>
+              <p className="truncate text-[10px] text-zinc-500">შემოსავალი</p>
             </div>
           </div>
         </div>
 
         <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">სალაროს ნაშთი</p>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">სალაროს ნაშთი</p>
+          <div className="flex flex-nowrap gap-1.5">
             {placeCash.map((row) => (
-              <div key={row.branch} className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-                <p className="text-xs text-zinc-500">{row.branch}</p>
-                <p className="text-base font-semibold text-emerald-300">{formatMoney(row.cash)}</p>
-                <p className="text-[10px] text-zinc-500">სალაროში</p>
+              <div key={row.branch} className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+                <p className="truncate text-[10px] text-zinc-500">{row.branch}</p>
+                <p className="truncate text-sm font-semibold tabular-nums text-emerald-300">{formatMoney(row.cash)}</p>
+                <p className="truncate text-[10px] text-zinc-500">სალაროში</p>
               </div>
             ))}
+            <div className="min-w-0 flex-1 rounded-md border border-sky-900/50 bg-sky-950/30 px-2 py-1">
+              <p className="truncate text-[10px] text-sky-200/80">საბანკო ანგარიში</p>
+              <p className="truncate text-sm font-semibold tabular-nums text-sky-300">{formatMoney(accountTotal)}</p>
+              <p className="truncate text-[10px] text-zinc-500">ნაშთი</p>
+            </div>
           </div>
         </div>
 
