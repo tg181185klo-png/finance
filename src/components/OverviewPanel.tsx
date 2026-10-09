@@ -697,7 +697,8 @@ export default function OverviewPanel({
           if (t.type !== "sale" || t.branch !== branch) return sum;
           if (!txInPeriod(t.date, from, to)) return sum;
           if (isCreditOrder(t)) return sum;
-          return sum + saleSettlementParts(t).cash;
+          const parts = saleSettlementParts(t);
+          return sum + parts.cash + parts.bank;
         }, 0),
       })),
     [transactions, from, to]
@@ -708,12 +709,11 @@ export default function OverviewPanel({
         if (!txInPeriod(t.date, from, to)) return sum;
         if (t.type === "sale") {
           if (isCreditOrder(t)) return sum;
-          const parts = saleSettlementParts(t);
-          return sum + parts.card + parts.bank;
+          return sum + saleSettlementParts(t).bank;
         }
         if (t.type === "deposit") {
           const method = t.depositPaymentMethod ?? "ანგარიშზე ჩარიცხვა";
-          if (method === "ბარათი" || method === "ანგარიშზე ჩარიცხვა") return sum + t.amount;
+          if (method === "ანგარიშზე ჩარიცხვა") return sum + t.amount;
         }
         return sum;
       }, 0),
@@ -975,7 +975,7 @@ export default function OverviewPanel({
         )}
 
         <div>
-          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ქეში შემოსავალი ფილიალებით</p>
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">ჯამური შემოსავლები ობიექტების მიხედვით</p>
           <div className="flex flex-nowrap gap-1.5">
             {incomeByBranch.map((row) => (
               <div key={row.branch} className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1">
