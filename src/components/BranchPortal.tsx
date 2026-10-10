@@ -81,6 +81,13 @@ function cartTotal(items: CartItem[]) {
   return items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 }
 
+function dropMissing(current: Record<string, boolean>, keys: string[]) {
+  if (!keys.some((key) => current[key])) return current;
+  const next = { ...current };
+  for (const key of keys) delete next[key];
+  return next;
+}
+
 export default function BranchPortal({ token, fixedDate }: { token: string; fixedDate?: string }) {
   const searchParams = useSearchParams();
   const urlDate = searchParams.get("date") ?? undefined;
@@ -92,7 +99,8 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
 
   const [branch, setBranch] = useState("");
   const [err, setErr] = useState("");
-  const [ok, setOk] = useState(false);
+  const [sentOpen, setSentOpen] = useState(false);
+  const [missing, setMissing] = useState<Record<string, boolean>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const [date, setDate] = useState(resolvedDate);
   const [loading, setLoading] = useState(true);
@@ -189,7 +197,6 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     if (next < OPERATIONAL_DATA_FROM || next > today) return;
     setLoading(true);
     setErr("");
-    setOk(false);
     setCompletedSales([]);
     setCart([]);
     setExpenses([]);
@@ -215,6 +222,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
 
   function pickProductForCart(p: Product) {
     setPickedProduct(p);
+    clearMissing("product");
     setProductSearch(`${p.code} — ${p.name}`);
     setAddPrice(String(p.price));
     setAddQty("1");
@@ -277,22 +285,57 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     setCart((items) => items.map((i) => (i.id === id ? { ...i, unitPrice: n } : i)));
   }
 
-  function finishSale() {
+  function fieldMark(key: string) {
+    return missing[key] ? "border-red-500 bg-red-950/40 focus:border-red-400" : "";
+  }
+
+  function clearMissing(...keys: string[]) {
+    setMissing((current) => dropMissing(current, keys));
+  }
+
+  function collectSaleGaps() {
+    const gaps: Record<string, boolean> = {};
+    const customerStarted =
+      personType === "physical"
+        ? Boolean(firstName.trim() || lastName.trim() || phone.trim() || personalId.trim())
+        : Boolean(companyName.trim() || companyId.trim() || contactPhone.trim());
+    const saleStarted = customerStarted || cart.length > 0 || Boolean(pickedProduct) || Boolean(customerComment.trim());
+    if (!saleStarted) return gaps;
     if (personType === "physical") {
-      if (!firstName.trim() || !lastName.trim() || !phone.trim()) {
-        setErr("შეავსეთ სახელი, გვარი და ტელეფონი");
-        return;
-      }
+      if (!firstName.trim()) gaps.firstName = true;
+      if (!lastName.trim()) gaps.lastName = true;
+      if (!phone.trim()) gaps.phone = true;
     } else {
-      if (!companyName.trim() || !companyId.trim()) {
-        setErr("შეავსეთ კომპანიის დასახელება და საიდენტიფიკაციო კოდი");
-        return;
-      }
+      if (!companyName.trim()) gaps.companyName = true;
+      if (!companyId.trim()) gaps.companyId = true;
     }
-    if (cart.length === 0) {
-      setErr("კალათა ცარიელია — დაამატეთ მინიმუმ ერთი პროდუქტი");
+    if (cart.length === 0) gaps.product = true;
+    if (pickedProduct) {
+      const qty = parseFloat(addQty) || 0;
+      const price = parseFloat(addPrice);
+      if (qty <= 0) gaps.qty = true;
+      if (!Number.isFinite(price) || price < 0) gaps.price = true;
+    }
+    return gaps;
+  }
+
+  function finishSale() {
+    const gaps = collectSaleGaps();
+    if (cart.length === 0) gaps.product = true;
+    if (personType === "physical") {
+      if (!firstName.trim()) gaps.firstName = true;
+      if (!lastName.trim()) gaps.lastName = true;
+      if (!phone.trim()) gaps.phone = true;
+    } else {
+      if (!companyName.trim()) gaps.companyName = true;
+      if (!companyId.trim()) gaps.companyId = true;
+    }
+    if (Object.keys(gaps).length > 0) {
+      setMissing(gaps);
+      setErr("წითელი ველები შეავსეთ");
       return;
     }
+    setMissing({});
     setErr("");
     setCompletedSales((sales) => [
       ...sales,
@@ -333,8 +376,18 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     e.preventDefault();
     if (submitting) return;
 
-    if (!selectedEmployeeId) {
-      setErr("აირჩიეთ თენი სახელი");
+    const gaps: Record<string, boolean> = {};
+    if (!selectedEmployeeId) gaps.employee = true;
+    if (!asZero) {
+      Object.assign(gaps, collectSaleGaps());
+      for (const row of expenses) {
+        const amount = parseFloat(row.amount);
+        if (row.comment.trim() && !(amount > 0)) gaps[`expense-${row.id}`] = true;
+      }
+    }
+    if (Object.keys(gaps).length > 0) {
+      setMissing(gaps);
+      setErr("წითელი ველები შეავსეთ");
       return;
     }
     if (employees.length === 0) {
@@ -346,6 +399,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
       setErr("კალათაში დარჩა პროდუქტი — დაასრულეთ გაყიდვა ან წაშალეთ");
       return;
     }
+    setMissing({});
 
     const allSales = asZero ? [] : [...completedSales];
     const validClients = allSales.map((c) => ({
@@ -384,7 +438,6 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
 
     setSubmitting(true);
     setErr("");
-    setOk(false);
     try {
       const res = await fetch("/api/branch", {
         method: "POST",
@@ -405,7 +458,7 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
         setErr(d.error || "შეცდომა");
         return;
       }
-      setOk(true);
+      setSentOpen(true);
       setCompletedSales([]);
       setCart([]);
       setExpenses([]);
@@ -441,9 +494,19 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
         დღის რეპორტი · თარიღის შეცვლა შეუძლებელია · შეგიძლიათ რამდენჯერაც გინდოთ გაგზავნოთ
       </p>
 
-      {ok && (
-        <div className="mb-4 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          ✓ შენახულია ბაზაში! ადმინ პანელი რამდენიმე წამში განახლდება. იგივე დღეში კიდევ შეგიძლიათ გაგზავნა.
+      {sentOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-emerald-700 bg-zinc-900 p-5 text-center shadow-xl">
+            <p className="text-lg font-semibold text-emerald-300">ინფორმაცია გაიგზავნა</p>
+            <p className="mt-2 text-sm text-zinc-400">დღის რეპორტი შენახულია. იგივე დღეში კიდევ შეგიძლიათ გაგზავნა.</p>
+            <button
+              type="button"
+              className="mt-4 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500"
+              onClick={() => setSentOpen(false)}
+            >
+              კარგი
+            </button>
+          </div>
         </div>
       )}
       {err && branch && (
@@ -461,9 +524,12 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           ) : (
             <>
               <select
-                className={inputCls}
+                className={`${inputCls} ${fieldMark("employee")}`}
                 value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedEmployeeId(e.target.value);
+                  clearMissing("employee");
+                }}
                 required
               >
                 <option value="">აირჩიეთ სახელი...</option>
@@ -524,8 +590,8 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           {personType === "physical" ? (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="სახელი" />
-                <input className={inputCls} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="გვარი" />
+                <input className={`${inputCls} ${fieldMark("firstName")}`} value={firstName} onChange={(e) => { setFirstName(e.target.value); clearMissing("firstName"); }} placeholder="სახელი" />
+                <input className={`${inputCls} ${fieldMark("lastName")}`} value={lastName} onChange={(e) => { setLastName(e.target.value); clearMissing("lastName"); }} placeholder="გვარი" />
               </div>
               <input
                 className={`${inputCls} mt-2`}
@@ -535,9 +601,9 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
                 inputMode="numeric"
               />
               <input
-                className={`${inputCls} mt-2`}
+                className={`${inputCls} mt-2 ${fieldMark("phone")}`}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => { setPhone(e.target.value); clearMissing("phone"); }}
                 placeholder="ტელეფონი (5xxxxxxxx)"
                 inputMode="tel"
               />
@@ -545,15 +611,15 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           ) : (
             <>
               <input
-                className={inputCls}
+                className={`${inputCls} ${fieldMark("companyName")}`}
                 value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
+                onChange={(e) => { setCompanyName(e.target.value); clearMissing("companyName"); }}
                 placeholder="კომპანიის დასახელება"
               />
               <input
-                className={`${inputCls} mt-2`}
+                className={`${inputCls} mt-2 ${fieldMark("companyId")}`}
                 value={companyId}
-                onChange={(e) => setCompanyId(e.target.value)}
+                onChange={(e) => { setCompanyId(e.target.value); clearMissing("companyId"); }}
                 placeholder="საიდენტიფიკაციო კოდი"
                 inputMode="numeric"
               />
@@ -621,12 +687,13 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
 
           <div className="relative">
             <input
-              className={inputCls}
+              className={`${inputCls} ${fieldMark("product")}`}
               value={productSearch}
               onFocus={() => !pickedProduct && setShowProductList(true)}
               onChange={(e) => {
                 if (pickedProduct) clearPickedProduct();
                 setProductSearch(e.target.value);
+                clearMissing("product");
                 setShowProductList(true);
               }}
               placeholder="ჩაწერე კოდი ან სახელი..."
@@ -668,9 +735,9 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
                     type="number"
                     min={1}
                     step={1}
-                    className={inputCls}
+                    className={`${inputCls} ${fieldMark("qty")}`}
                     value={addQty}
-                    onChange={(e) => setAddQty(e.target.value)}
+                    onChange={(e) => { setAddQty(e.target.value); clearMissing("qty"); }}
                   />
                 </div>
                 <div>
@@ -679,9 +746,9 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
                     type="number"
                     min={0}
                     step={0.01}
-                    className={inputCls}
+                    className={`${inputCls} ${fieldMark("price")}`}
                     value={addPrice}
-                    onChange={(e) => setAddPrice(e.target.value)}
+                    onChange={(e) => { setAddPrice(e.target.value); clearMissing("price"); }}
                   />
                 </div>
               </div>
@@ -866,13 +933,14 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
                       type="number"
                       min={0}
                       step={0.01}
-                      className={inputCls}
+                      className={`${inputCls} ${fieldMark(`expense-${row.id}`)}`}
                       value={row.amount}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setExpenses((s) =>
                           s.map((x) => (x.id === row.id ? { ...x, amount: e.target.value } : x))
-                        )
-                      }
+                        );
+                        clearMissing(`expense-${row.id}`);
+                      }}
                       placeholder="თანხა (₾)"
                     />
                     <select
