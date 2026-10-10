@@ -43,6 +43,13 @@ export async function createSessionToken(): Promise<string> {
   return `${exp}.${sig}`;
 }
 
+export function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 export async function verifySessionToken(token: string): Promise<boolean> {
   const dot = token.lastIndexOf(".");
   if (dot < 0) return false;
@@ -51,7 +58,7 @@ export async function verifySessionToken(token: string): Promise<boolean> {
   const exp = Number(payload);
   if (!Number.isFinite(exp) || exp < Date.now()) return false;
   const expected = await signPayload(payload);
-  return sig === expected;
+  return safeEqual(sig, expected);
 }
 
 export function sessionCookieOptions() {

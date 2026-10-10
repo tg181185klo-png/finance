@@ -1,24 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCron } from "@/lib/cron-auth";
 import { applyDistribuciaOrders, DISTRIBUCIA_SYNC_FROM, fetchDistribuciaOrders } from "@/lib/distribucia-sync";
 import { readStore, updateStore } from "@/lib/server-store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorized(req: NextRequest) {
-  const secret = process.env.CRON_SECRET || process.env.ADMIN_PIN || "12345";
-  const auth = req.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const q = req.nextUrl.searchParams.get("secret") || "";
-  if (bearer && bearer === secret) return true;
-  if (q && q === secret) return true;
-  if (req.headers.get("x-vercel-cron") === "1") return true;
-  return false;
-}
-
 /** დისტრიბუციის შეკვეთები იწერება ფინანსებში, როცა იქ რამე შეიცვალა */
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!authorizeCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,27 +1,13 @@
 import { NextResponse } from "next/server";
-import { diagnoseStorage, readStore, storageMode } from "@/lib/server-store";
-import { env } from "@/lib/env";
+import { readStore } from "@/lib/server-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const store = await readStore();
-    const diagnosis = await diagnoseStorage();
-    return NextResponse.json({
-      ok: true,
-      storage: storageMode(),
-      diagnosis,
-      transactions: store.transactions.length,
-      branchReports: store.branchReports.length,
-      employees: store.employees?.length ?? 0,
-      sheetId: env.googleSheetId,
-      appUrl: env.appUrl || null,
-      commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || null,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "შეცდომა";
-    const diagnosis = await diagnoseStorage().catch(() => null);
-    return NextResponse.json({ ok: false, error: msg, diagnosis }, { status: 500 });
+    await readStore();
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
