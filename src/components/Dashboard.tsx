@@ -1253,6 +1253,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         ...prev,
         transactions: d.transactions ?? prev.transactions,
         inventory: d.inventory ?? prev.inventory,
+        branchReports: d.branchReports ?? prev.branchReports,
       }));
       setSaveMsg("შემოსავალი განახლდა ✓");
       return true;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
-import { updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
+import { releaseSalesMovedOffReport, updateClientSaleDriverInStore } from "@/lib/branch-sales-sync";
 import { applyExpenseToStore, applySaleToStock, applyConsignmentToSale, applyCreditDelivery, reverseExpenseObligation, reverseCreditOrderData, markCreditOrderProgress, uid, isSettlementPaymentMethod, adjustStock, isCreditOrder, saleAffectsStock, saleCreditPaid, saleQuantityDelivered } from "@/lib/utils";
 import { BRANCHES } from "@/lib/constants";
 import { assignSaleAccountSplit } from "@/lib/branch-payments";
@@ -235,9 +235,11 @@ export async function POST(req: NextRequest) {
       if (!lines.length) return NextResponse.json({ error: "შემოსავალი საჭიროა" }, { status: 400 });
 
       const store = await updateStore((s) => {
+        const reportIds = new Set<string>();
         for (const line of lines) {
           const sale = s.transactions.find((t) => t.id === line.id && t.type === "sale");
           if (!sale || sale.type !== "sale") throw new Error("შემოსავალი ვერ მოიძებნა");
+          if (sale.reportId) reportIds.add(sale.reportId);
           const quantity = Number(line.quantity);
           const unitPrice = Number(line.unitPrice);
           if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("რაოდენობა არასწორია");
@@ -269,12 +271,14 @@ export async function POST(req: NextRequest) {
             s.inventory = adjustStock(s.inventory, sale.branch, sale.productCode, -sale.quantity);
           }
         }
+        for (const reportId of reportIds) releaseSalesMovedOffReport(s, reportId);
       });
 
       return NextResponse.json({
         ok: true,
         transactions: store.transactions,
         inventory: store.inventory,
+        branchReports: store.branchReports,
       });
     }
 

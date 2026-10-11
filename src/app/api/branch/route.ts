@@ -15,7 +15,7 @@ import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { DEFAULT_BRANCH_TOKENS } from "@/lib/store-merge";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
-import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
+import { buildClientSaleMeta, appendToBranchReport, applyZeroToExistingReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
@@ -155,6 +155,7 @@ async function submitBranchReport(body: SubmitBody) {
         if (!hasAttendance) {
           addEmployeeAttendance(store, employee, day, "დღის", branch);
         }
+        applyZeroToExistingReport(store, report.id);
         recordSubmission(report, reportingEmployee, now);
         noopReport = report;
       }, { backupSource: "branch-portal" });

@@ -57,6 +57,56 @@ export function buildClientSaleMeta(client: BranchClientSale): string {
     .join(" · ");
 }
 
+export const ZERO_SALES_NOTE = "ნულოვანი რეპორტი — გაყიდვა არ ყოფილა";
+
+/** გაყიდვა სხვა დღეზეა გადატანილი — ამ რეპორტს აღარ ეკუთვნის და ხელახალი სინქი ვერ წაშლის. */
+export function releaseSalesMovedOffReport(store: Store, reportId: string): void {
+  const report = store.branchReports.find((r) => r.id === reportId);
+  if (!report) return;
+
+  const moved = store.transactions.filter(
+    (t): t is Sale =>
+      t.type === "sale" && t.reportId === reportId && t.date.slice(0, 10) !== report.date
+  );
+  if (!moved.length) return;
+
+  const movedSaleIds = new Set(
+    moved.map((t) => t.clientSaleId).filter((id): id is string => Boolean(id))
+  );
+  for (const sale of moved) sale.reportId = undefined;
+
+  if (movedSaleIds.size) {
+    report.clientSales = (report.clientSales ?? []).filter(
+      (c) => !c.clientSaleId || !movedSaleIds.has(c.clientSaleId)
+    );
+  }
+
+  recalculateReportTotals(report);
+  if (
+    report.salesTotal <= 0 &&
+    !(report.clientSales ?? []).length &&
+    !(report.sales ?? []).length &&
+    !(report.incomes ?? []).length
+  ) {
+    report.salesTotal = 0;
+    report.salesNote = ZERO_SALES_NOTE;
+  }
+}
+
+/** ნულოვანი გაგზავნა არსებულ დღეს ცარიელებს. სხვა დღეზე გადატანილი გაყიდვა რჩება. */
+export function applyZeroToExistingReport(store: Store, reportId: string): BranchDailyReport {
+  const report = store.branchReports.find((r) => r.id === reportId);
+  if (!report) throw new Error("რეპორტი ვერ მოიძებნა");
+
+  releaseSalesMovedOffReport(store, reportId);
+  report.clientSales = [];
+  report.sales = [];
+  report.incomes = [];
+  report.salesTotal = 0;
+  report.salesNote = ZERO_SALES_NOTE;
+  return syncReportTransactions(store, reportId);
+}
+
 export function recalculateReportTotals(report: BranchDailyReport): void {
   const clientSales = report.clientSales ?? [];
   const incomes = report.incomes ?? [];
