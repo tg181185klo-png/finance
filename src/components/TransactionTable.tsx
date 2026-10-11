@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Branch, Employee, PaymentMethod, Sale, Transaction } from "@/lib/types";
 import { BRANCHES } from "@/lib/constants";
 import { PAYMENT_METHODS } from "@/lib/dashboard-data";
@@ -17,6 +17,33 @@ import {
 } from "@/lib/utils";
 import { confirmedActionPin } from "@/lib/action-password";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
+
+function SaleDateField({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (next: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      type="date"
+      className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
+      min={OPERATIONAL_DATA_FROM}
+      value={draft}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (!draft || draft === value) return;
+        void onCommit(draft).then((ok) => {
+          if (!ok) setDraft(value);
+        });
+      }}
+    />
+  );
+}
 
 export function txLabel(t: Transaction) {
   if (t.type === "sale") {
@@ -475,16 +502,11 @@ export default function TransactionTable({
                 >
                   <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400" onClick={(e) => e.stopPropagation()}>
                     {onUpdateSale && isSale ? (
-                      <input
-                        type="date"
-                        className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
-                        min={OPERATIONAL_DATA_FROM}
+                      <SaleDateField
                         value={t.date.slice(0, 10)}
-                        onChange={(e) => {
-                          const next = e.target.value;
-                          if (!next || next === t.date.slice(0, 10)) return;
+                        onCommit={(next) => {
                           const sales = g.items.filter((item): item is Sale => item.type === "sale");
-                          void onUpdateSale({
+                          return onUpdateSale!({
                             date: next,
                             branch: t.branch,
                             buyerName: t.buyerName ?? "",

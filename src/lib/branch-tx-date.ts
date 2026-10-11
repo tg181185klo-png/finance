@@ -1,11 +1,19 @@
 import type { BranchClientSale, BranchDailyReport } from "./types";
 
-/** ლინკის სამუშაო დღე + გაგზავნის რეალური საათი (ლოკალური). */
+/** ლინკის სამუშაო დღე + გაგზავნის საათი. დღე UTC კალენდარია, სერვერის სარტყელი ვერ გადაიტანს. */
 export function branchTransactionDate(reportDay: string, submittedAt: string): string {
   const at = new Date(submittedAt);
   const [y, m, d] = reportDay.split("-").map(Number);
-  const merged = new Date(at);
-  merged.setFullYear(y, m - 1, d);
+  if (!Number.isFinite(at.getTime()) || !y || !m || !d) return `${reportDay}T12:00:00.000Z`;
+  const merged = new Date(Date.UTC(
+    y,
+    m - 1,
+    d,
+    at.getUTCHours(),
+    at.getUTCMinutes(),
+    at.getUTCSeconds(),
+    at.getUTCMilliseconds()
+  ));
   return merged.toISOString();
 }
 
