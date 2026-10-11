@@ -16,6 +16,7 @@ import {
 import {
   hasSupabaseRestStore,
   readSupabaseRestSnapshot,
+  readSupabaseRestUpdatedAt,
   writeToSupabaseRest,
   StoreConflictError,
 } from "./supabase-rest-store";
@@ -303,6 +304,12 @@ async function writeToBlob(store: Store) {
     const msg = err instanceof Error ? err.message : "blob write failed";
     throw new Error(`მონაცემების შენახვა ვერ მოხერხდა: ${msg}`);
   }
+}
+
+/** შეიცვალა თუ არა შენახული მონაცემი. სრულ store-ს არ კითხულობს. */
+export async function readStoreRevision(): Promise<string | null> {
+  if (!hasSupabaseRestStore()) return null;
+  return readSupabaseRestUpdatedAt();
 }
 
 export async function readStore(): Promise<Store> {

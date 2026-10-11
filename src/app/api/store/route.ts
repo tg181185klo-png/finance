@@ -1,17 +1,27 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/require-admin";
-import { readStore } from "@/lib/server-store";
+import { readStore, readStoreRevision } from "@/lib/server-store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const noStore = { "Cache-Control": "no-store, max-age=0" };
+
+export async function GET(req: NextRequest) {
   const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
+    if (req.nextUrl.searchParams.get("rev") === "1") {
+      const updatedAt = await readStoreRevision();
+      return NextResponse.json({ updatedAt }, { headers: noStore });
+    }
     const store = await readStore();
+    const updatedAt = await readStoreRevision();
     return NextResponse.json(store, {
-      headers: { "Cache-Control": "no-store, max-age=0" },
+      headers: {
+        ...noStore,
+        ...(updatedAt ? { "X-Store-Updated-At": updatedAt } : {}),
+      },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "შეცდომა";

@@ -179,6 +179,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const skipStockAutoSave = useRef(true);
   /** Bumped on local patches so in-flight /api/store polls cannot overwrite fresher UI state. */
   const storeLoadGen = useRef(0);
+  const storeRevision = useRef<string | null>(null);
 
   // Sale form
   const [sBranch, setSBranch] = useState<Branch>("ქუთაისი");
@@ -335,6 +336,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         throw new Error("მონაცემების ფორმატი არასწორია");
       }
       const data = mergeStore(raw);
+      const revision = res.headers.get("x-store-updated-at");
+      if (revision) storeRevision.current = revision;
       if (gen !== storeLoadGen.current) return data;
       setStore(data);
       setStoreWarning("");
@@ -383,10 +386,29 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   useEffect(() => {
     if (loading) return;
+    let stopped = false;
+    async function watchStore() {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch("/api/store?rev=1", { cache: "no-store" });
+        if (stopped || !res.ok) return;
+        const data = (await res.json()) as { updatedAt?: unknown };
+        const next = typeof data.updatedAt === "string" ? data.updatedAt : null;
+        if (!next || storeRevision.current === next) return;
+        const firstSeen = storeRevision.current == null;
+        storeRevision.current = next;
+        if (!firstSeen) await loadStore();
+      } catch {
+        /* შემოწმების შეცდომა ეკრანს არ ანგრევს */
+      }
+    }
     const id = setInterval(() => {
-      loadStore().catch(() => {});
+      void watchStore();
     }, STORE_REFRESH_MS);
-    return () => clearInterval(id);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
   }, [loading, loadStore]);
 
   useEffect(() => {

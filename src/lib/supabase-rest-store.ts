@@ -68,6 +68,19 @@ export async function readSupabaseRestSnapshot(): Promise<StoreSnapshot | null> 
   };
 }
 
+/** მხოლოდ შენახვის დრო — მთელი მონაცემის გადმოწერის გარეშე. */
+export async function readSupabaseRestUpdatedAt(): Promise<string | null> {
+  if (!hasSupabaseRestStore()) return null;
+  const sb = getSupabaseRestClient();
+  const { data, error } = await sb
+    .from("finance_store")
+    .select("updated_at")
+    .eq("id", "main")
+    .maybeSingle();
+  if (error) throw new Error(`Supabase store revision: ${error.message}`);
+  return typeof data?.updated_at === "string" ? data.updated_at : null;
+}
+
 export async function readFromSupabaseRest(): Promise<Store | null> {
   const snap = await readSupabaseRestSnapshot();
   return snap?.store ?? null;
