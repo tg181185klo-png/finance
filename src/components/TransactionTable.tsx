@@ -30,7 +30,7 @@ function SaleDateField({
   return (
     <input
       type="date"
-      className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
+      className="w-[7.15rem] max-w-full rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
       min={OPERATIONAL_DATA_FROM}
       value={draft}
       onClick={(e) => e.stopPropagation()}
@@ -94,7 +94,7 @@ function PaymentMethodCell({
 
   return (
     <select
-      className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs focus:border-emerald-500"
+      className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs focus:border-emerald-500"
       value={value}
       disabled={busy}
       onClick={(e) => e.stopPropagation()}
@@ -148,7 +148,7 @@ function DriverCell({
 
   return (
     <select
-      className="max-w-[140px] rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-violet-200 focus:border-violet-500"
+      className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-violet-200 focus:border-violet-500"
       value={value}
       disabled={busy}
       onClick={(e) => e.stopPropagation()}
@@ -173,6 +173,33 @@ function DriverCell({
         </option>
       ))}
     </select>
+  );
+}
+
+function CustomerHint({ name }: { name: string }) {
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  const label = name.trim();
+  if (!label || label === "—") {
+    return <span className="text-[11px] text-zinc-600">—</span>;
+  }
+  const initial = label.slice(0, 1);
+  return (
+    <span
+      className="relative inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[10px] font-medium text-zinc-300"
+      onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setTip(null)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {initial}
+      {tip && (
+        <span
+          className="pointer-events-none fixed z-50 max-w-xs whitespace-nowrap rounded-md border border-zinc-600 bg-zinc-950 px-2 py-1 text-xs font-medium text-zinc-100 shadow-xl"
+          style={{ left: Math.min(tip.x + 14, window.innerWidth - 240), top: Math.min(tip.y + 16, window.innerHeight - 40) }}
+        >
+          {label}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -364,7 +391,7 @@ function DeleteRow({
   return (
     <button
       type="button"
-      className="rounded border border-red-900/60 px-2 py-1 text-xs text-red-400 hover:bg-red-950/40 disabled:opacity-40"
+      className="shrink-0 whitespace-nowrap rounded border border-red-900/60 px-2 py-1 text-[11px] text-red-400 hover:bg-red-950/40 disabled:opacity-40"
       disabled={busy || unique.length === 0}
       onClick={async (e) => {
         e.stopPropagation();
@@ -437,47 +464,44 @@ export default function TransactionTable({
   const showDriver = Boolean(onUpdateDriver) || rows.some((t) => t.type === "sale" && t.employeeName);
   const showReviewed = Boolean(onToggleReview) || bankLedgerReviewed !== undefined;
 
-  const colCount =
-    5 +
-    (showBranch ? 1 : 0) +
-    (showDriver ? 1 : 0) +
-    (showReviewed ? 1 : 0) +
-    (onDelete || onUpdateSale ? 1 : 0);
+  const columns = [
+    "8.4rem",
+    "6.8rem",
+    ...(showBranch ? ["8.2rem"] : []),
+    "8.4rem",
+    "minmax(10rem, 1.4fr)",
+    ...(showDriver ? ["minmax(9rem, 1fr)"] : []),
+    "6.8rem",
+    ...(showReviewed ? ["4.8rem"] : []),
+    ...(onDelete || onUpdateSale ? ["11.4rem"] : []),
+  ].join(" ");
+  const headCell =
+    "flex min-w-0 items-center overflow-hidden whitespace-nowrap border-l border-zinc-800 px-2.5 py-2 text-[11px] font-medium tracking-wide text-zinc-400 first:border-l-0";
+  const bodyCell =
+    "flex min-w-0 items-center overflow-hidden border-l border-zinc-800/80 px-2.5 py-2 first:border-l-0";
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] table-fixed text-sm">
-        <colgroup>
-          <col className="w-[9.5rem]" />
-          <col className="w-[8%]" />
-          {showBranch && <col className="w-[6.5rem]" />}
-          <col className="w-[22%]" />
-          <col className="w-[14%]" />
-          <col className="w-[12%]" />
-          {showDriver && <col className="w-[11%]" />}
-          <col className="w-[10%]" />
-          {showReviewed && <col className="w-[6%]" />}
-          {(onDelete || onUpdateSale) && <col className="w-[8.5rem]" />}
-        </colgroup>
-        <thead>
-          <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-            <th className="px-2 py-2 font-medium">დრო</th>
-            <th className="px-2 py-2 font-medium">ტიპი</th>
-            {showBranch && <th className="px-2 py-2 font-medium">ფილიალი</th>}
-            <th className="px-2 py-2 font-medium">მომხმარებელი</th>
-            <th className="px-2 py-2 font-medium">კომენტარი</th>
-            <th className="px-2 py-2 font-medium">გადახდა</th>
-            {showDriver && <th className="px-2 py-2 font-medium">მომზიდავი</th>}
-            <th className="px-2 py-2 text-right font-medium">თანხა</th>
-            {showReviewed && (
-              <th className="px-2 py-2 text-center font-medium" title="აისახა ანგარიშზე / ბარათზე">
-                აისახა
-              </th>
-            )}
-            {(onDelete || onUpdateSale) && <th className="px-2 py-2 font-medium">მოქმედება</th>}
-          </tr>
-        </thead>
-        <tbody>
+      <div className="min-w-[72rem] text-sm">
+        <div
+          className="grid border-b border-zinc-700 bg-zinc-900/80"
+          style={{ gridTemplateColumns: columns }}
+        >
+          <div className={headCell}>თარიღი</div>
+          <div className={headCell}>ტიპი</div>
+          {showBranch && <div className={headCell}>ფილიალი</div>}
+          <div className={`${headCell} justify-center`}>მომხმარებელი</div>
+          <div className={headCell}>გადახდა</div>
+          {showDriver && <div className={headCell}>მომზიდავი</div>}
+          <div className={`${headCell} justify-end`}>თანხა</div>
+          {showReviewed && (
+            <div className={`${headCell} justify-center`} title="აისახა ანგარიშზე / ბარათზე">
+              აისახა
+            </div>
+          )}
+          {(onDelete || onUpdateSale) && <div className={headCell}>მოქმედება</div>}
+        </div>
+        <div>
           {groups.map((g) => {
             const t = g.primary;
             const ids = g.items.map((x) => x.id);
@@ -485,22 +509,24 @@ export default function TransactionTable({
               ids.length > 0 && ids.every((id) => Boolean(bankLedgerReviewed?.[id]));
             const open = openKey === g.key;
             const isSale = t.type === "sale";
-            const customer =
-              isSale ? (t.buyerName || t.comment || "—").trim() : "—";
+            const customer = isSale ? (t.buyerName || "").trim() : "";
+
+            const note = (t.comment || "").trim();
 
             return (
               <Fragment key={g.key}>
-                <tr
-                  className={`border-b border-zinc-800/50 ${
-                    showReviewed && !reviewed ? "bg-amber-950/10" : ""
-                  } ${isSale ? "cursor-pointer hover:bg-zinc-800/30" : ""} ${
-                    open ? "bg-sky-950/20" : ""
+                <div
+                  className={`grid border-b border-zinc-800/70 ${
+                    showReviewed && !reviewed ? "bg-amber-950/15" : ""
+                  } ${isSale ? "cursor-pointer hover:bg-zinc-800/40" : ""} ${
+                    open ? "bg-sky-950/25" : ""
                   }`}
+                  style={{ gridTemplateColumns: columns }}
                   onClick={() => {
                     if (isSale) setOpenKey((prev) => (prev === g.key ? null : g.key));
                   }}
                 >
-                  <td className="px-2 py-2.5 whitespace-nowrap text-zinc-400" onClick={(e) => e.stopPropagation()}>
+                  <div className={`${bodyCell} whitespace-nowrap text-zinc-300`} onClick={(e) => e.stopPropagation()}>
                     {onUpdateSale && isSale ? (
                       <SaleDateField
                         value={t.date.slice(0, 10)}
@@ -521,11 +547,11 @@ export default function TransactionTable({
                         }}
                       />
                     ) : (
-                      formatDate(t.date)
+                      <span className="whitespace-nowrap text-xs">{formatDate(t.date)}</span>
                     )}
-                  </td>
-                  <td
-                    className={`px-2 py-2.5 ${
+                  </div>
+                  <div
+                    className={`${bodyCell} whitespace-nowrap text-xs ${
                       t.type === "sale"
                         ? "text-emerald-400"
                         : t.type === "deposit"
@@ -550,33 +576,34 @@ export default function TransactionTable({
                     {isSale && (
                       <span className="ml-1 text-[10px] text-zinc-500">{open ? "▲" : "▼"}</span>
                     )}
-                  </td>
-                  {showBranch && <td className="truncate px-2 py-2.5">{t.branch}</td>}
-                  <td className="truncate px-2 py-2.5" title={customer}>
-                    {customer}
-                  </td>
-                  <td className="truncate px-2 py-2.5 text-zinc-500" title={t.comment || txDetail(t)}>
-                    {t.comment || txDetail(t)}
-                  </td>
-                  <td className="px-2 py-2.5">
+                  </div>
+                  {showBranch && (
+                    <div className={`${bodyCell} truncate text-xs`} title={t.branch}>
+                      {t.branch}
+                    </div>
+                  )}
+                  <div className={`${bodyCell} justify-center`}>
+                    <CustomerHint name={customer} />
+                  </div>
+                  <div className={bodyCell}>
                     <PaymentMethodCell
                       transaction={t}
                       onUpdatePayment={onUpdatePayment}
                       requirePin={Boolean(onUpdateSale)}
                     />
-                  </td>
+                  </div>
                   {showDriver && (
-                    <td className="truncate px-2 py-2.5">
+                    <div className={bodyCell}>
                       <DriverCell
                         transaction={t}
                         employees={employees}
                         onUpdateDriver={onUpdateDriver}
                         requirePin={Boolean(onUpdateSale)}
                       />
-                    </td>
+                    </div>
                   )}
-                  <td
-                    className={`px-2 py-2.5 text-right font-medium tabular-nums ${
+                  <div
+                    className={`${bodyCell} justify-end whitespace-nowrap text-right font-medium tabular-nums ${
                       t.type === "sale"
                         ? "text-emerald-400"
                         : t.type === "deposit"
@@ -586,19 +613,19 @@ export default function TransactionTable({
                   >
                     {t.type === "sale" || t.type === "deposit" ? "+" : "-"}
                     {formatMoney(g.amount)}
-                  </td>
+                  </div>
                   {showReviewed && (
-                    <td className="px-2 py-2.5 text-center">
+                    <div className={`${bodyCell} justify-center`}>
                       <ReviewedCell ids={ids} reviewed={reviewed} onToggleReview={onToggleReview} />
-                    </td>
+                    </div>
                   )}
                   {(onDelete || onUpdateSale) && (
-                    <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-col items-start gap-1">
+                    <div className={bodyCell} onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
                         {onUpdateSale && isSale && (
                           <button
                             type="button"
-                            className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:border-emerald-600 hover:text-emerald-300"
+                            className="shrink-0 rounded border border-zinc-600 px-2 py-1 text-[11px] text-zinc-200 hover:border-emerald-600 hover:text-emerald-300"
                             onClick={() => setEditKey((prev) => (prev === g.key ? null : g.key))}
                           >
                             რედაქტირება
@@ -616,23 +643,21 @@ export default function TransactionTable({
                           />
                         )}
                       </div>
-                    </td>
+                    </div>
                   )}
-                </tr>
+                </div>
                 {editKey === g.key && isSale && onUpdateSale && (
-                  <tr className="border-b border-emerald-900/40 bg-zinc-950/50">
-                    <td colSpan={colCount} className="px-3 py-3">
-                      <SaleEditForm
-                        sales={g.items.filter((item): item is Sale => item.type === "sale")}
-                        onSave={onUpdateSale}
-                        onClose={() => setEditKey(null)}
-                      />
-                    </td>
-                  </tr>
+                  <div className="border-b border-emerald-900/40 bg-zinc-950/50 px-3 py-3">
+                    <SaleEditForm
+                      sales={g.items.filter((item): item is Sale => item.type === "sale")}
+                      onSave={onUpdateSale}
+                      onClose={() => setEditKey(null)}
+                    />
+                  </div>
                 )}
                 {open && isSale && (
-                  <tr className="border-b border-sky-900/30 bg-zinc-950/40">
-                    <td colSpan={colCount} className="px-3 py-3">
+                  <div className="border-b border-sky-900/30 bg-zinc-950/40 px-3 py-3">
+                    {note ? <p className="mb-2 text-xs text-zinc-400">{note}</p> : null}
                       <div className="grid grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem] gap-x-3 border-b border-zinc-800 pb-1 text-[11px] uppercase tracking-wide text-zinc-500">
                         <span>პროდუქტი</span>
                         <span className="text-right">რაოდენობა</span>
@@ -652,14 +677,13 @@ export default function TransactionTable({
                           </div>
                         ) : null
                       )}
-                    </td>
-                  </tr>
+                  </div>
                 )}
               </Fragment>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2081,7 +2081,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               </span>
             </h3>
             <p className="mb-3 text-xs text-zinc-500">
-              ერთი გატარება = ერთი ხაზი · სახელზე დაჭერისას იხსნება გაყიდვა · „აისახა“ — ანგარიშზე/ბარათზე ჩარიცხვა
+              ერთი გატარება = ერთი ხაზი · ხაზზე დაჭერისას იხსნება გაყიდვა · მომხმარებელი ჩანს კურსორთან · „აისახა“ — ანგარიშზე/ბარათზე ჩარიცხვა
             </p>
             <TransactionTable
               rows={mainTabRows}
