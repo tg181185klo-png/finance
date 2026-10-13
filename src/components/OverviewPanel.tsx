@@ -8,6 +8,7 @@ import type { ResolvedPeriod } from "@/lib/period-filter";
 import { periodFlow, txInPeriod } from "@/lib/period-filter";
 import { effectiveTxBranch, txMatchesBranchFilter } from "@/lib/branch-allocation";
 import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM, OPERATIONAL_DATA_FROM_MONTH } from "@/lib/report-config";
+import { tbilisiToday } from "@/lib/tbilisi-day";
 import {
   calcBalancesUpToDate,
   emptyBranchCash,
@@ -572,7 +573,7 @@ export default function OverviewPanel({
 }: Props) {
   const [goodsFrom, setGoodsFrom] = useState<Record<string, Branch>>({});
   const [goodsBusy, setGoodsBusy] = useState<string | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = tbilisiToday();
   const [scope, setScope] = useState<ViewScope>("company");
   const [rangeMode, setRangeMode] = useState<RangeMode>("period");
   const [selectedDay, setSelectedDay] = useState(today);

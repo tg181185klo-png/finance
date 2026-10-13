@@ -17,6 +17,7 @@ import { DEFAULT_BRANCH_TOKENS } from "@/lib/store-merge";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
 import { buildClientSaleMeta, appendToBranchReport, applyZeroToExistingReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
+import { addCalendarDays, tbilisiToday } from "@/lib/tbilisi-day";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import type {
@@ -108,7 +109,7 @@ async function submitBranchReport(body: SubmitBody) {
   }
 
   const submittedBy = reportingEmployee.name;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = tbilisiToday();
   const linkDate = body.linkDate ? dateOnly(body.linkDate) : undefined;
   const requestedDay = dateOnly(body.date || today);
   const lockedDay = linkDate || today;
@@ -125,7 +126,9 @@ async function submitBranchReport(body: SubmitBody) {
     return { error: "მომავალი თარიღი არ შეიძლება", status: 400 as const };
   }
 
-  const day = isAdmin ? requestedDay : lockedDay;
+  let day = isAdmin ? requestedDay : lockedDay;
+  // ძველ ლინკზე (მაგ. 10 ოქტომბერი) ახალი გაგზავნა იმავე დღეს რჩებოდა და დღეს აღარ ჩანდა.
+  if (!isAdmin && day < addCalendarDays(today, -1)) day = today;
   const now = new Date().toISOString();
   const clientSales = parseClientSales(body);
   const incomes = body.incomes ?? [];
@@ -465,7 +468,7 @@ export async function GET(req: NextRequest) {
   const day =
     dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam)
       ? dayParam
-      : new Date().toISOString().slice(0, 10);
+      : tbilisiToday();
   if (!token) return NextResponse.json({ error: "token საჭიროა" }, { status: 400 });
 
   const store = await readStore();

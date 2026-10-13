@@ -2,6 +2,7 @@ import type { Branch, Transaction } from "./types";
 import { txMatchesBranchFilter } from "./branch-allocation";
 import { OPERATIONAL_DATA_FROM } from "./report-config";
 import { currentMonth, monthStartEnd, operatingExpenseAmount } from "./utils";
+import { tbilisiToday } from "./tbilisi-day";
 
 export type PeriodMode = "month" | "today" | "custom";
 
@@ -13,7 +14,7 @@ export type ResolvedPeriod = {
 };
 
 export function resolvePeriod(mode: PeriodMode, customFrom?: string, customTo?: string): ResolvedPeriod {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = tbilisiToday();
   if (mode === "today") {
     return { mode, from: today, to: today, label: "დღეს" };
   }

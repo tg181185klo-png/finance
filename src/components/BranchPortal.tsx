@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatReportDay } from "@/lib/branch-tx-date";
+import { addCalendarDays, tbilisiToday } from "@/lib/tbilisi-day";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { formatMoney, formatDate, uid, branchExpenseOperatingAmount } from "@/lib/utils";
@@ -91,17 +92,20 @@ function dropMissing(current: Record<string, boolean>, keys: string[]) {
 export default function BranchPortal({ token, fixedDate }: { token: string; fixedDate?: string }) {
   const searchParams = useSearchParams();
   const urlDate = searchParams.get("date") ?? undefined;
-  const today = new Date().toISOString().slice(0, 10);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const today = tbilisiToday();
   const resolvedDate = useMemo(() => {
     const candidate = fixedDate || urlDate;
-    return candidate && /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : today;
-  }, [fixedDate, urlDate, today]);
+    const linkDay = candidate && /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : today;
+    if (!isAdmin && linkDay < addCalendarDays(today, -1)) return today;
+    return linkDay;
+  }, [fixedDate, urlDate, today, isAdmin]);
 
   const [branch, setBranch] = useState("");
   const [err, setErr] = useState("");
   const [sentOpen, setSentOpen] = useState(false);
+  const [sentSummary, setSentSummary] = useState("");
   const [missing, setMissing] = useState<Record<string, boolean>>({});
-  const [isAdmin, setIsAdmin] = useState(false);
   const [date, setDate] = useState(resolvedDate);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -454,10 +458,16 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
         }),
       });
       const d = await res.json();
-      if (!res.ok) {
-        setErr(d.error || "შეცდომა");
+      if (!res.ok || !d.ok || !d.report?.date) {
+        setErr(d.error || "შენახვა ვერ დადასტურდა");
         return;
       }
+      const total = Number(d.report.salesTotal) || 0;
+      setSentSummary(
+        total > 0
+          ? `${formatReportDay(d.report.date)} · გაყიდვა ${formatMoney(total)}`
+          : `${formatReportDay(d.report.date)} · ნულოვანი რეპორტი, გაყიდვა არ ჩაწერილა`
+      );
       setSentOpen(true);
       setCompletedSales([]);
       setCart([]);
@@ -497,8 +507,9 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
       {sentOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-emerald-700 bg-zinc-900 p-5 text-center shadow-xl">
-            <p className="text-lg font-semibold text-emerald-300">ინფორმაცია გაიგზავნა</p>
-            <p className="mt-2 text-sm text-zinc-400">დღის რეპორტი შენახულია. იგივე დღეში კიდევ შეგიძლიათ გაგზავნა.</p>
+            <p className="text-lg font-semibold text-emerald-300">ინფორმაცია შეინახა</p>
+            <p className="mt-2 text-sm text-zinc-200">{sentSummary}</p>
+            <p className="mt-1 text-sm text-zinc-400">იგივე დღეში კიდევ შეგიძლიათ გაგზავნა.</p>
             <button
               type="button"
               className="mt-4 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold hover:bg-emerald-500"
@@ -997,7 +1008,18 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
           type="button"
           className="w-full rounded-xl border border-zinc-600 py-3 text-sm text-zinc-400 hover:bg-zinc-900 disabled:opacity-40"
           disabled={submitting || employees.length === 0 || !selectedEmployeeId}
-          onClick={(e) => submit(e, true)}
+          onClick={(e) => {
+            const started =
+              completedSales.length > 0 ||
+              cart.length > 0 ||
+              Boolean(pickedProduct) ||
+              Boolean(firstName.trim() || lastName.trim() || phone.trim() || companyName.trim());
+            if (started) {
+              setErr("გაყიდვა შევსებულია. გააგზავნეთ დღის რეპორტი. ნულოვანი მხოლოდ მაშინ, როცა გაყიდვა არ ყოფილა.");
+              return;
+            }
+            void submit(e, true);
+          }}
         >
           გაყიდვა არ ყოფილა (ნულოვანი რეპორტი)
         </button>

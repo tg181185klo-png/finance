@@ -395,9 +395,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const data = (await res.json()) as { updatedAt?: unknown };
         const next = typeof data.updatedAt === "string" ? data.updatedAt : null;
         if (!next || storeRevision.current === next) return;
-        const firstSeen = storeRevision.current == null;
         storeRevision.current = next;
-        if (!firstSeen) await loadStore();
+        await loadStore();
       } catch {
         /* შემოწმების შეცდომა ეკრანს არ ანგრევს */
       }
