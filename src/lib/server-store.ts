@@ -5,7 +5,7 @@ import type { PutCommandOptions } from "@vercel/blob";
 import type { Branch, Store } from "./types";
 import { BRANCHES } from "./constants";
 import { syncMonthObligationCycles, currentMonth } from "./utils";
-import { FRESH_START_MONTH } from "./report-config";
+import { FRESH_START_MONTH, OPERATIONAL_DATA_FROM } from "./report-config";
 import { env } from "./env";
 import { hasPostgres, readFromPostgres, writeToPostgres } from "./db";
 import {
@@ -122,14 +122,7 @@ async function assertSafePersist(incoming: Store, allowDestructive?: boolean) {
     const snap = await readSupabaseRestSnapshot();
     existing = snap?.store ?? null;
   } catch {
-    const empty =
-      (incoming.transactions?.length ?? 0) === 0 &&
-      (incoming.branchReports?.length ?? 0) === 0;
-    if (empty) {
-      throw new Error("ცარიელი მონაცემების შენახვა ვერ მოხერხდა — ბაზის შემოწმება ვერ გაკეთდა");
-    }
-    // სავსე ჩაწერა — თუ წაკითხვა ვერ მოხერხდა, მაინც ვუშვებთ (ფილიალის გაგზავნა არ უნდა ჩაჭრას)
-    return;
+    throw new Error("შენახვა შეჩერდა — ბაზის შემოწმება ვერ გაკეთდა, რომ არსებული ინფორმაცია არ წაიშალოს");
   }
 
   if (!existing) return;
@@ -162,6 +155,27 @@ async function assertSafePersist(incoming: Store, allowDestructive?: boolean) {
       `შენახვა უარყოფილია — თანამშრომლები არ შეიძლება შემცირდეს ${cur.employees}-დან ${next.employees}-მდე`
     );
   }
+
+  const curOp = operationalCounts(existing);
+  const nextOp = operationalCounts(incoming);
+  if (curOp.reports >= 3 && curOp.reports - nextOp.reports >= 3) {
+    throw new Error(
+      `შენახვა უარყოფილია — რეპორტები არ შეიძლება შემცირდეს ${curOp.reports}-დან ${nextOp.reports}-მდე`
+    );
+  }
+  if (curOp.txs >= 40 && nextOp.txs <= curOp.txs - 25) {
+    throw new Error(
+      `შენახვა უარყოფილია — ჩანაწერები არ შეიძლება შემცირდეს ${curOp.txs}-დან ${nextOp.txs}-მდე`
+    );
+  }
+}
+
+function operationalCounts(store: Store) {
+  const from = OPERATIONAL_DATA_FROM;
+  return {
+    txs: (store.transactions ?? []).filter((t) => t.date.slice(0, 10) >= from).length,
+    reports: (store.branchReports ?? []).filter((r) => r.date >= from).length,
+  };
 }
 
 async function persistStore(
