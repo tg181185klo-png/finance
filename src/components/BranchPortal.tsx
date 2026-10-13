@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { BRANCH_EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from "@/lib/dashboard-data";
 import { formatReportDay } from "@/lib/branch-tx-date";
-import { addCalendarDays, tbilisiToday } from "@/lib/tbilisi-day";
+import { tbilisiToday } from "@/lib/tbilisi-day";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS } from "@/lib/sheets-config";
 import { formatMoney, formatDate, uid, branchExpenseOperatingAmount } from "@/lib/utils";
@@ -95,10 +95,9 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
   const [isAdmin, setIsAdmin] = useState(false);
   const today = tbilisiToday();
   const resolvedDate = useMemo(() => {
+    if (!isAdmin) return today;
     const candidate = fixedDate || urlDate;
-    const linkDay = candidate && /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : today;
-    if (!isAdmin && linkDay < addCalendarDays(today, -1)) return today;
-    return linkDay;
+    return candidate && /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : today;
   }, [fixedDate, urlDate, today, isAdmin]);
 
   const [branch, setBranch] = useState("");

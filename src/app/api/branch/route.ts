@@ -15,9 +15,9 @@ import { fetchProductsFromGoogleSheets } from "@/lib/google-sheets";
 import { branchByToken, dateOnly, readStore, updateStore } from "@/lib/server-store";
 import { DEFAULT_BRANCH_TOKENS } from "@/lib/store-merge";
 import { branchSaleBuyerName, customerFromBranchSale, upsertCustomer } from "@/lib/customers";
-import { buildClientSaleMeta, appendToBranchReport, applyZeroToExistingReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
+import { buildClientSaleMeta, appendToBranchReport, withoutAutoDailyWageExpenses, fixReportTimestampsForDay } from "@/lib/branch-sales-sync";
 import { branchTransactionDate } from "@/lib/branch-tx-date";
-import { addCalendarDays, tbilisiToday } from "@/lib/tbilisi-day";
+import { tbilisiToday } from "@/lib/tbilisi-day";
 import { branchDriverEmployees, branchReportEmployees, ensureConfiguredDriverEmployees } from "@/lib/branch-drivers";
 import { OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import type {
@@ -126,9 +126,8 @@ async function submitBranchReport(body: SubmitBody) {
     return { error: "მომავალი თარიღი არ შეიძლება", status: 400 as const };
   }
 
-  let day = isAdmin ? requestedDay : lockedDay;
-  // ძველ ლინკზე (მაგ. 10 ოქტომბერი) ახალი გაგზავნა იმავე დღეს რჩებოდა და დღეს აღარ ჩანდა.
-  if (!isAdmin && day < addCalendarDays(today, -1)) day = today;
+  // თანამშრომლის ძველი ლინკი (?date=ძველი დღე) მაინც დღევანდელ დღეზე ინახავს გაყიდვას.
+  const day = isAdmin ? requestedDay : today;
   const now = new Date().toISOString();
   const clientSales = parseClientSales(body);
   const incomes = body.incomes ?? [];
@@ -158,7 +157,6 @@ async function submitBranchReport(body: SubmitBody) {
         if (!hasAttendance) {
           addEmployeeAttendance(store, employee, day, "დღის", branch);
         }
-        applyZeroToExistingReport(store, report.id);
         recordSubmission(report, reportingEmployee, now);
         noopReport = report;
       }, { backupSource: "branch-portal" });
