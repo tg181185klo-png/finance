@@ -30,7 +30,7 @@ function SaleDateField({
   return (
     <input
       type="date"
-      className="w-[7.15rem] max-w-full rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-xs text-zinc-200"
+      className="box-border h-6 w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-0.5 text-[10px] text-zinc-200"
       min={OPERATIONAL_DATA_FROM}
       value={draft}
       onClick={(e) => e.stopPropagation()}
@@ -94,7 +94,7 @@ function PaymentMethodCell({
 
   return (
     <select
-      className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs focus:border-emerald-500"
+      className="box-border h-6 w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1 text-[10px] focus:border-emerald-500"
       value={value}
       disabled={busy}
       onClick={(e) => e.stopPropagation()}
@@ -148,7 +148,7 @@ function DriverCell({
 
   return (
     <select
-      className="w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-xs text-violet-200 focus:border-violet-500"
+      className="h-6 w-full min-w-0 rounded border border-zinc-700 bg-zinc-900 px-1 py-0 text-[10px] text-violet-200 focus:border-violet-500"
       value={value}
       disabled={busy}
       onClick={(e) => e.stopPropagation()}
@@ -185,7 +185,7 @@ function CustomerHint({ name }: { name: string }) {
   const initial = label.slice(0, 1);
   return (
     <span
-      className="relative inline-flex h-6 w-6 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[10px] font-medium text-zinc-300"
+      className="relative inline-flex h-5 w-5 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[9px] font-medium text-zinc-300"
       onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setTip(null)}
       onClick={(e) => e.stopPropagation()}
@@ -391,7 +391,7 @@ function DeleteRow({
   return (
     <button
       type="button"
-      className="shrink-0 whitespace-nowrap rounded border border-red-900/60 px-2 py-1 text-[11px] text-red-400 hover:bg-red-950/40 disabled:opacity-40"
+      className="shrink-0 whitespace-nowrap rounded border border-red-900/60 px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-950/40 disabled:opacity-40"
       disabled={busy || unique.length === 0}
       onClick={async (e) => {
         e.stopPropagation();
@@ -465,24 +465,24 @@ export default function TransactionTable({
   const showReviewed = Boolean(onToggleReview) || bankLedgerReviewed !== undefined;
 
   const columns = [
-    "8.4rem",
-    "6.8rem",
-    ...(showBranch ? ["8.2rem"] : []),
-    "8.4rem",
-    "minmax(10rem, 1.4fr)",
-    ...(showDriver ? ["minmax(9rem, 1fr)"] : []),
-    "6.8rem",
-    ...(showReviewed ? ["4.8rem"] : []),
-    ...(onDelete || onUpdateSale ? ["11.4rem"] : []),
+    "minmax(0, 0.82fr)",
+    "minmax(0, 0.52fr)",
+    ...(showBranch ? ["minmax(0, 0.68fr)"] : []),
+    "minmax(0, 0.82fr)",
+    "minmax(0, 1.05fr)",
+    ...(showDriver ? ["minmax(0, 0.95fr)"] : []),
+    "minmax(0, 0.62fr)",
+    ...(showReviewed ? ["minmax(0, 0.4fr)"] : []),
+    ...(onDelete || onUpdateSale ? ["minmax(0, 0.92fr)"] : []),
   ].join(" ");
   const headCell =
-    "flex min-w-0 items-center overflow-hidden whitespace-nowrap border-l border-zinc-800 px-2.5 py-2 text-[11px] font-medium tracking-wide text-zinc-400 first:border-l-0";
+    "flex min-w-0 items-center overflow-hidden whitespace-nowrap border-l border-zinc-800 px-1.5 py-1 text-[10px] font-medium text-zinc-400 first:border-l-0";
   const bodyCell =
-    "flex min-w-0 items-center overflow-hidden border-l border-zinc-800/80 px-2.5 py-2 first:border-l-0";
+    "flex min-w-0 items-center overflow-hidden border-l border-zinc-800/80 px-1.5 py-1 first:border-l-0";
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[72rem] text-sm">
+    <div className="w-full">
+      <div className="w-full text-[11px]">
         <div
           className="grid border-b border-zinc-700 bg-zinc-900/80"
           style={{ gridTemplateColumns: columns }}
@@ -625,7 +625,7 @@ export default function TransactionTable({
                         {onUpdateSale && isSale && (
                           <button
                             type="button"
-                            className="shrink-0 rounded border border-zinc-600 px-2 py-1 text-[11px] text-zinc-200 hover:border-emerald-600 hover:text-emerald-300"
+                            className="shrink-0 rounded border border-zinc-600 px-1.5 py-0.5 text-[10px] text-zinc-200 hover:border-emerald-600 hover:text-emerald-300"
                             onClick={() => setEditKey((prev) => (prev === g.key ? null : g.key))}
                           >
                             რედაქტირება
