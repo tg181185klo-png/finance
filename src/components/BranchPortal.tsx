@@ -379,10 +379,48 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
     e.preventDefault();
     if (submitting) return;
 
+    const draftItems = [...cart];
+    if (!asZero && pickedProduct) {
+      const qty = parseFloat(addQty) || 0;
+      const price = parseFloat(addPrice);
+      if (qty > 0 && Number.isFinite(price) && price >= 0) {
+        draftItems.push({
+          id: uid(),
+          productCode: pickedProduct.code,
+          productName: pickedProduct.name,
+          unitPrice: price,
+          quantity: qty,
+        });
+      }
+    }
+    const draftCustomerOk =
+      personType === "physical"
+        ? Boolean(firstName.trim() && lastName.trim() && phone.trim())
+        : Boolean(companyName.trim() && companyId.trim());
+    const draftSale: CompletedSale | null =
+      !asZero && draftItems.length > 0 && draftCustomerOk
+        ? {
+            id: uid(),
+            personType,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone.trim(),
+            personalId: personalId.trim() || undefined,
+            companyName: companyName.trim() || undefined,
+            companyId: companyId.trim() || undefined,
+            contactPhone: contactPhone.trim() || undefined,
+            driverEmployeeId: driverEmployeeId || selectedEmployeeId,
+            driverEmployeeName: driverEmployee?.name,
+            paymentMethod,
+            comment: customerComment.trim() || undefined,
+            items: draftItems,
+          }
+        : null;
+
     const gaps: Record<string, boolean> = {};
     if (!selectedEmployeeId) gaps.employee = true;
+    if (!asZero && !draftSale) Object.assign(gaps, collectSaleGaps());
     if (!asZero) {
-      Object.assign(gaps, collectSaleGaps());
       for (const row of expenses) {
         const amount = parseFloat(row.amount);
         if (row.comment.trim() && !(amount > 0)) gaps[`expense-${row.id}`] = true;
@@ -397,14 +435,13 @@ export default function BranchPortal({ token, fixedDate }: { token: string; fixe
       setErr("თანამშრომელი ჯერ არ არის დამატებული");
       return;
     }
-
-    if (!asZero && cart.length > 0) {
-      setErr("კალათაში დარჩა პროდუქტი — დაასრულეთ გაყიდვა ან წაშალეთ");
+    if (!asZero && !draftSale && (cart.length > 0 || pickedProduct)) {
+      setErr("კალათაში დარჩა პროდუქტი — შეავსეთ კლიენტი და გაგზავნეთ");
       return;
     }
     setMissing({});
 
-    const allSales = asZero ? [] : [...completedSales];
+    const allSales = asZero ? [] : [...completedSales, ...(draftSale ? [draftSale] : [])];
     const validClients = allSales.map((c) => ({
       personType: c.personType,
       customerFirstName: c.personType === "legal" ? "" : c.firstName,
