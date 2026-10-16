@@ -1,20 +1,21 @@
 import type { BranchClientSale, BranchDailyReport } from "./types";
 
-/** ლინკის სამუშაო დღე + გაგზავნის საათი. დღე UTC კალენდარია, სერვერის სარტყელი ვერ გადაიტანს. */
+/** ლინკის სამუშაო დღე + გაგზავნის საათი. UTC დღეც და თბილისის დღეც რეპორტის დღეა. */
 export function branchTransactionDate(reportDay: string, submittedAt: string): string {
   const at = new Date(submittedAt);
   const [y, m, d] = reportDay.split("-").map(Number);
-  if (!Number.isFinite(at.getTime()) || !y || !m || !d) return `${reportDay}T12:00:00.000Z`;
-  const merged = new Date(Date.UTC(
-    y,
-    m - 1,
-    d,
-    at.getUTCHours(),
-    at.getUTCMinutes(),
-    at.getUTCSeconds(),
-    at.getUTCMilliseconds()
-  ));
-  return merged.toISOString();
+  if (!Number.isFinite(at.getTime()) || !y || !m || !d) return `${reportDay}T08:00:00.000Z`;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tbilisi",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const num = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? "0");
+  let hour = num("hour");
+  if (hour < 4) hour = 4;
+  return new Date(Date.UTC(y, m - 1, d, hour - 4, num("minute"), num("second"))).toISOString();
 }
 
 export function formatReportDay(day: string) {
