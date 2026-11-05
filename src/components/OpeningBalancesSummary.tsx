@@ -96,7 +96,7 @@ export default function OpeningBalancesSummary({
     <section className="space-y-4">
       <div>
         <h3 className="mb-1 text-sm font-semibold text-sky-300">
-          საწყისი ნაშთები — {fresh ? FRESH_START_DATE : OPENING_BALANCE_DATE}
+          საწყისი ნაშთები — {fresh ? `${today.slice(0, 7)}-01` : OPENING_BALANCE_DATE}
         </h3>
         <p className="text-xs text-zinc-500">ფილიალების მიხედვით · რედაქტირება: საბანკო ანგარიში ან ჩაწერა ტაბი</p>
       </div>

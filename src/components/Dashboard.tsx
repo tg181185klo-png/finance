@@ -94,7 +94,7 @@ import {
 import { mergeStore, isStorePayload } from "@/lib/store-merge";
 import { type PeriodMode, resolvePeriod, periodFlow, filterOperationalTransactions, txInPeriod } from "@/lib/period-filter";
 import { txMatchesBranchFilter } from "@/lib/branch-allocation";
-import { FRESH_START_DATE, FRESH_START_MONTH, OPERATIONAL_DATA_FROM } from "@/lib/report-config";
+import { FRESH_START_DATE, OPERATIONAL_DATA_FROM } from "@/lib/report-config";
 import { PRODUCTS_REFRESH_MS, STORE_REFRESH_MS } from "@/lib/sheets-config";
 import { env } from "@/lib/env";
 import { confirmedActionPin } from "@/lib/action-password";
@@ -683,7 +683,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     if (!store) return;
     if (cashHydratedBranch.current === invBranch) return;
     cashHydratedBranch.current = invBranch;
-    const book = store.openingByMonth?.[FRESH_START_MONTH]?.[invBranch] ?? emptyBranchCash();
+    const book = store.openingByMonth?.[currentMonth()]?.[invBranch] ?? emptyBranchCash();
     setCashForm({
       cash: book.cash ? String(book.cash) : "",
       card: book.card ? String(book.card) : "",
@@ -703,7 +703,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const data = await saveInventory({
           action: "setCash",
           branch: invBranch,
-          month: FRESH_START_MONTH,
+          month: currentMonth(),
           cash: parseNum(cashForm.cash),
           card: parseNum(cashForm.card),
           bank: parseNum(cashForm.bank),
@@ -791,7 +791,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const data = await saveInventory({
           action: "setCash",
           branch: invBranch,
-          month: FRESH_START_MONTH,
+          month: currentMonth(),
           cash: parseNum(cashForm.cash),
           card: parseNum(cashForm.card),
           bank: parseNum(cashForm.bank),
@@ -3189,10 +3189,10 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
           </div>
 
           <div>
-            <h3 className="mb-3 text-sm font-medium text-zinc-400">ოქტომბრის საწყისი ნაშთები</h3>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">ამ თვის საწყისი ნაშთები</h3>
             <div className="mb-6 grid gap-3 sm:grid-cols-3">
               {BRANCHES.map((b) => {
-                const opening = activeStore.openingByMonth?.[FRESH_START_MONTH]?.[b] ?? emptyBranchCash();
+                const opening = activeStore.openingByMonth?.[currentMonth()]?.[b] ?? emptyBranchCash();
                 return (
                   <div key={b} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                     <h3 className="mb-2 font-semibold">{b}</h3>
@@ -3205,7 +3205,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
                 );
               })}
             </div>
-            <h3 className="mb-3 text-sm font-medium text-zinc-400">ოქტომბრის ნაშთი (საწყისი + ოქტომბრის ჩანაწერები)</h3>
+            <h3 className="mb-3 text-sm font-medium text-zinc-400">ამ თვის ნაშთი (საწყისი + ამ თვის ჩანაწერები)</h3>
             <div className="grid gap-3 sm:grid-cols-3">
             {BRANCHES.map((b) => {
               const cash = calcBalancesUpToDate(tx, b, undefined, period.to, activeStore.openingByMonth);

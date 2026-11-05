@@ -104,14 +104,16 @@ export function calcBalancesUpToDate(
   openingByMonth?: Record<string, Record<Branch, BranchCash>>
 ) {
   const asOf = upToDate.slice(0, 10);
+  const month = asOf.slice(0, 7);
   const fresh = asOf >= FRESH_START_DATE;
+  const monthFrom = `${month}-01`;
   const filtered = tx.filter((t) => {
     const d = t.date.slice(0, 10);
     if (d > asOf) return false;
-    if (fresh && d < FRESH_START_DATE) return false;
+    if (fresh && d < monthFrom) return false;
     return true;
   });
-  const opening = fresh ? openingByMonth?.[asOf.slice(0, 7)] : branchCash;
+  const opening = fresh ? openingByMonth?.[month] : branchCash;
   return calcBalances(filtered, branch, opening);
 }
 
