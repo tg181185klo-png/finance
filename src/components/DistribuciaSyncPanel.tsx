@@ -28,6 +28,24 @@ type DayCustomer = {
   total: number;
 };
 
+type StoredItem = {
+  code: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+};
+
+type StoredOrder = {
+  id: string;
+  storeName: string;
+  storePhone: string;
+  storeAddress: string;
+  saleTime: string;
+  totalAmount: number;
+  items: StoredItem[];
+};
+
 type DayRow = {
   date: string;
   orders: number;
@@ -35,6 +53,7 @@ type DayRow = {
   units: number;
   revenue: number;
   byCustomer: DayCustomer[];
+  storedOrders?: StoredOrder[];
 };
 
 type Preview = {
@@ -67,7 +86,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Props) {
-  const [fromDate, setFromDate] = useState("2026-03-01");
+  const [fromDate, setFromDate] = useState("2026-05-01");
   const [viewMonth, setViewMonth] = useState(currentMonth());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
@@ -333,6 +352,35 @@ export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Pr
                               </div>
                             );
                           })}
+                          {(day.storedOrders ?? []).map((order) => (
+                            <div key={order.id} className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-2">
+                              <div className="flex flex-wrap items-start justify-between gap-2 text-xs">
+                                <div className="min-w-0 text-zinc-200">
+                                  <div className="font-medium">{order.storeName || "უცნობი"}</div>
+                                  <div className="text-zinc-500">
+                                    {[
+                                      order.storePhone ? `ტელ: ${order.storePhone}` : "",
+                                      order.storeAddress ? `მის: ${order.storeAddress}` : "",
+                                      order.saleTime ? order.saleTime : "",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </div>
+                                </div>
+                                <strong className="text-emerald-400">{formatMoney(order.totalAmount)}</strong>
+                              </div>
+                              <div className="mt-2 space-y-1">
+                                {order.items.map((item, index) => (
+                                  <div key={`${order.id}-${item.code}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-3 text-[11px] text-zinc-400">
+                                    <span className="truncate text-zinc-300">{item.code} — {item.name}</span>
+                                    <span>{item.quantity} ც</span>
+                                    <span>{formatMoney(item.unitPrice)}</span>
+                                    <span className="text-right text-zinc-200">{formatMoney(item.total)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </td>
                     </tr>

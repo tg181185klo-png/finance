@@ -3,7 +3,7 @@ import type { Branch, PaymentMethod, Sale, Transaction } from "./types";
 
 export const DISTRIBUCIA_APP_URL = env.distribuciaApiUrl.replace(/\/$/, "");
 
-export const DISTRIBUCIA_SYNC_FROM = process.env.DISTRIBUCIA_SYNC_FROM || "2026-10-01";
+export const DISTRIBUCIA_SYNC_FROM = process.env.DISTRIBUCIA_SYNC_FROM || "2026-05-01";
 
 export type DistribuciaItem = {
   code: string;
@@ -36,6 +36,16 @@ export type DistribuciaDayCustomer = {
   total: number;
 };
 
+export type DistribuciaStoredOrder = {
+  id: string;
+  storeName: string;
+  storePhone: string;
+  storeAddress: string;
+  saleTime: string;
+  totalAmount: number;
+  items: DistribuciaItem[];
+};
+
 export type DistribuciaDaySummary = {
   date: string;
   orders: number;
@@ -43,6 +53,7 @@ export type DistribuciaDaySummary = {
   units: number;
   revenue: number;
   byCustomer: DistribuciaDayCustomer[];
+  storedOrders: DistribuciaStoredOrder[];
 };
 
 export type DistribuciaSyncPreview = {
@@ -212,6 +223,21 @@ export function buildDistribuciaDailySummary(orders: DistribuciaOrder[], fromDat
         units,
         revenue,
         byCustomer: [...customerMap.values()].sort((a, b) => b.total - a.total),
+        storedOrders: dayOrders.map((order) => ({
+          id: order.id,
+          storeName: order.storeName,
+          storePhone: order.storePhone ?? "",
+          storeAddress: order.storeAddress ?? "",
+          saleTime: order.saleTime ?? "",
+          totalAmount: Number(order.totalAmount) || 0,
+          items: (order.items ?? []).map((item) => ({
+            code: String(item.code || ""),
+            name: String(item.name || ""),
+            quantity: Number(item.quantity) || 0,
+            unitPrice: Number(item.unitPrice) || 0,
+            total: Number(item.total) || 0,
+          })),
+        })),
       };
     });
 }
