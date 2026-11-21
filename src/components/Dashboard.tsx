@@ -419,7 +419,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
         const res = await fetch("/api/distribucia/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ auto: true }),
+          body: JSON.stringify({ auto: true, from: "2026-05-01" }),
         });
         const data = await res.json();
         if (stopped || !res.ok) return;
@@ -484,7 +484,8 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     return operationalTx
       .filter((t) => {
         if (t.type !== "sale") return false;
-        if (!txInPeriod(t.date, period.from, period.to)) return false;
+        const fromDistribucia = t.source === "distribucia" || t.id?.startsWith("dist-");
+        if (!fromDistribucia && !txInPeriod(t.date, period.from, period.to)) return false;
         if (filter !== "ყველა" && !txMatchesBranchFilter(t, filter)) return false;
         return true;
       })

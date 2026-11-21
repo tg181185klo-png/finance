@@ -10,7 +10,7 @@ import {
   paymentShort,
   type SalePaymentGroup,
 } from "@/lib/branch-payments";
-import { formatMoney, currentMonth, isCreditOrderActive, monthStartEnd } from "@/lib/utils";
+import { formatMoney, isCreditOrderActive, monthStartEnd } from "@/lib/utils";
 import { groupSettlement, updateGroupPayment } from "@/components/BranchPaymentsPanel";
 
 const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-emerald-500";
@@ -87,7 +87,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Props) {
   const [fromDate, setFromDate] = useState("2026-05-01");
-  const [viewMonth, setViewMonth] = useState(currentMonth());
+  const [viewMonth, setViewMonth] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -115,6 +115,7 @@ export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Pr
 
   const visibleDays = useMemo(() => {
     if (!preview?.days) return [];
+    if (!viewMonth) return preview.days;
     const { from, to } = monthStartEnd(viewMonth);
     return preview.days.filter((d) => d.date >= from && d.date <= to);
   }, [preview, viewMonth]);
@@ -249,7 +250,9 @@ export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Pr
 
       {preview && visibleDays.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/40">
-          <p className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-500">ნაჩვენები: {viewMonth}</p>
+          <p className="border-b border-zinc-800 px-3 py-2 text-xs text-zinc-500">
+            ნაჩვენები: {viewMonth || "ყველა თვე"}
+          </p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
