@@ -36,10 +36,7 @@ export function isOperationalDate(date: string) {
 }
 
 export function filterOperationalTransactions(transactions: Transaction[]) {
-  return transactions.filter((t) => {
-    if (t.source === "distribucia" || t.id?.startsWith("dist-")) return true;
-    return isOperationalDate(t.date);
-  });
+  return transactions.filter((t) => isOperationalDate(t.date));
 }
 
 export function clampPeriodFrom(period: ResolvedPeriod): ResolvedPeriod {

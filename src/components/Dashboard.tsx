@@ -196,7 +196,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
   const [saleProductListOpen, setSaleProductListOpen] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [saleEmployeeId, setSaleEmployeeId] = useState("");
-  const [distribuciaNote, setDistribuciaNote] = useState("");
   const [creditAdvance, setCreditAdvance] = useState("");
   const [creditDueDate, setCreditDueDate] = useState("");
   const [creditPayInputs, setCreditPayInputs] = useState<Record<string, string>>({});
@@ -412,43 +411,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
 
   useEffect(() => {
     if (loading) return;
-    let stopped = false;
-    async function syncDistribucia() {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      try {
-        const res = await fetch("/api/distribucia/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ auto: true, from: "2026-05-01" }),
-        });
-        const data = await res.json();
-        if (stopped || !res.ok) return;
-        if (data.unchanged) {
-          setDistribuciaNote("დისტრიბუცია სინქრონშია");
-          return;
-        }
-        await loadStore();
-        setDistribuciaNote(
-          `დისტრიბუცია განახლდა · ${data.imported ?? 0} ხაზი`
-        );
-      } catch {
-        if (!stopped) setDistribuciaNote("დისტრიბუციის სინქრონი ამ წუთში ვერ მოხერხდა");
-      }
-    }
-    void syncDistribucia();
-    const id = setInterval(syncDistribucia, 60_000);
-    window.addEventListener("focus", syncDistribucia);
-    document.addEventListener("visibilitychange", syncDistribucia);
-    return () => {
-      stopped = true;
-      clearInterval(id);
-      window.removeEventListener("focus", syncDistribucia);
-      document.removeEventListener("visibilitychange", syncDistribucia);
-    };
-  }, [loading, loadStore]);
-
-  useEffect(() => {
-    if (loading) return;
     function refreshNow() {
       if (document.visibilityState === "visible") {
         loadStore().catch(() => {});
@@ -484,8 +446,7 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
     return operationalTx
       .filter((t) => {
         if (t.type !== "sale") return false;
-        const fromDistribucia = t.source === "distribucia" || t.id?.startsWith("dist-");
-        if (!fromDistribucia && !txInPeriod(t.date, period.from, period.to)) return false;
+        if (!txInPeriod(t.date, period.from, period.to)) return false;
         if (filter !== "ყველა" && !txMatchesBranchFilter(t, filter)) return false;
         return true;
       })
@@ -1672,7 +1633,6 @@ export default function Dashboard({ onLogout }: DashboardProps = {}) {
               {loading
                 ? "იტვირთება..."
                 : `${products.length} პროდუქტი · ${productSource === "google-sheets" ? "Google Sheets" : "ლოკალური ფაილი"}${productsUpdatedAt ? ` · ${formatDate(productsUpdatedAt)}` : ""}`}
-              {distribuciaNote && <span className="ml-1.5 text-violet-300">{distribuciaNote}</span>}
               {saveMsg && <span className="ml-1.5 text-emerald-400">{saveMsg}</span>}
             </p>
           </div>
