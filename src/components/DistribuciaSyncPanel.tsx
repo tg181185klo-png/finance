@@ -18,7 +18,7 @@ const selectCls = "rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-
 const labelCls = "mb-1 block text-xs text-zinc-400";
 const btnCls = "rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-40";
 
-const APP_URL = "https://polimeridistribucia.netlify.app";
+const APP_URL = "https://kalkulatori-rust.vercel.app";
 
 type DayCustomer = {
   storeName: string;
@@ -209,7 +209,7 @@ export default function DistribuciaSyncPanel({ transactions = [], onSynced }: Pr
           <p className="mt-1 text-xs text-zinc-500">
             მონაცემები იღება{" "}
             <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:underline">
-              polimeridistribucia.netlify.app
+              kalkulatori-rust.vercel.app
             </a>
             -დან · დღიური შეკვეთები და მომხმარებლები
           </p>
