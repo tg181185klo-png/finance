@@ -26,6 +26,9 @@ export type DistribuciaOrder = {
   totalAmount: number;
   deleted?: boolean;
   createdAt?: string;
+  consignment?: boolean;
+  consignmentDue?: string;
+  consignmentSettled?: boolean;
 };
 
 export type DistribuciaDayCustomer = {
@@ -149,7 +152,13 @@ export function ordersToSales(
       const amount = Number(item.total) || quantity * Number(item.unitPrice || 0);
       if (quantity <= 0 || amount <= 0) return;
       const saleId = distribuciaSaleId(order.id, index);
-      const paymentMethod = resolveDistribuciaPaymentMethod(saleId, order.id, paymentMap);
+      const openConsignment = Boolean(order.consignment) && !order.consignmentSettled;
+      const savedMethod = resolveDistribuciaPaymentMethod(saleId, order.id, paymentMap);
+      const paymentMethod = openConsignment
+        ? "კონსიგნაცია"
+        : order.consignmentSettled && savedMethod === "კონსიგნაცია"
+          ? "ქეში (ნაღდი)"
+          : savedMethod;
       const savedAccount = paymentMap?.accountBySaleId.get(saleId);
       const accountPaid =
         paymentMethod === "ანგარიშზე ჩარიცხვა" && savedAccount != null
@@ -165,13 +174,21 @@ export function ordersToSales(
         quantity,
         unitPrice: Number(item.unitPrice) || amount / quantity,
         amount,
-        paymentStatus: "სრულად გადახდილი",
+        paymentStatus: openConsignment ? "ბე (ავანსი)" : "სრულად გადახდილი",
         paymentMethod,
         comment: customerComment(order),
         buyerName: order.storeName,
         recurrence: "ერთჯერადი",
         source: "distribucia",
         distribuciaOrderId: order.id,
+        ...(openConsignment
+          ? {
+              creditPaid: 0,
+              creditDueDate: order.consignmentDue || order.saleDate,
+              quantityDelivered: quantity,
+              deliveryCompletedAt: order.saleDate,
+            }
+          : {}),
       };
       if (accountPaid != null && accountPaid > 0.009 && accountPaid < amount - 0.009) {
         sale.accountPaid = Math.round(accountPaid * 100) / 100;
@@ -268,6 +285,42 @@ export function distribuciaFingerprint(
     .join("\n");
 }
 
+function stampOpenConsignment(transactions: Transaction[], orders: DistribuciaOrder[]): Transaction[] {
+  const byOrder = new Map(orders.map((order) => [order.id, order]));
+  let changed = false;
+  const next = transactions.map((tx) => {
+    if (tx.type !== "sale" || !tx.distribuciaOrderId) return tx;
+    const order = byOrder.get(tx.distribuciaOrderId);
+    if (!order) return tx;
+    const open = Boolean(order.consignment) && !order.consignmentSettled;
+    if (open) {
+      const due = order.consignmentDue || order.saleDate;
+      if (tx.paymentMethod === "კონსიგნაცია" && tx.creditDueDate === due) return tx;
+      changed = true;
+      return {
+        ...tx,
+        paymentMethod: "კონსიგნაცია" as const,
+        paymentStatus: "ბე (ავანსი)" as const,
+        creditPaid: tx.creditPaid ?? 0,
+        creditDueDate: due,
+        quantityDelivered: tx.quantity,
+        deliveryCompletedAt: tx.deliveryCompletedAt ?? order.saleDate,
+      };
+    }
+    if (order.consignmentSettled && tx.paymentMethod === "კონსიგნაცია") {
+      changed = true;
+      return {
+        ...tx,
+        paymentMethod: "ქეში (ნაღდი)" as const,
+        paymentStatus: "სრულად გადახდილი" as const,
+        creditDueDate: undefined,
+      };
+    }
+    return tx;
+  });
+  return changed ? next : transactions;
+}
+
 export function applyDistribuciaOrders(
   transactions: Transaction[],
   orders: DistribuciaOrder[],
@@ -281,7 +334,11 @@ export function applyDistribuciaOrders(
   const newSales = ordersToSales(orders, fromDate, "დისტრიბუცია", paymentMap);
   const unchanged = distribuciaFingerprint(replacing) === distribuciaFingerprint(newSales);
   if (unchanged) {
-    return { transactions, unchanged: true, imported: newSales.length, removed: 0 };
+    const stamped = stampOpenConsignment(transactions, orders);
+    if (stamped === transactions) {
+      return { transactions, unchanged: true, imported: newSales.length, removed: 0 };
+    }
+    return { transactions: stamped, unchanged: false, imported: newSales.length, removed: 0 };
   }
   const kept = removeDistribuciaSales(transactions, fromDate);
   return {
